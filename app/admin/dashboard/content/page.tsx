@@ -242,7 +242,6 @@ export default async function ContentEditorPage() {
 
       <Zone number={9} title="Música" zone="music" initialEnabled={w.zoneEnabled.music} showPreview={false}>
         <MusicUploader music={w.music} />
-        <ZoneImageUpload zone="music" url={w.zoneImages.music} />
       </Zone>
 
       <Zone number={10} title="Regalos" zone="gifts" initialEnabled={w.zoneEnabled.gifts}>

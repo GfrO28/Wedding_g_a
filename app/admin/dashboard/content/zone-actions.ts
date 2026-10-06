@@ -86,3 +86,8 @@ export async function clearMusicAction() {
   await setSetting("musicSrc", "");
   revalidate();
 }
+
+export async function updateMusicTitleAction(title: string) {
+  await setSetting("musicTitle", title || "Nuestra canción");
+  revalidate();
+}

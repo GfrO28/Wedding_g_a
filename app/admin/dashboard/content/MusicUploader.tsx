@@ -2,12 +2,18 @@
 
 import { useRef, useState } from "react";
 import { Pause, Play } from "lucide-react";
-import { clearMusicAction, requestMusicUploadAction, saveMusicAction } from "./zone-actions";
+import {
+  clearMusicAction,
+  requestMusicUploadAction,
+  saveMusicAction,
+  updateMusicTitleAction,
+} from "./zone-actions";
 
 export function MusicUploader({ music }: { music: { src: string; title: string } | null }) {
   const [busy, setBusy] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [title, setTitle] = useState(music?.title ?? "");
+  const [savingTitle, setSavingTitle] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   async function handleFile(file: File) {
@@ -47,6 +53,12 @@ export function MusicUploader({ music }: { music: { src: string; title: string }
     setPlaying(!playing);
   }
 
+  async function saveTitle() {
+    setSavingTitle(true);
+    await updateMusicTitleAction(title);
+    setSavingTitle(false);
+  }
+
   function stop() {
     const audio = audioRef.current;
     if (!audio) return;
@@ -59,12 +71,24 @@ export function MusicUploader({ music }: { music: { src: string; title: string }
     <div className="flex flex-col gap-3">
       <label className="flex flex-col gap-1">
         <span className="text-xs text-neutral-500">Título de la canción</span>
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Canon in D — Pachelbel"
-          className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
-        />
+        <div className="flex gap-2">
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Canon in D — Pachelbel"
+            className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+          />
+          {music && (
+            <button
+              type="button"
+              onClick={saveTitle}
+              disabled={savingTitle}
+              className="shrink-0 rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-60"
+            >
+              {savingTitle ? "Guardando..." : "Guardar"}
+            </button>
+          )}
+        </div>
       </label>
 
       {music?.src && (

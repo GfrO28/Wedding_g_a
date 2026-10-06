@@ -39,7 +39,6 @@ export const ZONE_IMAGE_KEYS = [
   "location",
   "accommodation",
   "gifts",
-  "music",
 ] as const;
 export type ZoneImageKey = (typeof ZONE_IMAGE_KEYS)[number];
 
