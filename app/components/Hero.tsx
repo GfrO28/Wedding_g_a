@@ -18,7 +18,7 @@ export function Hero({ guestName }: { guestName: string }) {
         </p>
       </FadeIn>
       <FadeIn delay={0.1}>
-        <h1 className="font-serif text-5xl text-[var(--color-fg)] sm:text-7xl">
+        <h1 className="font-script text-7xl leading-tight text-[var(--color-accent)] sm:text-8xl">
           {WEDDING.partner1} &amp; {WEDDING.partner2}
         </h1>
       </FadeIn>

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Playfair_Display, Inter } from "next/font/google";
+import { Playfair_Display, Inter, Alex_Brush } from "next/font/google";
 import { WEDDING } from "@/lib/content";
 import { getTheme, themeToCssVars } from "@/lib/theme";
 import "./globals.css";
@@ -11,6 +11,12 @@ const playfair = Playfair_Display({
 
 const inter = Inter({
   variable: "--font-sans",
+  subsets: ["latin"],
+});
+
+const alexBrush = Alex_Brush({
+  variable: "--font-script",
+  weight: "400",
   subsets: ["latin"],
 });
 
@@ -26,7 +32,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="es"
-      className={`${playfair.variable} ${inter.variable} h-full antialiased`}
+      className={`${playfair.variable} ${inter.variable} ${alexBrush.variable} h-full antialiased`}
     >
       <head>
         <style dangerouslySetInnerHTML={{ __html: themeToCssVars(theme) }} />

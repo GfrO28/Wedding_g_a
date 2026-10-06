@@ -8,6 +8,18 @@ export const WEDDING = {
   // TODO: confirmar fecha límite real de RSVP (placeholder: 2 meses antes).
   rsvpDeadlineISO: "2027-09-27T23:59:59-05:00",
 
+  // TODO: confirmar nombres de los padres.
+  parents: {
+    partner1: ["Madre de Antonella", "Padre de Antonella"],
+    partner2: ["Madre de Gianfranco", "Padre de Gianfranco"],
+  },
+
+  // TODO: confirmar frase o versículo.
+  quote: {
+    text: "Y sobre todas estas cosas, vístanse de amor, que es el vínculo perfecto.",
+    source: "Colosenses 3:14",
+  },
+
   ceremony: {
     name: "Ceremonia",
     time: "14:30",
@@ -24,6 +36,16 @@ export const WEDDING = {
     address: "Fundo La Carmela, Lima, Perú",
     mapUrl: "https://maps.app.goo.gl/u6fS4PYMZ3ZZP7hdA",
   },
+
+  // Itinerario del día. icon: "church" | "glass" | "utensils" | "party" | "clock".
+  // Sumá o editá los pasos que falten (brindis, banquete, hora loca, fin, etc).
+  itinerary: [
+    { time: "14:30", label: "Ceremonia", icon: "church" },
+    { time: "17:00", label: "Recepción", icon: "glass" },
+  ] as { time: string; label: string; icon: string }[],
+
+  // Pendiente: configurar la canción (subir el MP3 a /public/music/).
+  music: null as { src: string; title: string } | null,
 
   // Pendiente: agregar los capítulos de la historia de la pareja.
   story: [] as {

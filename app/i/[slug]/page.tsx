@@ -3,15 +3,19 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { guests, rsvps } from "@/lib/db/schema";
 import { Hero } from "@/app/components/Hero";
+import { Blessing } from "@/app/components/Blessing";
 import { OurStory } from "@/app/components/OurStory";
 import { Gallery } from "@/app/components/Gallery";
 import { EventDetails } from "@/app/components/EventDetails";
+import { Itinerary } from "@/app/components/Itinerary";
 import { Location } from "@/app/components/Location";
 import { Accommodation } from "@/app/components/Accommodation";
+import { MusicPlayer } from "@/app/components/MusicPlayer";
 import { Gifts } from "@/app/components/Gifts";
 import { RSVPForm } from "@/app/components/RSVPForm";
 import { GuestMessages } from "@/app/components/GuestMessages";
 import { Footer } from "@/app/components/Footer";
+import { Divider } from "@/app/components/Divider";
 
 export const dynamic = "force-dynamic";
 
@@ -37,11 +41,16 @@ export default async function GuestInvitationPage({
   return (
     <main>
       <Hero guestName={guest.fullName} />
+      <Blessing />
+      <Divider />
       <OurStory />
       <EventDetails />
+      <Itinerary />
       <Location />
       <Gallery />
       <Accommodation />
+      <MusicPlayer />
+      <Divider />
       <Gifts slug={guest.slug} />
       <RSVPForm
         slug={guest.slug}

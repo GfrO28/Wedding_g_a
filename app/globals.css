@@ -7,3 +7,7 @@
 .font-serif {
   font-family: var(--font-serif), serif;
 }
+
+.font-script {
+  font-family: var(--font-script), cursive;
+}
