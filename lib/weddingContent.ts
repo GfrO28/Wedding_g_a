@@ -10,7 +10,18 @@ export type Place = {
   mapUrl: string;
 };
 
-export type StoryChapter = { id: string; year: string; title: string; text: string; image: string };
+export type StoryLayout = "image-left" | "image-right" | "image-top" | "text-only";
+export type ImageFocus = "top" | "center" | "bottom";
+
+export type StoryChapter = {
+  id: string;
+  year: string;
+  title: string;
+  text: string;
+  image: string;
+  layout: StoryLayout;
+  imageFocus: ImageFocus;
+};
 export type ItineraryStep = { id: string; time: string; label: string; icon: string };
 export type Hotel = {
   id: string;

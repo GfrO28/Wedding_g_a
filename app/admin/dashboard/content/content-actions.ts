@@ -6,6 +6,7 @@ import {
   getEffectiveAccommodation,
   getEffectiveItinerary,
   getEffectiveStory,
+  type StoryChapter,
 } from "@/lib/weddingContent";
 
 function revalidate() {
@@ -85,12 +86,16 @@ export async function updateGiftsAction(formData: FormData) {
 
 export async function addStoryChapterAction(formData: FormData) {
   const chapters = await getEffectiveStory();
+  const layout = str(formData, "layout") || "image-left";
+  const imageFocus = str(formData, "imageFocus") || "center";
   chapters.push({
     id: crypto.randomUUID(),
     year: str(formData, "year"),
     title: str(formData, "title"),
     text: str(formData, "text"),
-    image: str(formData, "image") || "/story/placeholder-1.jpg",
+    image: str(formData, "image"),
+    layout: layout as StoryChapter["layout"],
+    imageFocus: imageFocus as StoryChapter["imageFocus"],
   });
   await setJSON("contentStory", chapters);
   revalidate();

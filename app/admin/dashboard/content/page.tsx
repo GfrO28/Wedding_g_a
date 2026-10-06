@@ -24,12 +24,25 @@ const ICONS = [
   { value: "clock", label: "Reloj" },
 ];
 
+const STORY_LAYOUTS = [
+  { value: "image-left", label: "Foto a la izquierda" },
+  { value: "image-right", label: "Foto a la derecha" },
+  { value: "image-top", label: "Foto arriba" },
+  { value: "text-only", label: "Solo texto" },
+];
+
+const IMAGE_FOCUS = [
+  { value: "top", label: "Arriba" },
+  { value: "center", label: "Centro" },
+  { value: "bottom", label: "Abajo" },
+];
+
 export default async function ContentEditorPage() {
   const w = await getWeddingContent();
 
   return (
-    <main className="mx-auto max-w-3xl space-y-10 px-4 py-10">
-      <div>
+    <main className="mx-auto max-w-6xl px-4 py-10">
+      <div className="mb-8">
         <a href="/admin/dashboard" className="text-xs text-neutral-500 underline">
           ← Volver al panel
         </a>
@@ -41,6 +54,9 @@ export default async function ContentEditorPage() {
           se reflejan en el sitio apenas guardás.
         </p>
       </div>
+
+      <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[1fr_380px]">
+        <div className="space-y-10">
 
       <Section title="Pareja y fecha">
         <form action={updateCoupleAction} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -184,6 +200,22 @@ export default async function ContentEditorPage() {
           <Field label="URL de la imagen (subila a la galería y pegá el link, o dejalo vacío)">
             <input name="image" className={inputClass} />
           </Field>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="Disposición">
+              <select name="layout" defaultValue="image-left" className={inputClass}>
+                {STORY_LAYOUTS.map((l) => (
+                  <option key={l.value} value={l.value}>{l.label}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Encuadre de la foto">
+              <select name="imageFocus" defaultValue="center" className={inputClass}>
+                {IMAGE_FOCUS.map((f) => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
           <AddButton label="Agregar capítulo" />
         </form>
       </Section>
@@ -253,6 +285,26 @@ export default async function ContentEditorPage() {
           <SaveButton />
         </form>
       </Section>
+
+        </div>
+
+        <div className="lg:sticky lg:top-10">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
+            Vista previa en vivo
+          </p>
+          <div className="overflow-hidden rounded-[2rem] border-8 border-neutral-800 bg-neutral-800 shadow-lg">
+            <iframe
+              src="/admin/dashboard/preview"
+              title="Vista previa de la invitación"
+              className="h-[640px] w-[360px] bg-white"
+            />
+          </div>
+          <p className="mt-2 text-xs text-neutral-400">
+            Deslizá dentro del recuadro para ver cada sección. Usa datos de
+            ejemplo para el nombre del invitado.
+          </p>
+        </div>
+      </div>
     </main>
   );
 }
