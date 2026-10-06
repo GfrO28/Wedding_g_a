@@ -2,7 +2,6 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { WEDDING } from "@/lib/content";
 import type { IntroSettings } from "@/lib/intro";
 
 type Stage = "sealed" | "opening" | "invited" | "closing" | "done";
@@ -11,10 +10,14 @@ export function IntroEnvelope({
   settings,
   bg,
   fg,
+  partner1,
+  partner2,
 }: {
   settings: IntroSettings;
   bg: string;
   fg: string;
+  partner1: string;
+  partner2: string;
 }) {
   const [mounted, setMounted] = useState(false);
   const [stage, setStage] = useState<Stage>("sealed");
@@ -43,7 +46,7 @@ export function IntroEnvelope({
 
   if (!mounted || stage === "done" || settings.type === "none") return null;
 
-  const initials = `${WEDDING.partner1[0]}${WEDDING.partner2[0]}`;
+  const initials = `${partner1[0]}${partner2[0]}`;
   const showEnvelope = stage === "sealed" || stage === "opening";
   const open = stage === "opening";
 

@@ -6,7 +6,7 @@ import {
   Clock,
   type LucideIcon,
 } from "lucide-react";
-import { WEDDING } from "@/lib/content";
+import { getWeddingContent } from "@/lib/weddingContent";
 import { FadeIn } from "./FadeIn";
 import { Slide } from "./Slide";
 
@@ -18,7 +18,8 @@ const ICONS: Record<string, LucideIcon> = {
   clock: Clock,
 };
 
-export function Itinerary() {
+export async function Itinerary() {
+  const WEDDING = await getWeddingContent();
   if (WEDDING.itinerary.length < 1) return null;
 
   return (
@@ -33,7 +34,7 @@ export function Itinerary() {
         {WEDDING.itinerary.map((step, i) => {
           const Icon = ICONS[step.icon] ?? Clock;
           return (
-            <FadeIn key={step.label} delay={i * 0.08}>
+            <FadeIn key={step.id} delay={i * 0.08}>
               <div className="flex w-24 flex-col items-center gap-2 text-center">
                 <Icon
                   className="text-[var(--color-accent)]"

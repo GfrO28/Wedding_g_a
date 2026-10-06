@@ -1,6 +1,7 @@
-import { WEDDING } from "@/lib/content";
+import { getWeddingContent } from "@/lib/weddingContent";
 
-export default function Home() {
+export default async function Home() {
+  const WEDDING = await getWeddingContent();
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[var(--color-bg)] px-6 text-center">
       <h1 className="font-serif text-4xl text-[var(--color-fg)]">

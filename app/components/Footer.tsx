@@ -1,6 +1,7 @@
-import { WEDDING } from "@/lib/content";
+import { getWeddingContent } from "@/lib/weddingContent";
 
-export function Footer() {
+export async function Footer() {
+  const WEDDING = await getWeddingContent();
   return (
     <footer className="border-t border-[var(--color-border)] py-10 text-center">
       <p className="font-script text-4xl text-[var(--color-accent)]">

@@ -1,8 +1,9 @@
-import { WEDDING } from "@/lib/content";
+import { getWeddingContent } from "@/lib/weddingContent";
 import { FadeIn } from "./FadeIn";
 import { Slide } from "./Slide";
 
-export function Location() {
+export async function Location() {
+  const WEDDING = await getWeddingContent();
   return (
     <Slide>
     <section className="mx-auto max-w-4xl px-6">

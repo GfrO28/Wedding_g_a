@@ -1,8 +1,9 @@
-import { WEDDING } from "@/lib/content";
+import { getWeddingContent } from "@/lib/weddingContent";
 import { FadeIn } from "./FadeIn";
 import { Slide } from "./Slide";
 
-export function Accommodation() {
+export async function Accommodation() {
+  const WEDDING = await getWeddingContent();
   if (WEDDING.accommodation.length < 1) return null;
 
   return (
@@ -20,7 +21,7 @@ export function Accommodation() {
       </FadeIn>
       <div className="space-y-4">
         {WEDDING.accommodation.map((hotel, i) => (
-          <FadeIn key={hotel.name} delay={i * 0.1}>
+          <FadeIn key={hotel.id} delay={i * 0.1}>
             <div className="flex flex-col justify-between gap-2 rounded-lg border border-[var(--color-border)] p-4 sm:flex-row sm:items-center">
               <div>
                 <h3 className="font-medium text-[var(--color-fg)]">{hotel.name}</h3>

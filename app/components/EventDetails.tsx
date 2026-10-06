@@ -1,4 +1,4 @@
-import { WEDDING } from "@/lib/content";
+import { getWeddingContent } from "@/lib/weddingContent";
 import { FadeIn } from "./FadeIn";
 import { Slide } from "./Slide";
 
@@ -23,7 +23,8 @@ function EventCard({
   );
 }
 
-export function EventDetails() {
+export async function EventDetails() {
+  const WEDDING = await getWeddingContent();
   return (
     <Slide>
     <section className="mx-auto max-w-4xl px-6">

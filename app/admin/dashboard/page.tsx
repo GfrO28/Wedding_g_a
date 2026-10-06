@@ -76,6 +76,19 @@ export default async function AdminDashboardPage() {
         Invitados y RSVPs
       </h1>
 
+      <a
+        href="/admin/dashboard/content"
+        className="block rounded-lg border border-neutral-200 p-4 text-sm hover:bg-neutral-50"
+      >
+        <span className="font-medium text-neutral-800">
+          Editar contenido de la invitación →
+        </span>
+        <p className="mt-0.5 text-neutral-500">
+          Pareja, fecha, ceremonia, recepción, historia, itinerario, dress
+          code, alojamiento, transporte y regalos.
+        </p>
+      </a>
+
       <div>
         <h2 className="mb-3 font-serif text-xl text-neutral-800">
           Paleta de colores del sitio

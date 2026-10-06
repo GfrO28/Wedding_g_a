@@ -1,7 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { giftContributions, giftItems } from "@/lib/db/schema";
-import { WEDDING } from "@/lib/content";
+import { getWeddingContent } from "@/lib/weddingContent";
 import { FadeIn } from "./FadeIn";
 import { CopyButton } from "./CopyButton";
 import { GiftClaimForm } from "./GiftClaimForm";
@@ -27,6 +27,7 @@ export async function Gifts({ slug }: { slug: string }) {
     raisedByItem.set(c.giftItemId, (raisedByItem.get(c.giftItemId) ?? 0) + c.amount);
   }
 
+  const WEDDING = await getWeddingContent();
   const { payment, message } = WEDDING.gifts;
 
   return (

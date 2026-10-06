@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Playfair_Display, Inter, Alex_Brush } from "next/font/google";
-import { WEDDING } from "@/lib/content";
+import { getWeddingContent } from "@/lib/weddingContent";
 import { getTheme, themeToCssVars } from "@/lib/theme";
 import "./globals.css";
 
@@ -20,11 +20,14 @@ const alexBrush = Alex_Brush({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: `${WEDDING.partner1} & ${WEDDING.partner2}`,
-  description: `Invitación de la boda de ${WEDDING.partner1} y ${WEDDING.partner2}`,
-  robots: { index: false, follow: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { partner1, partner2 } = await getWeddingContent();
+  return {
+    title: `${partner1} & ${partner2}`,
+    description: `Invitación de la boda de ${partner1} y ${partner2}`,
+    robots: { index: false, follow: false },
+  };
+}
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const theme = await getTheme();

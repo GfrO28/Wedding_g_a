@@ -1,9 +1,10 @@
-import { WEDDING } from "@/lib/content";
+import { getWeddingContent } from "@/lib/weddingContent";
 import { Countdown } from "./Countdown";
 import { FadeIn } from "./FadeIn";
 import { Slide } from "./Slide";
 
-export function Hero({ guestName }: { guestName: string }) {
+export async function Hero({ guestName }: { guestName: string }) {
+  const WEDDING = await getWeddingContent();
   const date = new Date(WEDDING.weddingDateISO);
   const formatted = date.toLocaleDateString("es-ES", {
     day: "numeric",

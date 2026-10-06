@@ -1,10 +1,10 @@
-import { WEDDING } from "@/lib/content";
+import { getWeddingContent } from "@/lib/weddingContent";
 import { FadeIn } from "./FadeIn";
 import { Divider } from "./Divider";
 import { Slide } from "./Slide";
 
-export function Blessing() {
-  const { quote, parents, partner1, partner2 } = WEDDING;
+export async function Blessing() {
+  const { quote, parents, partner1, partner2 } = await getWeddingContent();
   const initials = `${partner1[0]}${partner2[0]}`;
 
   return (

@@ -1,9 +1,10 @@
 import Image from "next/image";
-import { WEDDING } from "@/lib/content";
+import { getWeddingContent } from "@/lib/weddingContent";
 import { FadeIn } from "./FadeIn";
 import { Slide } from "./Slide";
 
-export function OurStory() {
+export async function OurStory() {
+  const WEDDING = await getWeddingContent();
   if (WEDDING.story.length < 1) return null;
 
   return (
@@ -16,7 +17,7 @@ export function OurStory() {
       </FadeIn>
       <div className="space-y-16">
         {WEDDING.story.map((chapter, i) => (
-          <FadeIn key={chapter.year} delay={i * 0.1}>
+          <FadeIn key={chapter.id} delay={i * 0.1}>
             <div className="grid grid-cols-1 items-center gap-6 sm:grid-cols-2">
               <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-[var(--color-border)]">
                 <Image

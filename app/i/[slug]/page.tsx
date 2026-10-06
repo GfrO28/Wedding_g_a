@@ -18,6 +18,7 @@ import { GuestMessages } from "@/app/components/GuestMessages";
 import { Footer } from "@/app/components/Footer";
 import { getIntroSettings } from "@/lib/intro";
 import { getTheme } from "@/lib/theme";
+import { getWeddingContent } from "@/lib/weddingContent";
 
 export const dynamic = "force-dynamic";
 
@@ -40,11 +41,21 @@ export default async function GuestInvitationPage({
     .where(eq(rsvps.guestId, guest.id))
     .limit(1);
 
-  const [introSettings, theme] = await Promise.all([getIntroSettings(), getTheme()]);
+  const [introSettings, theme, content] = await Promise.all([
+    getIntroSettings(),
+    getTheme(),
+    getWeddingContent(),
+  ]);
 
   return (
     <>
-    <IntroEnvelope settings={introSettings} bg={theme.background} fg={theme.foreground} />
+    <IntroEnvelope
+      settings={introSettings}
+      bg={theme.background}
+      fg={theme.foreground}
+      partner1={content.partner1}
+      partner2={content.partner2}
+    />
     <main className="h-dvh snap-y snap-mandatory overflow-y-scroll scroll-smooth">
       <Hero guestName={guest.fullName} />
       <Blessing />
