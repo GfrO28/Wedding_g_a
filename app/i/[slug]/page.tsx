@@ -16,6 +16,8 @@ import { Gifts } from "@/app/components/Gifts";
 import { RSVPForm } from "@/app/components/RSVPForm";
 import { GuestMessages } from "@/app/components/GuestMessages";
 import { Footer } from "@/app/components/Footer";
+import { getIntroSettings } from "@/lib/intro";
+import { getTheme } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
 
@@ -38,9 +40,11 @@ export default async function GuestInvitationPage({
     .where(eq(rsvps.guestId, guest.id))
     .limit(1);
 
+  const [introSettings, theme] = await Promise.all([getIntroSettings(), getTheme()]);
+
   return (
     <>
-    <IntroEnvelope />
+    <IntroEnvelope settings={introSettings} bg={theme.background} fg={theme.foreground} />
     <main className="h-dvh snap-y snap-mandatory overflow-y-scroll scroll-smooth">
       <Hero guestName={guest.fullName} />
       <Blessing />

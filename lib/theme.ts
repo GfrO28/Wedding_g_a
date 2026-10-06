@@ -1,5 +1,4 @@
-import { db } from "@/lib/db";
-import { siteSettings } from "@/lib/db/schema";
+import { getSettingsMap } from "@/lib/settings";
 
 export const THEME_KEYS = [
   "background",
@@ -23,9 +22,8 @@ export const DEFAULT_THEME: Theme = {
 };
 
 export async function getTheme(): Promise<Theme> {
-  const rows = await db.select().from(siteSettings);
-  const overrides = Object.fromEntries(rows.map((r) => [r.key, r.value]));
-  return { ...DEFAULT_THEME, ...overrides } as Theme;
+  const map = await getSettingsMap();
+  return { ...DEFAULT_THEME, ...map } as Theme;
 }
 
 export function themeToCssVars(theme: Theme) {

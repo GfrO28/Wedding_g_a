@@ -21,6 +21,8 @@ import {
 } from "./gift-actions";
 import { ThemeEditor } from "./ThemeEditor";
 import { getTheme } from "@/lib/theme";
+import { IntroEditor } from "./IntroEditor";
+import { getIntroSettings } from "@/lib/intro";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +68,7 @@ export default async function AdminDashboardPage() {
   }
 
   const theme = await getTheme();
+  const introSettings = await getIntroSettings();
 
   return (
     <main className="mx-auto max-w-4xl space-y-8 px-4 py-10">
@@ -78,6 +81,13 @@ export default async function AdminDashboardPage() {
           Paleta de colores del sitio
         </h2>
         <ThemeEditor theme={theme} />
+      </div>
+
+      <div>
+        <h2 className="mb-3 font-serif text-xl text-neutral-800">
+          Animación de apertura
+        </h2>
+        <IntroEditor settings={introSettings} />
       </div>
 
       <div className="grid grid-cols-3 gap-4 text-center">
