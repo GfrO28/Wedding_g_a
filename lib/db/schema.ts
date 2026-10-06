@@ -47,3 +47,13 @@ export const guestMessages = pgTable("guest_messages", {
     .notNull()
     .defaultNow(),
 });
+
+export const photos = pgTable("photos", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  key: text("key").notNull().unique(),
+  url: text("url").notNull(),
+  alt: text("alt"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});

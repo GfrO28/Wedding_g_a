@@ -1,11 +1,12 @@
 import { db } from "@/lib/db";
-import { guestMessages, guests, rsvps } from "@/lib/db/schema";
+import { guestMessages, guests, photos, rsvps } from "@/lib/db/schema";
 import { desc, eq } from "drizzle-orm";
 import {
   approveMessageAction,
   createGuestAction,
   deleteMessageAction,
 } from "./actions";
+import { GalleryUploader } from "./GalleryUploader";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,11 @@ export default async function AdminDashboardPage() {
     .from(guestMessages)
     .where(eq(guestMessages.approved, false))
     .orderBy(desc(guestMessages.createdAt));
+
+  const allPhotos = await db
+    .select()
+    .from(photos)
+    .orderBy(desc(photos.createdAt));
 
   return (
     <main className="mx-auto max-w-4xl space-y-8 px-4 py-10">
@@ -115,6 +121,11 @@ export default async function AdminDashboardPage() {
           ))}
         </tbody>
       </table>
+      <div>
+        <h2 className="mb-3 font-serif text-xl text-neutral-800">Galería</h2>
+        <GalleryUploader photos={allPhotos} />
+      </div>
+
       {pendingMessages.length > 0 && (
         <div>
           <h2 className="mb-3 font-serif text-xl text-neutral-800">

@@ -1,8 +1,21 @@
 import Image from "next/image";
+import { desc } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { photos } from "@/lib/db/schema";
 import { WEDDING } from "@/lib/content";
 import { FadeIn } from "./FadeIn";
 
-export function Gallery() {
+export async function Gallery() {
+  const uploaded = await db
+    .select()
+    .from(photos)
+    .orderBy(desc(photos.createdAt));
+
+  const images =
+    uploaded.length > 0
+      ? uploaded.map((p) => ({ src: p.url, alt: p.alt ?? "" }))
+      : WEDDING.gallery;
+
   return (
     <section className="mx-auto max-w-5xl px-6 py-24">
       <FadeIn>
@@ -11,7 +24,7 @@ export function Gallery() {
         </h2>
       </FadeIn>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {WEDDING.gallery.map((photo, i) => (
+        {images.map((photo, i) => (
           <FadeIn key={photo.src} delay={i * 0.05}>
             <div className="relative aspect-square overflow-hidden rounded-lg bg-neutral-200">
               <Image
