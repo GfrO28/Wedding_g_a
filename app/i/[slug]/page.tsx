@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { guests, rsvps } from "@/lib/db/schema";
 import { Hero } from "@/app/components/Hero";
+import { IntroEnvelope } from "@/app/components/IntroEnvelope";
 import { Blessing } from "@/app/components/Blessing";
 import { OurStory } from "@/app/components/OurStory";
 import { Gallery } from "@/app/components/Gallery";
@@ -38,6 +39,8 @@ export default async function GuestInvitationPage({
     .limit(1);
 
   return (
+    <>
+    <IntroEnvelope />
     <main className="h-dvh snap-y snap-mandatory overflow-y-scroll scroll-smooth">
       <Hero guestName={guest.fullName} />
       <Blessing />
@@ -57,5 +60,6 @@ export default async function GuestInvitationPage({
       <GuestMessages slug={guest.slug} />
       <Footer />
     </main>
+    </>
   );
 }
