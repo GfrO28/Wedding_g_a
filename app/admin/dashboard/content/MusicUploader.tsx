@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { Pause, Play } from "lucide-react";
 import { clearMusicAction, requestMusicUploadAction, saveMusicAction } from "./zone-actions";
 
 export function MusicUploader({ music }: { music: { src: string; title: string } | null }) {
   const [busy, setBusy] = useState(false);
+  const [playing, setPlaying] = useState(false);
   const [title, setTitle] = useState(music?.title ?? "");
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   async function handleFile(file: File) {
     setBusy(true);
@@ -33,6 +36,25 @@ export function MusicUploader({ music }: { music: { src: string; title: string }
     setBusy(false);
   }
 
+  function toggle() {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (playing) {
+      audio.pause();
+    } else {
+      audio.play();
+    }
+    setPlaying(!playing);
+  }
+
+  function stop() {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.pause();
+    audio.currentTime = 0;
+    setPlaying(false);
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <label className="flex flex-col gap-1">
@@ -46,9 +68,26 @@ export function MusicUploader({ music }: { music: { src: string; title: string }
       </label>
 
       {music?.src && (
-        <audio controls src={music.src} className="w-full">
-          Tu navegador no soporta audio.
-        </audio>
+        <div className="flex items-center gap-3 rounded-md border border-neutral-200 p-3">
+          <audio ref={audioRef} src={music.src} onEnded={() => setPlaying(false)} />
+          <button
+            type="button"
+            onClick={toggle}
+            aria-label={playing ? "Pausar" : "Reproducir"}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white"
+          >
+            {playing ? <Pause size={15} /> : <Play size={15} className="ml-0.5" />}
+          </button>
+          <button
+            type="button"
+            onClick={stop}
+            aria-label="Detener"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neutral-300 text-neutral-500 hover:bg-neutral-50"
+          >
+            <span className="block h-2.5 w-2.5 bg-current" />
+          </button>
+          <p className="truncate text-sm text-neutral-600">{music.title}</p>
+        </div>
       )}
 
       <div className="flex items-center gap-2">

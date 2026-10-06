@@ -43,6 +43,22 @@ export const ZONE_IMAGE_KEYS = [
 ] as const;
 export type ZoneImageKey = (typeof ZONE_IMAGE_KEYS)[number];
 
+// Todas las viñetas que el admin puede prender/apagar de cara al invitado
+// (la paleta de colores queda afuera: no es una viñeta, es global).
+export const ZONE_TOGGLE_KEYS = [
+  "hero",
+  "blessing",
+  "story",
+  "event",
+  "itinerary",
+  "location",
+  "accommodation",
+  "gallery",
+  "music",
+  "gifts",
+] as const;
+export type ZoneToggleKey = (typeof ZONE_TOGGLE_KEYS)[number];
+
 export type WeddingContent = {
   partner1: string;
   partner2: string;
@@ -69,6 +85,7 @@ export type WeddingContent = {
     };
   };
   zoneImages: Record<ZoneImageKey, string | null>;
+  zoneEnabled: Record<ZoneToggleKey, boolean>;
 };
 
 function parseJSON<T>(value: string | undefined, fallback: T): T {
@@ -133,5 +150,8 @@ export async function getWeddingContent(): Promise<WeddingContent> {
     zoneImages: Object.fromEntries(
       ZONE_IMAGE_KEYS.map((key) => [key, map[`zoneBg_${key}`] ?? null]),
     ) as Record<ZoneImageKey, string | null>,
+    zoneEnabled: Object.fromEntries(
+      ZONE_TOGGLE_KEYS.map((key) => [key, map[`zoneEnabled_${key}`] !== "false"]),
+    ) as Record<ZoneToggleKey, boolean>,
   };
 }

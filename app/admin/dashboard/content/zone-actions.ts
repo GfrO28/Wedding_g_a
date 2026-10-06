@@ -3,13 +3,23 @@
 import { revalidatePath } from "next/cache";
 import { setSetting } from "@/lib/kv";
 import { getUploadUrl, publicUrlFor } from "@/lib/storage/r2";
-import { ZONE_IMAGE_KEYS, type ZoneImageKey } from "@/lib/weddingContent";
+import { ZONE_IMAGE_KEYS, ZONE_TOGGLE_KEYS, type ZoneImageKey, type ZoneToggleKey } from "@/lib/weddingContent";
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const ALLOWED_AUDIO_TYPES = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/ogg"];
 
 function isZoneKey(key: string): key is ZoneImageKey {
   return (ZONE_IMAGE_KEYS as readonly string[]).includes(key);
+}
+
+function isZoneToggleKey(key: string): key is ZoneToggleKey {
+  return (ZONE_TOGGLE_KEYS as readonly string[]).includes(key);
+}
+
+export async function toggleZoneEnabledAction(zone: string, enabled: boolean) {
+  if (!isZoneToggleKey(zone)) return;
+  await setSetting(`zoneEnabled_${zone}`, enabled ? "true" : "false");
+  revalidate();
 }
 
 function safeName(filename: string) {

@@ -57,16 +57,18 @@ export default async function GuestInvitationPage({
       partner2={content.partner2}
     />
     <main className="h-dvh snap-y snap-mandatory overflow-y-scroll scroll-smooth">
-      <Hero guestName={guest.fullName} />
-      <Blessing />
-      <OurStory />
-      <EventDetails />
-      <Itinerary />
-      <Location />
-      <Gallery />
-      <Accommodation />
-      <MusicPlayer music={content.music} bgImage={content.zoneImages.music} />
-      <Gifts slug={guest.slug} />
+      {content.zoneEnabled.hero && <Hero guestName={guest.fullName} />}
+      {content.zoneEnabled.blessing && <Blessing />}
+      {content.zoneEnabled.story && <OurStory />}
+      {content.zoneEnabled.event && <EventDetails />}
+      {content.zoneEnabled.itinerary && <Itinerary />}
+      {content.zoneEnabled.location && <Location />}
+      {content.zoneEnabled.gallery && <Gallery />}
+      {content.zoneEnabled.accommodation && <Accommodation />}
+      {content.zoneEnabled.music && (
+        <MusicPlayer music={content.music} bgImage={content.zoneImages.music} />
+      )}
+      {content.zoneEnabled.gifts && <Gifts slug={guest.slug} />}
       <RSVPForm
         slug={guest.slug}
         maxAttendees={guest.maxAttendees}

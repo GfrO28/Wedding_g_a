@@ -24,16 +24,18 @@ export default async function PreviewPage() {
 
   return (
     <main className="h-dvh snap-y snap-mandatory overflow-y-scroll scroll-smooth">
-      <Hero guestName="Invitado de ejemplo" />
-      <Blessing />
-      <OurStory />
-      <EventDetails />
-      <Itinerary />
-      <Location />
-      <Gallery />
-      <Accommodation />
-      <MusicPlayer music={content.music} bgImage={content.zoneImages.music} />
-      <Gifts slug="preview" />
+      {content.zoneEnabled.hero && <Hero guestName="Invitado de ejemplo" />}
+      {content.zoneEnabled.blessing && <Blessing />}
+      {content.zoneEnabled.story && <OurStory />}
+      {content.zoneEnabled.event && <EventDetails />}
+      {content.zoneEnabled.itinerary && <Itinerary />}
+      {content.zoneEnabled.location && <Location />}
+      {content.zoneEnabled.gallery && <Gallery />}
+      {content.zoneEnabled.accommodation && <Accommodation />}
+      {content.zoneEnabled.music && (
+        <MusicPlayer music={content.music} bgImage={content.zoneImages.music} />
+      )}
+      {content.zoneEnabled.gifts && <Gifts slug="preview" />}
       <RSVPForm slug="preview" maxAttendees={2} existing={null} />
       <GuestMessages slug="preview" />
       <Footer />

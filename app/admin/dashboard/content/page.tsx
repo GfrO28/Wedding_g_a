@@ -18,7 +18,7 @@ import {
   updateTransportationAction,
 } from "./content-actions";
 import { ZoneImageUpload } from "./ZoneImageUpload";
-import { ZonePreview } from "./ZonePreview";
+import { Zone } from "./Zone";
 import { MusicUploader } from "./MusicUploader";
 import { GalleryUploader } from "../GalleryUploader";
 import { ThemeEditor } from "../ThemeEditor";
@@ -66,7 +66,7 @@ export default async function ContentEditorPage() {
         </p>
       </div>
 
-      <Zone number={1} title="Portada" zone="hero">
+      <Zone number={1} title="Portada" zone="hero" initialEnabled={w.zoneEnabled.hero}>
         <form action={updateCoupleAction} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Nombre 1">
             <input name="partner1" defaultValue={w.partner1} className={inputClass} />
@@ -89,7 +89,7 @@ export default async function ContentEditorPage() {
         <ZoneImageUpload zone="hero" url={w.zoneImages.hero} />
       </Zone>
 
-      <Zone number={2} title="Frase, monograma y padres" zone="blessing">
+      <Zone number={2} title="Frase, monograma y padres" zone="blessing" initialEnabled={w.zoneEnabled.blessing}>
         <form action={updateBlessingAction} className="flex flex-col gap-3">
           <Field label="Frase o versículo">
             <textarea name="quoteText" defaultValue={w.quote.text} rows={2} className={inputClass} />
@@ -112,7 +112,7 @@ export default async function ContentEditorPage() {
         <ZoneImageUpload zone="blessing" url={w.zoneImages.blessing} />
       </Zone>
 
-      <Zone number={3} title="Nuestra historia" zone="story">
+      <Zone number={3} title="Nuestra historia" zone="story" initialEnabled={w.zoneEnabled.story}>
         <ListItems
           items={w.story.map((c) => ({ id: c.id, label: `${c.year} — ${c.title}` }))}
           deleteAction={deleteStoryChapterAction}
@@ -152,7 +152,7 @@ export default async function ContentEditorPage() {
         </form>
       </Zone>
 
-      <Zone number={4} title="El evento" zone="event">
+      <Zone number={4} title="El evento" zone="event" initialEnabled={w.zoneEnabled.event}>
         <form action={updatePlacesAction} className="flex flex-col gap-6">
           <div>
             <p className="mb-2 text-sm font-medium text-neutral-700">Ceremonia</p>
@@ -185,7 +185,7 @@ export default async function ContentEditorPage() {
         </div>
       </Zone>
 
-      <Zone number={5} title="Itinerario del día" zone="itinerary">
+      <Zone number={5} title="Itinerario del día" zone="itinerary" initialEnabled={w.zoneEnabled.itinerary}>
         <ListItems
           items={w.itinerary.map((s) => ({ id: s.id, label: `${s.time} — ${s.label} (${s.icon})` }))}
           deleteAction={deleteItineraryStepAction}
@@ -203,7 +203,7 @@ export default async function ContentEditorPage() {
         <ZoneImageUpload zone="itinerary" url={w.zoneImages.itinerary} />
       </Zone>
 
-      <Zone number={6} title="Cómo llegar" zone="location">
+      <Zone number={6} title="Cómo llegar" zone="location" initialEnabled={w.zoneEnabled.location}>
         <p className="text-sm text-neutral-500">
           Usa las mismas direcciones y links de Google Maps que cargaste en
           "El evento" — no hace falta repetirlos.
@@ -211,7 +211,7 @@ export default async function ContentEditorPage() {
         <ZoneImageUpload zone="location" url={w.zoneImages.location} />
       </Zone>
 
-      <Zone number={7} title="Alojamiento" zone="accommodation">
+      <Zone number={7} title="Alojamiento" zone="accommodation" initialEnabled={w.zoneEnabled.accommodation}>
         <ListItems
           items={w.accommodation.map((h) => ({ id: h.id, label: h.name }))}
           deleteAction={deleteHotelAction}
@@ -236,16 +236,16 @@ export default async function ContentEditorPage() {
         <ZoneImageUpload zone="accommodation" url={w.zoneImages.accommodation} />
       </Zone>
 
-      <Zone number={8} title="Galería" zone="gallery">
+      <Zone number={8} title="Galería" zone="gallery" initialEnabled={w.zoneEnabled.gallery}>
         <GalleryUploader photos={allPhotos} />
       </Zone>
 
-      <Zone number={9} title="Música" zone="music">
+      <Zone number={9} title="Música" zone="music" initialEnabled={w.zoneEnabled.music} showPreview={false}>
         <MusicUploader music={w.music} />
         <ZoneImageUpload zone="music" url={w.zoneImages.music} />
       </Zone>
 
-      <Zone number={10} title="Regalos" zone="gifts">
+      <Zone number={10} title="Regalos" zone="gifts" initialEnabled={w.zoneEnabled.gifts}>
         <form action={updateGiftsAction} className="flex flex-col gap-4">
           <Field label="Mensaje">
             <textarea name="message" defaultValue={w.gifts.message} rows={2} className={inputClass} />
@@ -281,36 +281,6 @@ export default async function ContentEditorPage() {
 
 const inputClass =
   "w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm";
-
-function Zone({
-  number,
-  title,
-  zone,
-  children,
-}: {
-  number: number;
-  title: string;
-  zone?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="overflow-hidden rounded-lg border border-neutral-200">
-      <div className="border-b border-neutral-200 bg-neutral-50 px-5 py-3">
-        <h2 className="font-serif text-xl text-neutral-800">
-          {number}. {title}
-        </h2>
-      </div>
-      <div className={`grid grid-cols-1 ${zone ? "sm:grid-cols-[270px_1fr]" : ""}`}>
-        {zone && (
-          <div className="flex flex-col items-center gap-4 border-b border-neutral-200 bg-neutral-50 p-4 sm:border-b-0 sm:border-r">
-            <ZonePreview zone={zone} />
-          </div>
-        )}
-        <div className="flex flex-col gap-4 p-5">{children}</div>
-      </div>
-    </section>
-  );
-}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
