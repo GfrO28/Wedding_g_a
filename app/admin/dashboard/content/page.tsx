@@ -299,29 +299,81 @@ function Zone({
           {number}. {title}
         </h2>
       </div>
-      <div className={`grid grid-cols-1 ${zone ? "sm:grid-cols-[240px_1fr]" : ""}`}>
+      <div className={`grid grid-cols-1 ${zone ? "sm:grid-cols-[230px_1fr]" : ""}`}>
         {zone && (
-          <div className="flex flex-col items-center gap-2 border-b border-neutral-200 bg-neutral-50 p-4 sm:border-b-0 sm:border-r">
-            <div className="w-[200px] overflow-hidden rounded-[1.2rem] border-4 border-neutral-800 bg-neutral-800 shadow">
-              <iframe
-                src={`/admin/dashboard/preview/${zone}`}
-                title={`Vista previa — ${title}`}
-                className="h-[340px] w-[192px] bg-white"
-              />
-            </div>
-            <a
-              href={`/admin/dashboard/preview/${zone}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-neutral-400 underline"
-            >
-              Ver completo
-            </a>
+          <div className="flex flex-col items-center gap-4 border-b border-neutral-200 bg-neutral-50 p-4 sm:border-b-0 sm:border-r">
+            <ZonePreview zone={zone} title={title} />
           </div>
         )}
         <div className="flex flex-col gap-4 p-5">{children}</div>
       </div>
     </section>
+  );
+}
+
+// Renderiza el iframe a su resolución real (390x844 celular, 1280x800 PC) y
+// lo escala visualmente como miniatura — así el contenido se acomoda como en
+// el dispositivo real, en vez de quedar apretado en un iframe angosto.
+function PreviewFrame({
+  zone,
+  label,
+  deviceWidth,
+  deviceHeight,
+  boxWidth,
+  frame,
+}: {
+  zone: string;
+  label: string;
+  deviceWidth: number;
+  deviceHeight: number;
+  boxWidth: number;
+  frame: "phone" | "browser";
+}) {
+  const scale = boxWidth / deviceWidth;
+  const boxHeight = Math.round(deviceHeight * scale);
+
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{label}</p>
+      <div
+        className={
+          frame === "phone"
+            ? "overflow-hidden rounded-[1.1rem] border-4 border-neutral-800 bg-neutral-800 shadow"
+            : "overflow-hidden rounded-md border border-neutral-800 bg-neutral-800 shadow"
+        }
+        style={{ width: boxWidth, height: boxHeight }}
+      >
+        <iframe
+          src={`/admin/dashboard/preview/${zone}`}
+          title={`Vista previa (${label}) — ${zone}`}
+          style={{
+            width: deviceWidth,
+            height: deviceHeight,
+            transform: `scale(${scale})`,
+            transformOrigin: "top left",
+            border: 0,
+            background: "white",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ZonePreview({ zone, title }: { zone: string; title: string }) {
+  return (
+    <div className="flex flex-col items-center gap-4">
+      <PreviewFrame zone={zone} label="Celular" deviceWidth={390} deviceHeight={844} boxWidth={170} frame="phone" />
+      <PreviewFrame zone={zone} label="PC" deviceWidth={1280} deviceHeight={800} boxWidth={190} frame="browser" />
+      <a
+        href={`/admin/dashboard/preview/${zone}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-xs text-neutral-400 underline"
+      >
+        Ver completo
+      </a>
+    </div>
   );
 }
 
