@@ -50,7 +50,7 @@ export function Countdown({ targetISO }: { targetISO: string }) {
           <div className="text-2xl font-semibold tabular-nums sm:text-4xl">
             {u.value}
           </div>
-          <div className="text-xs uppercase tracking-wide text-neutral-500">
+          <div className="text-xs uppercase tracking-wide text-[var(--color-muted)]">
             {u.label}
           </div>
         </div>

@@ -1,5 +1,12 @@
 import { db } from "@/lib/db";
-import { giftItems, guestMessages, guests, photos, rsvps } from "@/lib/db/schema";
+import {
+  giftContributions,
+  giftItems,
+  guestMessages,
+  guests,
+  photos,
+  rsvps,
+} from "@/lib/db/schema";
 import { desc, eq } from "drizzle-orm";
 import {
   approveMessageAction,
@@ -12,6 +19,8 @@ import {
   deleteGiftItemAction,
   unclaimGiftItemAction,
 } from "./gift-actions";
+import { ThemeEditor } from "./ThemeEditor";
+import { getTheme } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
 
@@ -50,11 +59,26 @@ export default async function AdminDashboardPage() {
     .from(giftItems)
     .orderBy(desc(giftItems.createdAt));
 
+  const allContributions = await db.select().from(giftContributions);
+  const raisedByItem = new Map<string, number>();
+  for (const c of allContributions) {
+    raisedByItem.set(c.giftItemId, (raisedByItem.get(c.giftItemId) ?? 0) + c.amount);
+  }
+
+  const theme = await getTheme();
+
   return (
     <main className="mx-auto max-w-4xl space-y-8 px-4 py-10">
       <h1 className="font-serif text-3xl text-neutral-800">
         Invitados y RSVPs
       </h1>
+
+      <div>
+        <h2 className="mb-3 font-serif text-xl text-neutral-800">
+          Paleta de colores del sitio
+        </h2>
+        <ThemeEditor theme={theme} />
+      </div>
 
       <div className="grid grid-cols-3 gap-4 text-center">
         <Stat label="Confirmados" value={confirmed.length} />
@@ -163,7 +187,7 @@ export default async function AdminDashboardPage() {
           </div>
           <div className="flex flex-col">
             <label className="text-xs text-neutral-500">
-              Monto sugerido (S/)
+              Monto sugerido / objetivo (S/)
             </label>
             <input
               type="number"
@@ -171,6 +195,17 @@ export default async function AdminDashboardPage() {
               min={0}
               className="w-28 rounded-md border border-neutral-300 px-2 py-1 text-sm"
             />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-xs text-neutral-500">Tipo</label>
+            <select
+              name="type"
+              defaultValue="claim"
+              className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+            >
+              <option value="claim">Regalo único (reserva)</option>
+              <option value="fund">Fondo común (aportes)</option>
+            </select>
           </div>
           <button
             type="submit"
@@ -197,13 +232,15 @@ export default async function AdminDashboardPage() {
                     </span>
                   )}
                   <span className="ml-2 text-xs text-neutral-400">
-                    {item.claimedAt
-                      ? `Reservado por ${item.claimedByName}`
-                      : "Disponible"}
+                    {item.type === "fund"
+                      ? `S/ ${raisedByItem.get(item.id) ?? 0} recaudados`
+                      : item.claimedAt
+                        ? `Reservado por ${item.claimedByName}`
+                        : "Disponible"}
                   </span>
                 </div>
                 <div className="flex shrink-0 gap-2">
-                  {item.claimedAt && (
+                  {item.type === "claim" && item.claimedAt && (
                     <form action={unclaimGiftItemAction}>
                       <input type="hidden" name="id" value={item.id} />
                       <button className="rounded-md border border-neutral-300 px-3 py-1 text-xs">

@@ -58,14 +58,34 @@ export const photos = pgTable("photos", {
     .defaultNow(),
 });
 
+// type "claim": un invitado reserva el regalo entero (amount = monto sugerido).
+// type "fund": varios invitados aportan montos parciales (amount = monto objetivo).
 export const giftItems = pgTable("gift_items", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   description: text("description"),
+  type: text("type").notNull().default("claim"),
   amount: integer("amount"),
   claimedByName: text("claimed_by_name"),
   claimedAt: timestamp("claimed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
+});
+
+export const giftContributions = pgTable("gift_contributions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  giftItemId: uuid("gift_item_id")
+    .notNull()
+    .references(() => giftItems.id, { onDelete: "cascade" }),
+  contributorName: text("contributor_name").notNull(),
+  amount: integer("amount").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const siteSettings = pgTable("site_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
 });

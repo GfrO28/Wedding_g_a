@@ -1,21 +1,8 @@
 @import "tailwindcss";
 
-:root {
-  --background: #fafaf9;
-  --foreground: #1c1917;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-serif: var(--font-serif);
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-}
+/* Colores de --color-bg, --color-fg, --color-muted, --color-border,
+   --color-accent y --color-accent-fg: inyectados en app/layout.tsx
+   desde lib/theme.ts (editable en /admin/dashboard). */
 
 .font-serif {
   font-family: var(--font-serif), serif;

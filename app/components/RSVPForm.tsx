@@ -25,15 +25,15 @@ export function RSVPForm({
   if (submitted) {
     return (
       <section className="mx-auto max-w-lg px-6 py-24 text-center">
-        <h2 className="font-serif text-2xl text-neutral-900">
+        <h2 className="font-serif text-2xl text-[var(--color-fg)]">
           ¡Gracias por responder!
         </h2>
-        <p className="mt-2 text-neutral-600">
+        <p className="mt-2 text-[var(--color-muted)]">
           Ya registramos tu confirmación. Podés volver a esta página para
           actualizarla cuando quieras.
         </p>
         <button
-          className="mt-4 text-sm text-neutral-500 underline"
+          className="mt-4 text-sm text-[var(--color-muted)] underline"
           onClick={() => setSubmitted(false)}
         >
           Editar respuesta
@@ -45,7 +45,7 @@ export function RSVPForm({
   return (
     <section className="mx-auto max-w-lg px-6 py-24">
       <FadeIn>
-        <h2 className="mb-8 text-center font-serif text-3xl text-neutral-900">
+        <h2 className="mb-8 text-center font-serif text-3xl text-[var(--color-fg)]">
           Confirmá tu asistencia
         </h2>
       </FadeIn>
@@ -60,7 +60,7 @@ export function RSVPForm({
           <input type="hidden" name="slug" value={slug} />
 
           <div className="flex gap-3">
-            <label className="flex-1 cursor-pointer rounded-md border border-neutral-300 p-3 text-center text-sm has-[:checked]:border-neutral-900 has-[:checked]:bg-neutral-900 has-[:checked]:text-white">
+            <label className="flex-1 cursor-pointer rounded-md border border-[var(--color-border)] p-3 text-center text-sm has-[:checked]:border-[var(--color-accent)] has-[:checked]:bg-[var(--color-accent)] has-[:checked]:text-[var(--color-accent-fg)]">
               <input
                 type="radio"
                 name="attending"
@@ -71,7 +71,7 @@ export function RSVPForm({
               />
               Sí, voy a asistir
             </label>
-            <label className="flex-1 cursor-pointer rounded-md border border-neutral-300 p-3 text-center text-sm has-[:checked]:border-neutral-900 has-[:checked]:bg-neutral-900 has-[:checked]:text-white">
+            <label className="flex-1 cursor-pointer rounded-md border border-[var(--color-border)] p-3 text-center text-sm has-[:checked]:border-[var(--color-accent)] has-[:checked]:bg-[var(--color-accent)] has-[:checked]:text-[var(--color-accent-fg)]">
               <input
                 type="radio"
                 name="attending"
@@ -87,7 +87,7 @@ export function RSVPForm({
           {attending && (
             <>
               <div>
-                <label className="text-sm text-neutral-600">
+                <label className="text-sm text-[var(--color-muted)]">
                   ¿Cuántas personas asisten? (máx. {maxAttendees})
                 </label>
                 <input
@@ -96,47 +96,47 @@ export function RSVPForm({
                   min={1}
                   max={maxAttendees}
                   defaultValue={existing?.numAttendees ?? 1}
-                  className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-[var(--color-border)] px-3 py-2 text-sm"
                 />
               </div>
               <div>
-                <label className="text-sm text-neutral-600">
+                <label className="text-sm text-[var(--color-muted)]">
                   Preferencia de menú
                 </label>
                 <input
                   name="mealPreference"
                   defaultValue={existing?.mealPreference ?? ""}
-                  className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-[var(--color-border)] px-3 py-2 text-sm"
                 />
               </div>
               <div>
-                <label className="text-sm text-neutral-600">
+                <label className="text-sm text-[var(--color-muted)]">
                   Alergias / restricciones alimentarias
                 </label>
                 <input
                   name="dietaryRestrictions"
                   defaultValue={existing?.dietaryRestrictions ?? ""}
-                  className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-[var(--color-border)] px-3 py-2 text-sm"
                 />
               </div>
             </>
           )}
 
           <div>
-            <label className="text-sm text-neutral-600">
+            <label className="text-sm text-[var(--color-muted)]">
               Mensaje para los novios (opcional)
             </label>
             <textarea
               name="notes"
               defaultValue={existing?.notes ?? ""}
               rows={3}
-              className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border border-[var(--color-border)] px-3 py-2 text-sm"
             />
           </div>
 
           <button
             type="submit"
-            className="w-full rounded-md bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-700"
+            className="w-full rounded-md bg-[var(--color-accent)] px-4 py-2.5 text-sm font-medium text-[var(--color-accent-fg)] hover:opacity-90"
           >
             Enviar respuesta
           </button>

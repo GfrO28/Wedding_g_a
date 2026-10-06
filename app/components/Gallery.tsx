@@ -21,14 +21,14 @@ export async function Gallery() {
   return (
     <section className="mx-auto max-w-5xl px-6 py-24">
       <FadeIn>
-        <h2 className="mb-12 text-center font-serif text-3xl text-neutral-900">
+        <h2 className="mb-12 text-center font-serif text-3xl text-[var(--color-fg)]">
           Galería
         </h2>
       </FadeIn>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {images.map((photo, i) => (
           <FadeIn key={photo.src} delay={i * 0.05}>
-            <div className="relative aspect-square overflow-hidden rounded-lg bg-neutral-200">
+            <div className="relative aspect-square overflow-hidden rounded-lg bg-[var(--color-border)]">
               <Image
                 src={photo.src}
                 alt={photo.alt}

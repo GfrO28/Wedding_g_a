@@ -13,11 +13,11 @@ function EventCard({
   address: string;
 }) {
   return (
-    <div className="flex-1 rounded-xl border border-neutral-200 p-6 text-center">
-      <h3 className="font-serif text-xl text-neutral-900">{name}</h3>
-      <p className="mt-2 text-2xl font-light text-neutral-800">{time}</p>
-      <p className="mt-2 font-medium text-neutral-700">{venue}</p>
-      <p className="text-sm text-neutral-500">{address}</p>
+    <div className="flex-1 rounded-xl border border-[var(--color-border)] p-6 text-center">
+      <h3 className="font-serif text-xl text-[var(--color-fg)]">{name}</h3>
+      <p className="mt-2 text-2xl font-light text-[var(--color-fg)]">{time}</p>
+      <p className="mt-2 font-medium text-[var(--color-fg)]">{venue}</p>
+      <p className="text-sm text-[var(--color-muted)]">{address}</p>
     </div>
   );
 }
@@ -26,7 +26,7 @@ export function EventDetails() {
   return (
     <section className="mx-auto max-w-4xl px-6 py-24">
       <FadeIn>
-        <h2 className="mb-12 text-center font-serif text-3xl text-neutral-900">
+        <h2 className="mb-12 text-center font-serif text-3xl text-[var(--color-fg)]">
           El evento
         </h2>
       </FadeIn>
@@ -47,7 +47,7 @@ export function EventDetails() {
         </div>
       </FadeIn>
       <FadeIn delay={0.2}>
-        <p className="mt-8 text-center text-sm text-neutral-500">
+        <p className="mt-8 text-center text-sm text-[var(--color-muted)]">
           Código de vestimenta: {WEDDING.dressCode}
         </p>
       </FadeIn>

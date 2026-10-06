@@ -15,7 +15,7 @@ export async function GuestMessages({ slug }: { slug: string }) {
   return (
     <section className="mx-auto max-w-2xl px-6 py-24">
       <FadeIn>
-        <h2 className="mb-8 text-center font-serif text-3xl text-neutral-900">
+        <h2 className="mb-8 text-center font-serif text-3xl text-[var(--color-fg)]">
           Dejanos un mensaje
         </h2>
       </FadeIn>
@@ -27,18 +27,18 @@ export async function GuestMessages({ slug }: { slug: string }) {
             name="name"
             placeholder="Tu nombre"
             required
-            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+            className="w-full rounded-md border border-[var(--color-border)] px-3 py-2 text-sm"
           />
           <textarea
             name="message"
             placeholder="Tu mensaje para los novios"
             required
             rows={3}
-            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+            className="w-full rounded-md border border-[var(--color-border)] px-3 py-2 text-sm"
           />
           <button
             type="submit"
-            className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-100"
+            className="rounded-md border border-[var(--color-border)] px-4 py-2 text-sm hover:bg-[var(--color-border)]"
           >
             Enviar mensaje
           </button>
@@ -48,9 +48,9 @@ export async function GuestMessages({ slug }: { slug: string }) {
       {messages.length > 0 && (
         <div className="space-y-4">
           {messages.map((m) => (
-            <div key={m.id} className="rounded-lg border border-neutral-200 p-4">
-              <p className="text-sm text-neutral-700">{m.message}</p>
-              <p className="mt-1 text-xs text-neutral-400">— {m.name}</p>
+            <div key={m.id} className="rounded-lg border border-[var(--color-border)] p-4">
+              <p className="text-sm text-[var(--color-fg)]">{m.message}</p>
+              <p className="mt-1 text-xs text-[var(--color-muted)]">— {m.name}</p>
             </div>
           ))}
         </div>

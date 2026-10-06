@@ -10,10 +10,11 @@ export async function createGiftItemAction(formData: FormData) {
   const description = String(formData.get("description") ?? "").trim() || null;
   const amountRaw = String(formData.get("amount") ?? "").trim();
   const amount = amountRaw ? Number(amountRaw) || null : null;
+  const type = formData.get("type") === "fund" ? "fund" : "claim";
 
   if (!name) return;
 
-  await db.insert(giftItems).values({ name, description, amount });
+  await db.insert(giftItems).values({ name, description, amount, type });
   revalidatePath("/admin/dashboard");
 }
 
