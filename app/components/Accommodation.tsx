@@ -1,11 +1,13 @@
 import { WEDDING } from "@/lib/content";
 import { FadeIn } from "./FadeIn";
+import { Slide } from "./Slide";
 
 export function Accommodation() {
   if (WEDDING.accommodation.length < 1) return null;
 
   return (
-    <section className="mx-auto max-w-3xl px-6 py-24">
+    <Slide>
+    <section className="mx-auto max-w-3xl px-6">
       <FadeIn>
         <h2 className="mb-4 text-center font-serif text-3xl text-[var(--color-fg)]">
           Alojamiento
@@ -39,5 +41,6 @@ export function Accommodation() {
         ))}
       </div>
     </section>
+    </Slide>
   );
 }

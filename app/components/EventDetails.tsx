@@ -1,5 +1,6 @@
 import { WEDDING } from "@/lib/content";
 import { FadeIn } from "./FadeIn";
+import { Slide } from "./Slide";
 
 function EventCard({
   name,
@@ -24,7 +25,8 @@ function EventCard({
 
 export function EventDetails() {
   return (
-    <section className="mx-auto max-w-4xl px-6 py-24">
+    <Slide>
+    <section className="mx-auto max-w-4xl px-6">
       <FadeIn>
         <h2 className="mb-12 text-center font-serif text-3xl text-[var(--color-fg)]">
           El evento
@@ -52,5 +54,6 @@ export function EventDetails() {
         </p>
       </FadeIn>
     </section>
+    </Slide>
   );
 }

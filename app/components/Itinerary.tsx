@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { WEDDING } from "@/lib/content";
 import { FadeIn } from "./FadeIn";
+import { Slide } from "./Slide";
 
 const ICONS: Record<string, LucideIcon> = {
   church: Church,
@@ -21,7 +22,8 @@ export function Itinerary() {
   if (WEDDING.itinerary.length < 1) return null;
 
   return (
-    <section className="mx-auto max-w-2xl px-6 py-16">
+    <Slide>
+    <section className="mx-auto max-w-2xl px-6">
       <FadeIn>
         <h2 className="mb-10 text-center font-serif text-3xl text-[var(--color-fg)]">
           Itinerario
@@ -50,5 +52,6 @@ export function Itinerary() {
         })}
       </div>
     </section>
+    </Slide>
   );
 }

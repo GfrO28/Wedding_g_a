@@ -15,7 +15,6 @@ import { Gifts } from "@/app/components/Gifts";
 import { RSVPForm } from "@/app/components/RSVPForm";
 import { GuestMessages } from "@/app/components/GuestMessages";
 import { Footer } from "@/app/components/Footer";
-import { Divider } from "@/app/components/Divider";
 
 export const dynamic = "force-dynamic";
 
@@ -39,10 +38,9 @@ export default async function GuestInvitationPage({
     .limit(1);
 
   return (
-    <main>
+    <main className="h-dvh snap-y snap-mandatory overflow-y-scroll scroll-smooth">
       <Hero guestName={guest.fullName} />
       <Blessing />
-      <Divider />
       <OurStory />
       <EventDetails />
       <Itinerary />
@@ -50,7 +48,6 @@ export default async function GuestInvitationPage({
       <Gallery />
       <Accommodation />
       <MusicPlayer />
-      <Divider />
       <Gifts slug={guest.slug} />
       <RSVPForm
         slug={guest.slug}

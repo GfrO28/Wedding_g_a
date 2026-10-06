@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { photos } from "@/lib/db/schema";
 import { WEDDING } from "@/lib/content";
 import { FadeIn } from "./FadeIn";
+import { Slide } from "./Slide";
 
 export async function Gallery() {
   const uploaded = await db
@@ -19,7 +20,8 @@ export async function Gallery() {
   if (images.length < 1) return null;
 
   return (
-    <section className="mx-auto max-w-5xl px-6 py-24">
+    <Slide>
+    <section className="mx-auto max-w-5xl px-6">
       <FadeIn>
         <h2 className="mb-12 text-center font-serif text-3xl text-[var(--color-fg)]">
           Galería
@@ -40,5 +42,6 @@ export async function Gallery() {
         ))}
       </div>
     </section>
+    </Slide>
   );
 }

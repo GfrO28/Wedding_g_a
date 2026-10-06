@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { FadeIn } from "./FadeIn";
+import { Slide } from "./Slide";
 import { submitRsvpAction } from "@/app/i/[slug]/actions";
 
 export function RSVPForm({
@@ -24,7 +25,8 @@ export function RSVPForm({
 
   if (submitted) {
     return (
-      <section className="mx-auto max-w-lg px-6 py-24 text-center">
+      <Slide>
+      <section className="mx-auto max-w-lg px-6 text-center">
         <h2 className="font-serif text-2xl text-[var(--color-fg)]">
           ¡Gracias por responder!
         </h2>
@@ -39,11 +41,13 @@ export function RSVPForm({
           Editar respuesta
         </button>
       </section>
+      </Slide>
     );
   }
 
   return (
-    <section className="mx-auto max-w-lg px-6 py-24">
+    <Slide>
+    <section className="mx-auto max-w-lg px-6">
       <FadeIn>
         <h2 className="mb-8 text-center font-serif text-3xl text-[var(--color-fg)]">
           Confirmá tu asistencia
@@ -143,5 +147,6 @@ export function RSVPForm({
         </form>
       </FadeIn>
     </section>
+    </Slide>
   );
 }

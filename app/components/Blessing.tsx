@@ -1,13 +1,15 @@
 import { WEDDING } from "@/lib/content";
 import { FadeIn } from "./FadeIn";
 import { Divider } from "./Divider";
+import { Slide } from "./Slide";
 
 export function Blessing() {
   const { quote, parents, partner1, partner2 } = WEDDING;
   const initials = `${partner1[0]}${partner2[0]}`;
 
   return (
-    <section className="mx-auto max-w-lg px-6 py-20 text-center">
+    <Slide>
+    <section className="mx-auto max-w-lg px-6 text-center">
       <FadeIn>
         <p className="font-serif text-lg italic text-[var(--color-fg)]">
           “{quote.text}”
@@ -48,5 +50,6 @@ export function Blessing() {
         </div>
       </FadeIn>
     </section>
+    </Slide>
   );
 }

@@ -1,9 +1,11 @@
 import { WEDDING } from "@/lib/content";
 import { FadeIn } from "./FadeIn";
+import { Slide } from "./Slide";
 
 export function Location() {
   return (
-    <section className="mx-auto max-w-4xl px-6 py-24">
+    <Slide>
+    <section className="mx-auto max-w-4xl px-6">
       <FadeIn>
         <h2 className="mb-12 text-center font-serif text-3xl text-[var(--color-fg)]">
           Cómo llegar
@@ -39,5 +41,6 @@ export function Location() {
         ))}
       </div>
     </section>
+    </Slide>
   );
 }

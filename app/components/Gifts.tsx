@@ -6,6 +6,7 @@ import { FadeIn } from "./FadeIn";
 import { CopyButton } from "./CopyButton";
 import { GiftClaimForm } from "./GiftClaimForm";
 import { GiftContributionForm } from "./GiftContributionForm";
+import { Slide } from "./Slide";
 
 export async function Gifts({ slug }: { slug: string }) {
   const items = await db
@@ -29,7 +30,8 @@ export async function Gifts({ slug }: { slug: string }) {
   const { payment, message } = WEDDING.gifts;
 
   return (
-    <section className="mx-auto max-w-2xl px-6 py-24">
+    <Slide>
+    <section className="mx-auto max-w-2xl px-6">
       <FadeIn>
         <h2 className="mb-4 text-center font-serif text-3xl text-[var(--color-fg)]">
           Regalos
@@ -82,6 +84,7 @@ export async function Gifts({ slug }: { slug: string }) {
         </div>
       </FadeIn>
     </section>
+    </Slide>
   );
 }
 

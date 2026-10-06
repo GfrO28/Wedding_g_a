@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { guestMessages } from "@/lib/db/schema";
 import { desc, eq } from "drizzle-orm";
 import { FadeIn } from "./FadeIn";
+import { Slide } from "./Slide";
 import { submitMessageAction } from "@/app/i/[slug]/actions";
 
 export async function GuestMessages({ slug }: { slug: string }) {
@@ -13,7 +14,8 @@ export async function GuestMessages({ slug }: { slug: string }) {
     .limit(20);
 
   return (
-    <section className="mx-auto max-w-2xl px-6 py-24">
+    <Slide>
+    <section className="mx-auto max-w-2xl px-6">
       <FadeIn>
         <h2 className="mb-8 text-center font-serif text-3xl text-[var(--color-fg)]">
           Dejanos un mensaje
@@ -56,5 +58,6 @@ export async function GuestMessages({ slug }: { slug: string }) {
         </div>
       )}
     </section>
+    </Slide>
   );
 }

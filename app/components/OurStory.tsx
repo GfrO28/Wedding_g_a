@@ -1,12 +1,14 @@
 import Image from "next/image";
 import { WEDDING } from "@/lib/content";
 import { FadeIn } from "./FadeIn";
+import { Slide } from "./Slide";
 
 export function OurStory() {
   if (WEDDING.story.length < 1) return null;
 
   return (
-    <section className="mx-auto max-w-3xl px-6 py-24">
+    <Slide>
+    <section className="mx-auto max-w-3xl px-6">
       <FadeIn>
         <h2 className="mb-12 text-center font-serif text-3xl text-[var(--color-fg)]">
           Nuestra historia
@@ -38,5 +40,6 @@ export function OurStory() {
         ))}
       </div>
     </section>
+    </Slide>
   );
 }

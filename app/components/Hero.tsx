@@ -1,6 +1,7 @@
 import { WEDDING } from "@/lib/content";
 import { Countdown } from "./Countdown";
 import { FadeIn } from "./FadeIn";
+import { Slide } from "./Slide";
 
 export function Hero({ guestName }: { guestName: string }) {
   const date = new Date(WEDDING.weddingDateISO);
@@ -11,7 +12,8 @@ export function Hero({ guestName }: { guestName: string }) {
   });
 
   return (
-    <section className="flex min-h-screen flex-col items-center justify-center gap-6 bg-[var(--color-bg)] px-6 text-center">
+    <Slide className="bg-[var(--color-bg)]">
+    <div className="flex flex-col items-center gap-6 px-6 text-center">
       <FadeIn>
         <p className="text-sm uppercase tracking-[0.2em] text-[var(--color-muted)]">
           Nos casamos
@@ -31,6 +33,7 @@ export function Hero({ guestName }: { guestName: string }) {
       <FadeIn delay={0.4}>
         <Countdown targetISO={WEDDING.weddingDateISO} />
       </FadeIn>
-    </section>
+    </div>
+    </Slide>
   );
 }
