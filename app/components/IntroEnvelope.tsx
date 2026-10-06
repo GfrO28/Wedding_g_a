@@ -7,8 +7,6 @@ import type { IntroSettings } from "@/lib/intro";
 
 type Stage = "sealed" | "opening" | "invited" | "closing" | "done";
 
-const SESSION_KEY = "intro-seen";
-
 export function IntroEnvelope({
   settings,
   bg,
@@ -22,7 +20,7 @@ export function IntroEnvelope({
   const [stage, setStage] = useState<Stage>("sealed");
 
   useEffect(() => {
-    if (settings.type === "none" || sessionStorage.getItem(SESSION_KEY)) {
+    if (settings.type === "none") {
       setStage("done");
     }
     setMounted(true);
@@ -38,7 +36,6 @@ export function IntroEnvelope({
       return () => clearTimeout(t);
     }
     if (stage === "closing") {
-      sessionStorage.setItem(SESSION_KEY, "1");
       const t = setTimeout(() => setStage("done"), 650);
       return () => clearTimeout(t);
     }
