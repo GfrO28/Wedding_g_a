@@ -1,0 +1,163 @@
+import { db } from "@/lib/db";
+import { guestMessages, guests, rsvps } from "@/lib/db/schema";
+import { desc, eq } from "drizzle-orm";
+import {
+  approveMessageAction,
+  createGuestAction,
+  deleteMessageAction,
+} from "./actions";
+
+export const dynamic = "force-dynamic";
+
+export default async function AdminDashboardPage() {
+  const allGuests = await db
+    .select({
+      id: guests.id,
+      slug: guests.slug,
+      fullName: guests.fullName,
+      groupName: guests.groupName,
+      maxAttendees: guests.maxAttendees,
+      attending: rsvps.attending,
+      numAttendees: rsvps.numAttendees,
+    })
+    .from(guests)
+    .leftJoin(rsvps, eq(rsvps.guestId, guests.id))
+    .orderBy(desc(guests.createdAt));
+
+  const confirmed = allGuests.filter((g) => g.attending === true);
+  const declined = allGuests.filter((g) => g.attending === false);
+  const pending = allGuests.filter((g) => g.attending === null);
+
+  const pendingMessages = await db
+    .select()
+    .from(guestMessages)
+    .where(eq(guestMessages.approved, false))
+    .orderBy(desc(guestMessages.createdAt));
+
+  return (
+    <main className="mx-auto max-w-4xl space-y-8 px-4 py-10">
+      <h1 className="font-serif text-3xl text-neutral-800">
+        Invitados y RSVPs
+      </h1>
+
+      <div className="grid grid-cols-3 gap-4 text-center">
+        <Stat label="Confirmados" value={confirmed.length} />
+        <Stat label="No asisten" value={declined.length} />
+        <Stat label="Sin responder" value={pending.length} />
+      </div>
+
+      <form
+        action={createGuestAction}
+        className="flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 p-4"
+      >
+        <div className="flex flex-col">
+          <label className="text-xs text-neutral-500">Nombre completo</label>
+          <input
+            name="fullName"
+            required
+            className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+          />
+        </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-neutral-500">Grupo/familia</label>
+          <input
+            name="groupName"
+            className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+          />
+        </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-neutral-500">Máx. acompañantes</label>
+          <input
+            type="number"
+            name="maxAttendees"
+            defaultValue={1}
+            min={1}
+            className="w-20 rounded-md border border-neutral-300 px-2 py-1 text-sm"
+          />
+        </div>
+        <button
+          type="submit"
+          className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700"
+        >
+          Agregar invitado
+        </button>
+      </form>
+
+      <table className="w-full text-left text-sm">
+        <thead>
+          <tr className="border-b border-neutral-200 text-neutral-500">
+            <th className="py-2">Nombre</th>
+            <th className="py-2">Grupo</th>
+            <th className="py-2">Estado</th>
+            <th className="py-2">Personas</th>
+            <th className="py-2">Link personal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {allGuests.map((g) => (
+            <tr key={g.id} className="border-b border-neutral-100">
+              <td className="py-2">{g.fullName}</td>
+              <td className="py-2">{g.groupName ?? "—"}</td>
+              <td className="py-2">
+                {g.attending === null
+                  ? "Pendiente"
+                  : g.attending
+                    ? "Confirmado"
+                    : "No asiste"}
+              </td>
+              <td className="py-2">{g.numAttendees ?? g.maxAttendees}</td>
+              <td className="py-2">
+                <code className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs">
+                  /i/{g.slug}
+                </code>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {pendingMessages.length > 0 && (
+        <div>
+          <h2 className="mb-3 font-serif text-xl text-neutral-800">
+            Mensajes pendientes de aprobar
+          </h2>
+          <div className="space-y-3">
+            {pendingMessages.map((m) => (
+              <div
+                key={m.id}
+                className="flex items-start justify-between gap-4 rounded-lg border border-neutral-200 p-4"
+              >
+                <div>
+                  <p className="text-sm text-neutral-700">{m.message}</p>
+                  <p className="mt-1 text-xs text-neutral-400">— {m.name}</p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <form action={approveMessageAction}>
+                    <input type="hidden" name="id" value={m.id} />
+                    <button className="rounded-md bg-neutral-900 px-3 py-1 text-xs text-white">
+                      Aprobar
+                    </button>
+                  </form>
+                  <form action={deleteMessageAction}>
+                    <input type="hidden" name="id" value={m.id} />
+                    <button className="rounded-md border border-neutral-300 px-3 py-1 text-xs">
+                      Descartar
+                    </button>
+                  </form>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-neutral-200 py-4">
+      <div className="text-2xl font-semibold text-neutral-800">{value}</div>
+      <div className="text-xs text-neutral-500">{label}</div>
+    </div>
+  );
+}
