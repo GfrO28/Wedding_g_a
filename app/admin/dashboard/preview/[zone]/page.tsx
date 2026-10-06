@@ -7,7 +7,6 @@ import { EventDetails } from "@/app/components/EventDetails";
 import { Itinerary } from "@/app/components/Itinerary";
 import { Location } from "@/app/components/Location";
 import { Accommodation } from "@/app/components/Accommodation";
-import { MusicPlayer } from "@/app/components/MusicPlayer";
 import { Gifts } from "@/app/components/Gifts";
 import { getWeddingContent } from "@/lib/weddingContent";
 
@@ -22,7 +21,6 @@ const ZONES = [
   "location",
   "gallery",
   "accommodation",
-  "music",
   "gifts",
 ] as const;
 
@@ -48,9 +46,6 @@ export default async function ZonePreviewPage({
       {zone === "location" && <Location />}
       {zone === "gallery" && <Gallery />}
       {zone === "accommodation" && (content.accommodation.length > 0 ? <Accommodation /> : <Empty text="Todavía no hay hoteles." />)}
-      {zone === "music" && (
-        <MusicPlayer music={content.music} bgImage={content.zoneImages.music} />
-      )}
       {zone === "gifts" && <Gifts slug="preview" />}
     </main>
   );

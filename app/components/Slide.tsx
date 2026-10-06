@@ -19,7 +19,7 @@ export function Slide({
             className="absolute inset-0 bg-cover bg-center"
             style={{ backgroundImage: `url(${bgImage})` }}
           />
-          <div className="absolute inset-0 bg-[var(--color-bg)]/80" />
+          <div className="absolute inset-0 bg-[var(--color-bg)]/40" />
         </>
       )}
       <div className="relative max-h-[90dvh] w-full overflow-y-auto">{children}</div>

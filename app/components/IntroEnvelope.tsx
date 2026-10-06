@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Pause, Play } from "lucide-react";
 import type { IntroSettings } from "@/lib/intro";
 
 type Stage = "sealed" | "opening" | "invited" | "closing" | "done";
@@ -12,15 +13,19 @@ export function IntroEnvelope({
   fg,
   partner1,
   partner2,
+  music,
 }: {
   settings: IntroSettings;
   bg: string;
   fg: string;
   partner1: string;
   partner2: string;
+  music: { src: string; title: string } | null;
 }) {
   const [mounted, setMounted] = useState(false);
   const [stage, setStage] = useState<Stage>("sealed");
+  const [playing, setPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
     if (settings.type === "none") {
@@ -44,8 +49,30 @@ export function IntroEnvelope({
     }
   }, [stage]);
 
-  if (!mounted || stage === "done" || settings.type === "none") return null;
+  function startOpening() {
+    setStage("opening");
+    // Disparado desde el mismo gesto del usuario (tocar el sello), así los
+    // navegadores permiten que el audio arranque solo, sin bloqueo de autoplay.
+    if (music) {
+      audioRef.current?.play().catch(() => {});
+      setPlaying(true);
+    }
+  }
 
+  function toggleMusic() {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (playing) {
+      audio.pause();
+    } else {
+      audio.play().catch(() => {});
+    }
+    setPlaying(!playing);
+  }
+
+  if (!mounted) return null;
+
+  const envelopeActive = stage !== "done" && settings.type !== "none";
   const initials = `${partner1[0]}${partner2[0]}`;
   const showEnvelope = stage === "sealed" || stage === "opening";
   const open = stage === "opening";
@@ -56,6 +83,22 @@ export function IntroEnvelope({
       : { background: "var(--color-accent)" };
 
   return (
+    <>
+      {music && (
+        <>
+          <audio ref={audioRef} src={music.src} loop onEnded={() => setPlaying(false)} />
+          <button
+            type="button"
+            onClick={toggleMusic}
+            aria-label={playing ? "Pausar música" : "Reproducir música"}
+            className="fixed right-4 top-4 z-40 flex h-9 w-9 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-sm transition-colors hover:bg-black/45"
+          >
+            {playing ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
+          </button>
+        </>
+      )}
+
+      {envelopeActive && (
     <motion.div
       className="fixed inset-0 z-50 overflow-hidden"
       animate={{ backgroundColor: showEnvelope ? fg : bg, opacity: stage === "closing" ? 0 : 1 }}
@@ -68,7 +111,7 @@ export function IntroEnvelope({
             key="envelope"
             exit={{ opacity: 0 }}
             transition={{ duration: 0.4 }}
-            onClick={() => stage === "sealed" && setStage("opening")}
+            onClick={() => stage === "sealed" && startOpening()}
             className="absolute inset-0 cursor-pointer"
             style={{ perspective: 2600 }}
           >
@@ -237,5 +280,7 @@ export function IntroEnvelope({
         )}
       </AnimatePresence>
     </motion.div>
+      )}
+    </>
   );
 }

@@ -11,7 +11,6 @@ import { EventDetails } from "@/app/components/EventDetails";
 import { Itinerary } from "@/app/components/Itinerary";
 import { Location } from "@/app/components/Location";
 import { Accommodation } from "@/app/components/Accommodation";
-import { MusicPlayer } from "@/app/components/MusicPlayer";
 import { Gifts } from "@/app/components/Gifts";
 import { RSVPForm } from "@/app/components/RSVPForm";
 import { GuestMessages } from "@/app/components/GuestMessages";
@@ -55,6 +54,7 @@ export default async function GuestInvitationPage({
       fg={theme.foreground}
       partner1={content.partner1}
       partner2={content.partner2}
+      music={content.zoneEnabled.music ? content.music : null}
     />
     <main className="h-dvh snap-y snap-mandatory overflow-y-scroll scroll-smooth">
       {content.zoneEnabled.hero && <Hero guestName={guest.fullName} />}
@@ -65,9 +65,6 @@ export default async function GuestInvitationPage({
       {content.zoneEnabled.location && <Location />}
       {content.zoneEnabled.gallery && <Gallery />}
       {content.zoneEnabled.accommodation && <Accommodation />}
-      {content.zoneEnabled.music && (
-        <MusicPlayer music={content.music} bgImage={content.zoneImages.music} />
-      )}
       {content.zoneEnabled.gifts && <Gifts slug={guest.slug} />}
       <RSVPForm
         slug={guest.slug}
