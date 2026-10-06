@@ -31,6 +31,18 @@ export type Hotel = {
   deadline: string;
 };
 
+export const ZONE_IMAGE_KEYS = [
+  "hero",
+  "blessing",
+  "event",
+  "itinerary",
+  "location",
+  "accommodation",
+  "gifts",
+  "music",
+] as const;
+export type ZoneImageKey = (typeof ZONE_IMAGE_KEYS)[number];
+
 export type WeddingContent = {
   partner1: string;
   partner2: string;
@@ -56,6 +68,7 @@ export type WeddingContent = {
       bank: { bank: string; accountHolder: string; accountNumber: string; cci: string };
     };
   };
+  zoneImages: Record<ZoneImageKey, string | null>;
 };
 
 function parseJSON<T>(value: string | undefined, fallback: T): T {
@@ -104,7 +117,7 @@ export async function getWeddingContent(): Promise<WeddingContent> {
     ceremony: parseJSON(map.contentCeremony, DEFAULTS.ceremony as unknown as Place),
     reception: parseJSON(map.contentReception, DEFAULTS.reception as unknown as Place),
     itinerary: await getEffectiveItinerary(),
-    music: DEFAULTS.music,
+    music: map.musicSrc ? { src: map.musicSrc, title: map.musicTitle ?? "Nuestra canción" } : null,
     story: await getEffectiveStory(),
     gallery: DEFAULTS.gallery as unknown as WeddingContent["gallery"],
     dressCode: map.contentDressCode ?? DEFAULTS.dressCode,
@@ -117,5 +130,8 @@ export async function getWeddingContent(): Promise<WeddingContent> {
         DEFAULTS.gifts.payment as unknown as WeddingContent["gifts"]["payment"],
       ),
     },
+    zoneImages: Object.fromEntries(
+      ZONE_IMAGE_KEYS.map((key) => [key, map[`zoneBg_${key}`] ?? null]),
+    ) as Record<ZoneImageKey, string | null>,
   };
 }

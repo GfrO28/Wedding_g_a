@@ -7,7 +7,7 @@ export async function Accommodation() {
   if (WEDDING.accommodation.length < 1) return null;
 
   return (
-    <Slide>
+    <Slide bgImage={WEDDING.zoneImages.accommodation}>
     <section className="mx-auto max-w-3xl px-6">
       <FadeIn>
         <h2 className="mb-4 text-center font-serif text-3xl text-[var(--color-fg)]">

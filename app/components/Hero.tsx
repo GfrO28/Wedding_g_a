@@ -13,7 +13,7 @@ export async function Hero({ guestName }: { guestName: string }) {
   });
 
   return (
-    <Slide className="bg-[var(--color-bg)]">
+    <Slide className="bg-[var(--color-bg)]" bgImage={WEDDING.zoneImages.hero}>
     <div className="flex flex-col items-center gap-6 px-6 text-center">
       <FadeIn>
         <p className="text-sm uppercase tracking-[0.2em] text-[var(--color-muted)]">

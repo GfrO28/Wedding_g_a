@@ -4,7 +4,6 @@ import {
   giftItems,
   guestMessages,
   guests,
-  photos,
   rsvps,
 } from "@/lib/db/schema";
 import { desc, eq } from "drizzle-orm";
@@ -13,14 +12,11 @@ import {
   createGuestAction,
   deleteMessageAction,
 } from "./actions";
-import { GalleryUploader } from "./GalleryUploader";
 import {
   createGiftItemAction,
   deleteGiftItemAction,
   unclaimGiftItemAction,
 } from "./gift-actions";
-import { ThemeEditor } from "./ThemeEditor";
-import { getTheme } from "@/lib/theme";
 import { IntroEditor } from "./IntroEditor";
 import { getIntroSettings } from "@/lib/intro";
 
@@ -51,11 +47,6 @@ export default async function AdminDashboardPage() {
     .where(eq(guestMessages.approved, false))
     .orderBy(desc(guestMessages.createdAt));
 
-  const allPhotos = await db
-    .select()
-    .from(photos)
-    .orderBy(desc(photos.createdAt));
-
   const allGiftItems = await db
     .select()
     .from(giftItems)
@@ -67,7 +58,6 @@ export default async function AdminDashboardPage() {
     raisedByItem.set(c.giftItemId, (raisedByItem.get(c.giftItemId) ?? 0) + c.amount);
   }
 
-  const theme = await getTheme();
   const introSettings = await getIntroSettings();
 
   return (
@@ -84,17 +74,11 @@ export default async function AdminDashboardPage() {
           Editar contenido de la invitación →
         </span>
         <p className="mt-0.5 text-neutral-500">
-          Pareja, fecha, ceremonia, recepción, historia, itinerario, dress
-          code, alojamiento, transporte y regalos.
+          Todas las viñetas con su vista previa: pareja, historia, evento,
+          itinerario, alojamiento, galería, música, regalos y la paleta de
+          colores.
         </p>
       </a>
-
-      <div>
-        <h2 className="mb-3 font-serif text-xl text-neutral-800">
-          Paleta de colores del sitio
-        </h2>
-        <ThemeEditor theme={theme} />
-      </div>
 
       <div>
         <h2 className="mb-3 font-serif text-xl text-neutral-800">
@@ -178,10 +162,6 @@ export default async function AdminDashboardPage() {
           ))}
         </tbody>
       </table>
-      <div>
-        <h2 className="mb-3 font-serif text-xl text-neutral-800">Galería</h2>
-        <GalleryUploader photos={allPhotos} />
-      </div>
 
       <div>
         <h2 className="mb-3 font-serif text-xl text-neutral-800">

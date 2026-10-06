@@ -23,7 +23,7 @@ export async function Itinerary() {
   if (WEDDING.itinerary.length < 1) return null;
 
   return (
-    <Slide>
+    <Slide bgImage={WEDDING.zoneImages.itinerary}>
     <section className="mx-auto max-w-2xl px-6">
       <FadeIn>
         <h2 className="mb-10 text-center font-serif text-3xl text-[var(--color-fg)]">

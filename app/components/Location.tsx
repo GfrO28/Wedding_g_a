@@ -5,7 +5,7 @@ import { Slide } from "./Slide";
 export async function Location() {
   const WEDDING = await getWeddingContent();
   return (
-    <Slide>
+    <Slide bgImage={WEDDING.zoneImages.location}>
     <section className="mx-auto max-w-4xl px-6">
       <FadeIn>
         <h2 className="mb-12 text-center font-serif text-3xl text-[var(--color-fg)]">

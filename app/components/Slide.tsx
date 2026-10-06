@@ -3,15 +3,26 @@ import type { ReactNode } from "react";
 export function Slide({
   children,
   className = "",
+  bgImage,
 }: {
   children: ReactNode;
   className?: string;
+  bgImage?: string | null;
 }) {
   return (
     <section
       className={`relative flex min-h-dvh snap-start flex-col items-center justify-center overflow-hidden ${className}`}
     >
-      <div className="max-h-[90dvh] w-full overflow-y-auto">{children}</div>
+      {bgImage && (
+        <>
+          <div
+            className="absolute inset-0 bg-cover bg-center"
+            style={{ backgroundImage: `url(${bgImage})` }}
+          />
+          <div className="absolute inset-0 bg-[var(--color-bg)]/80" />
+        </>
+      )}
+      <div className="relative max-h-[90dvh] w-full overflow-y-auto">{children}</div>
       <ScrollHint />
     </section>
   );

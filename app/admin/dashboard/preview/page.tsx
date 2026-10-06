@@ -12,12 +12,16 @@ import { RSVPForm } from "@/app/components/RSVPForm";
 import { GuestMessages } from "@/app/components/GuestMessages";
 import { Footer } from "@/app/components/Footer";
 
+import { getWeddingContent } from "@/lib/weddingContent";
+
 export const dynamic = "force-dynamic";
 
 // Vista previa en vivo para el admin: los mismos componentes que ve un
 // invitado real, con datos de ejemplo en vez de buscar un invitado en la DB.
 // Protegida por el mismo middleware que el resto de /admin/dashboard.
-export default function PreviewPage() {
+export default async function PreviewPage() {
+  const content = await getWeddingContent();
+
   return (
     <main className="h-dvh snap-y snap-mandatory overflow-y-scroll scroll-smooth">
       <Hero guestName="Invitado de ejemplo" />
@@ -28,7 +32,7 @@ export default function PreviewPage() {
       <Location />
       <Gallery />
       <Accommodation />
-      <MusicPlayer />
+      <MusicPlayer music={content.music} bgImage={content.zoneImages.music} />
       <Gifts slug="preview" />
       <RSVPForm slug="preview" maxAttendees={2} existing={null} />
       <GuestMessages slug="preview" />

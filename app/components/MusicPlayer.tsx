@@ -2,16 +2,21 @@
 
 import { useRef, useState } from "react";
 import { Pause, Play } from "lucide-react";
-import { WEDDING } from "@/lib/content";
 import { FadeIn } from "./FadeIn";
 import { Slide } from "./Slide";
 
-export function MusicPlayer() {
+export function MusicPlayer({
+  music,
+  bgImage,
+}: {
+  music: { src: string; title: string } | null;
+  bgImage: string | null;
+}) {
   const [playing, setPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  if (!WEDDING.music) return null;
-  const { src, title } = WEDDING.music;
+  if (!music) return null;
+  const { src, title } = music;
 
   function toggle() {
     const audio = audioRef.current;
@@ -25,7 +30,7 @@ export function MusicPlayer() {
   }
 
   return (
-    <Slide>
+    <Slide bgImage={bgImage}>
       <FadeIn>
         <div className="mx-auto flex max-w-xs items-center justify-center gap-3 px-6">
           <audio ref={audioRef} src={src} loop onEnded={() => setPlaying(false)} />

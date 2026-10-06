@@ -4,11 +4,11 @@ import { Divider } from "./Divider";
 import { Slide } from "./Slide";
 
 export async function Blessing() {
-  const { quote, parents, partner1, partner2 } = await getWeddingContent();
+  const { quote, parents, partner1, partner2, zoneImages } = await getWeddingContent();
   const initials = `${partner1[0]}${partner2[0]}`;
 
   return (
-    <Slide>
+    <Slide bgImage={zoneImages.blessing}>
     <section className="mx-auto max-w-lg px-6 text-center">
       <FadeIn>
         <p className="font-serif text-lg italic text-[var(--color-fg)]">

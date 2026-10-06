@@ -31,7 +31,7 @@ export async function Gifts({ slug }: { slug: string }) {
   const { payment, message } = WEDDING.gifts;
 
   return (
-    <Slide>
+    <Slide bgImage={WEDDING.zoneImages.gifts}>
     <section className="mx-auto max-w-2xl px-6">
       <FadeIn>
         <h2 className="mb-4 text-center font-serif text-3xl text-[var(--color-fg)]">

@@ -65,7 +65,7 @@ export default async function GuestInvitationPage({
       <Location />
       <Gallery />
       <Accommodation />
-      <MusicPlayer />
+      <MusicPlayer music={content.music} bgImage={content.zoneImages.music} />
       <Gifts slug={guest.slug} />
       <RSVPForm
         slug={guest.slug}
