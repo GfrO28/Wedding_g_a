@@ -102,7 +102,7 @@ export function IntroEnvelope({
             >
               <div
                 className="pointer-events-none absolute inset-0"
-                style={{ background: "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.42) 50%)" }}
+                style={{ background: "linear-gradient(to bottom, transparent 0%, transparent 42%, rgba(0,0,0,0.92) 50%)" }}
               />
             </motion.div>
 
@@ -128,7 +128,7 @@ export function IntroEnvelope({
             >
               <div
                 className="pointer-events-none absolute inset-0"
-                style={{ background: "linear-gradient(to top, transparent 0%, rgba(0,0,0,0.42) 50%)" }}
+                style={{ background: "linear-gradient(to top, transparent 0%, transparent 42%, rgba(0,0,0,0.92) 50%)" }}
               />
             </motion.div>
 
@@ -154,7 +154,7 @@ export function IntroEnvelope({
             >
               <div
                 className="pointer-events-none absolute inset-0"
-                style={{ background: "linear-gradient(to right, transparent 0%, rgba(0,0,0,0.4) 50%)" }}
+                style={{ background: "linear-gradient(to right, transparent 0%, transparent 42%, rgba(0,0,0,0.88) 50%)" }}
               />
             </motion.div>
 
@@ -180,7 +180,7 @@ export function IntroEnvelope({
             >
               <div
                 className="pointer-events-none absolute inset-0"
-                style={{ background: "linear-gradient(to left, transparent 0%, rgba(0,0,0,0.4) 50%)" }}
+                style={{ background: "linear-gradient(to left, transparent 0%, transparent 42%, rgba(0,0,0,0.88) 50%)" }}
               />
             </motion.div>
 
