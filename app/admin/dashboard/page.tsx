@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { guestMessages, guests, photos, rsvps } from "@/lib/db/schema";
+import { giftItems, guestMessages, guests, photos, rsvps } from "@/lib/db/schema";
 import { desc, eq } from "drizzle-orm";
 import {
   approveMessageAction,
@@ -7,6 +7,11 @@ import {
   deleteMessageAction,
 } from "./actions";
 import { GalleryUploader } from "./GalleryUploader";
+import {
+  createGiftItemAction,
+  deleteGiftItemAction,
+  unclaimGiftItemAction,
+} from "./gift-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +44,11 @@ export default async function AdminDashboardPage() {
     .select()
     .from(photos)
     .orderBy(desc(photos.createdAt));
+
+  const allGiftItems = await db
+    .select()
+    .from(giftItems)
+    .orderBy(desc(giftItems.createdAt));
 
   return (
     <main className="mx-auto max-w-4xl space-y-8 px-4 py-10">
@@ -124,6 +134,94 @@ export default async function AdminDashboardPage() {
       <div>
         <h2 className="mb-3 font-serif text-xl text-neutral-800">Galería</h2>
         <GalleryUploader photos={allPhotos} />
+      </div>
+
+      <div>
+        <h2 className="mb-3 font-serif text-xl text-neutral-800">
+          Lista de regalos
+        </h2>
+        <form
+          action={createGiftItemAction}
+          className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 p-4"
+        >
+          <div className="flex flex-col">
+            <label className="text-xs text-neutral-500">Nombre</label>
+            <input
+              name="name"
+              required
+              className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+            />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-xs text-neutral-500">
+              Descripción (opcional)
+            </label>
+            <input
+              name="description"
+              className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+            />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-xs text-neutral-500">
+              Monto sugerido (S/)
+            </label>
+            <input
+              type="number"
+              name="amount"
+              min={0}
+              className="w-28 rounded-md border border-neutral-300 px-2 py-1 text-sm"
+            />
+          </div>
+          <button
+            type="submit"
+            className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700"
+          >
+            Agregar regalo
+          </button>
+        </form>
+
+        {allGiftItems.length > 0 && (
+          <div className="space-y-2">
+            {allGiftItems.map((item) => (
+              <div
+                key={item.id}
+                className="flex flex-col justify-between gap-2 rounded-lg border border-neutral-200 p-3 text-sm sm:flex-row sm:items-center"
+              >
+                <div>
+                  <span className="font-medium text-neutral-800">
+                    {item.name}
+                  </span>
+                  {item.amount && (
+                    <span className="ml-2 text-neutral-500">
+                      S/ {item.amount}
+                    </span>
+                  )}
+                  <span className="ml-2 text-xs text-neutral-400">
+                    {item.claimedAt
+                      ? `Reservado por ${item.claimedByName}`
+                      : "Disponible"}
+                  </span>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  {item.claimedAt && (
+                    <form action={unclaimGiftItemAction}>
+                      <input type="hidden" name="id" value={item.id} />
+                      <button className="rounded-md border border-neutral-300 px-3 py-1 text-xs">
+                        Liberar
+                      </button>
+                    </form>
+                  )}
+                  <form action={deleteGiftItemAction}>
+                    <input type="hidden" name="id" value={item.id} />
+                    <button className="rounded-md border border-neutral-300 px-3 py-1 text-xs">
+                      Borrar
+                    </button>
+                  </form>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {pendingMessages.length > 0 && (

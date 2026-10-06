@@ -1,72 +1,67 @@
 // Contenido editable de la boda. Reemplazá estos valores con la info real.
 
 export const WEDDING = {
-  partner1: "Gabriela",
-  partner2: "Andrés",
-  hashtag: "#GyA2027",
-  weddingDateISO: "2027-04-17T18:00:00-05:00",
-  rsvpDeadlineISO: "2027-03-01T23:59:59-05:00",
+  partner1: "Antonella",
+  partner2: "Gianfranco",
+  hashtag: "a&g_wedding",
+  weddingDateISO: "2027-11-27T14:30:00-05:00",
+  // TODO: confirmar fecha límite real de RSVP (placeholder: 2 meses antes).
+  rsvpDeadlineISO: "2027-09-27T23:59:59-05:00",
 
   ceremony: {
     name: "Ceremonia",
-    time: "18:00",
-    venue: "Nombre de la iglesia / salón",
-    address: "Dirección completa, Ciudad",
-    mapUrl: "https://maps.google.com/?q=",
+    time: "14:30",
+    venue: "Iglesia San Pedro",
+    address: "Jr. Azángaro 451, Lima, Perú",
+    mapUrl: "https://maps.app.goo.gl/XaWAYXDWkpvN995P9",
   },
 
   reception: {
     name: "Recepción",
-    time: "20:00",
-    venue: "Nombre del salón de recepción",
-    address: "Dirección completa, Ciudad",
-    mapUrl: "https://maps.google.com/?q=",
+    time: "17:00",
+    // TODO: confirmar dirección exacta del fundo para mostrarla a los invitados.
+    venue: "Fundo La Carmela",
+    address: "Fundo La Carmela, Lima, Perú",
+    mapUrl: "https://maps.app.goo.gl/u6fS4PYMZ3ZZP7hdA",
   },
 
-  story: [
-    {
-      year: "2019",
-      title: "Cómo nos conocimos",
-      text: "Contá acá la primera vez que se vieron.",
-      image: "/story/placeholder-1.jpg",
-    },
-    {
-      year: "2022",
-      title: "La propuesta",
-      text: "Contá acá el momento de la propuesta.",
-      image: "/story/placeholder-2.jpg",
-    },
-  ],
+  // Pendiente: agregar los capítulos de la historia de la pareja.
+  story: [] as {
+    year: string;
+    title: string;
+    text: string;
+    image: string;
+  }[],
 
-  gallery: [
-    { src: "/gallery/placeholder-1.jpg", alt: "Foto de la pareja 1" },
-    { src: "/gallery/placeholder-2.jpg", alt: "Foto de la pareja 2" },
-    { src: "/gallery/placeholder-3.jpg", alt: "Foto de la pareja 3" },
-  ],
+  // Fallback si todavía no se subió ninguna foto desde el panel admin.
+  gallery: [] as { src: string; alt: string }[],
 
-  dressCode: "Formal / Cóctel. Evitar blanco.",
+  // TODO: confirmar paleta de colores del dress code.
+  dressCode: "Formal — colores a confirmar",
 
-  accommodation: [
-    {
-      name: "Hotel sugerido 1",
-      description: "Tarifa preferencial para invitados hasta el DD/MM.",
-      bookingUrl: "https://",
-      deadline: "2027-03-15",
-    },
-  ],
+  accommodation: [] as {
+    name: string;
+    description: string;
+    bookingUrl: string;
+    deadline: string;
+  }[],
 
-  transportation:
-    "Habrá shuttle disponible desde el hotel sugerido hacia el venue. Horarios a confirmar.",
+  // TODO: confirmar información de transporte/shuttle.
+  transportation: "Información de transporte por confirmar.",
 
   gifts: {
     message:
-      "Tu presencia es nuestro mejor regalo. Si querés hacernos un obsequio, dejamos estos datos:",
-    bankInfo: {
-      bank: "Nombre del banco",
-      accountHolder: "Gabriela / Andrés",
-      accountNumber: "0000-0000-0000",
-      cci: "",
+      "Tu presencia es nuestro mejor regalo. Si querés hacernos un obsequio, podés elegir una idea de la lista para que no se repita, y depositar el monto por el medio que prefieras.",
+    payment: {
+      // TODO: completar números reales de Yape / Plin y datos bancarios.
+      yape: { phone: "999 999 999", name: "Antonella / Gianfranco" },
+      plin: { phone: "999 999 999", name: "Antonella / Gianfranco" },
+      bank: {
+        bank: "Nombre del banco",
+        accountHolder: "Antonella / Gianfranco",
+        accountNumber: "0000-0000-0000",
+        cci: "",
+      },
     },
-    registryUrl: "",
   },
 } as const;

@@ -27,7 +27,7 @@ export function Location() {
                 />
               </div>
               <a
-                href={place.mapUrl + encodeURIComponent(place.address)}
+                href={place.mapUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-2 inline-block text-sm text-neutral-600 underline"

@@ -57,3 +57,15 @@ export const photos = pgTable("photos", {
     .notNull()
     .defaultNow(),
 });
+
+export const giftItems = pgTable("gift_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  description: text("description"),
+  amount: integer("amount"),
+  claimedByName: text("claimed_by_name"),
+  claimedAt: timestamp("claimed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});

@@ -15,6 +15,13 @@
       "when": 1791255508950,
       "tag": "0001_remarkable_gauntlet",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791259177741,
+      "tag": "0002_warm_king_cobra",
+      "breakpoints": true
     }
   ]
 }

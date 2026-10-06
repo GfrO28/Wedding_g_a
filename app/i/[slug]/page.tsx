@@ -42,7 +42,7 @@ export default async function GuestInvitationPage({
       <Location />
       <Gallery />
       <Accommodation />
-      <Gifts />
+      <Gifts slug={guest.slug} />
       <RSVPForm
         slug={guest.slug}
         maxAttendees={guest.maxAttendees}

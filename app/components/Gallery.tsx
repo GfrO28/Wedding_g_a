@@ -16,6 +16,8 @@ export async function Gallery() {
       ? uploaded.map((p) => ({ src: p.url, alt: p.alt ?? "" }))
       : WEDDING.gallery;
 
+  if (images.length < 1) return null;
+
   return (
     <section className="mx-auto max-w-5xl px-6 py-24">
       <FadeIn>

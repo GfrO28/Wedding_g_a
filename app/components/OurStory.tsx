@@ -3,6 +3,8 @@ import { WEDDING } from "@/lib/content";
 import { FadeIn } from "./FadeIn";
 
 export function OurStory() {
+  if (WEDDING.story.length < 1) return null;
+
   return (
     <section className="mx-auto max-w-3xl px-6 py-24">
       <FadeIn>
