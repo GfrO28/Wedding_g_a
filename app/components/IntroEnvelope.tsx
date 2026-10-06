@@ -99,7 +99,12 @@ export function IntroEnvelope({
                   : "inset 0 0 0 0 rgba(0,0,0,0)",
               }}
               transition={{ duration: 1, ease: "easeInOut" }}
-            />
+            >
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{ background: "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.42) 50%)" }}
+              />
+            </motion.div>
 
             {/* Solapa inferior */}
             <motion.div
@@ -120,7 +125,12 @@ export function IntroEnvelope({
                   : "inset 0 0 0 0 rgba(0,0,0,0)",
               }}
               transition={{ duration: 1, delay: 0.08, ease: "easeInOut" }}
-            />
+            >
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{ background: "linear-gradient(to top, transparent 0%, rgba(0,0,0,0.42) 50%)" }}
+              />
+            </motion.div>
 
             {/* Solapa izquierda */}
             <motion.div
@@ -141,7 +151,12 @@ export function IntroEnvelope({
                   : "inset 0 0 0 0 rgba(0,0,0,0)",
               }}
               transition={{ duration: 1, delay: 0.16, ease: "easeInOut" }}
-            />
+            >
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{ background: "linear-gradient(to right, transparent 0%, rgba(0,0,0,0.4) 50%)" }}
+              />
+            </motion.div>
 
             {/* Solapa derecha */}
             <motion.div
@@ -162,12 +177,21 @@ export function IntroEnvelope({
                   : "inset 0 0 0 0 rgba(0,0,0,0)",
               }}
               transition={{ duration: 1, delay: 0.16, ease: "easeInOut" }}
-            />
+            >
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{ background: "linear-gradient(to left, transparent 0%, rgba(0,0,0,0.4) 50%)" }}
+              />
+            </motion.div>
 
             {/* Sello */}
             <motion.div
-              className="absolute left-1/2 top-1/2 flex h-36 w-36 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full shadow-xl"
-              style={fill(settings.images.introSeal)}
+              className="absolute left-1/2 top-1/2 flex h-36 w-36 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full"
+              style={{
+                ...fill(settings.images.introSeal),
+                boxShadow:
+                  "0 2px 4px rgba(0,0,0,0.4), 0 8px 14px rgba(0,0,0,0.5), 0 18px 36px rgba(0,0,0,0.35), inset 0 2px 3px rgba(255,255,255,0.3), inset 0 -3px 5px rgba(0,0,0,0.25)",
+              }}
               animate={{
                 opacity: open ? 0 : 1,
                 scale: open ? 0.5 : [1, 1.05, 1],
