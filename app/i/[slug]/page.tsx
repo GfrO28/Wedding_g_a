@@ -16,7 +16,6 @@ import { RSVPForm } from "@/app/components/RSVPForm";
 import { GuestMessages } from "@/app/components/GuestMessages";
 import { Footer } from "@/app/components/Footer";
 import { getIntroSettings } from "@/lib/intro";
-import { getTheme } from "@/lib/theme";
 import { getWeddingContent } from "@/lib/weddingContent";
 
 export const dynamic = "force-dynamic";
@@ -40,9 +39,8 @@ export default async function GuestInvitationPage({
     .where(eq(rsvps.guestId, guest.id))
     .limit(1);
 
-  const [introSettings, theme, content] = await Promise.all([
+  const [introSettings, content] = await Promise.all([
     getIntroSettings(),
-    getTheme(),
     getWeddingContent(),
   ]);
 
@@ -50,8 +48,6 @@ export default async function GuestInvitationPage({
     <>
     <IntroEnvelope
       settings={introSettings}
-      bg={theme.background}
-      fg={theme.foreground}
       partner1={content.partner1}
       partner2={content.partner2}
       music={content.zoneEnabled.music ? content.music : null}

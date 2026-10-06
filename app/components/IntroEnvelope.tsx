@@ -1,86 +1,175 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useSearchParams } from "next/navigation";
+import { motion } from "framer-motion";
 import { Pause, Play } from "lucide-react";
 import type { IntroSettings } from "@/lib/intro";
+import { useElementSize } from "./envelope/useElementSize";
+import {
+  flapPolygon,
+  flapStitchPath,
+  pointsToSvgPath,
+  sealBlobPolygon,
+  tornCardPolygon,
+} from "./envelope/shapes";
+import { FloralMotif } from "./envelope/FloralMotif";
+import { Flap } from "./envelope/Flap";
+import { EnvelopeText, textRevealDurationMs, type EnvelopeTextLine } from "./envelope/EnvelopeText";
 
-type Stage = "sealed" | "opening" | "invited" | "closing" | "done";
+// Todos los tiempos son relativos al toque del usuario (segundos). Ajustar
+// acá para cambiar el ritmo de la animación sin tocar el resto del componente.
+const TIMING = {
+  sealBreathe: 2.4,
+  prep: 0.4,
+  rightFlap: { delay: 0.4, duration: 1.2 },
+  leftFlap: { delay: 0.5, duration: 1.2 },
+  topBottomFlap: { delay: 1.4, duration: 1.2 },
+  camera: { delay: 1.4, duration: 1.4, scale: 1.06 },
+  textDelay: 1.6,
+  textHold: 2.5,
+  crossfade: 0.8,
+  cleanup: 2.8,
+};
+
+// Ángulo máximo de giro de las solapas. A pantalla completa, con `perspective`
+// moderado, pasar de ~115-120° empuja la punta de la solapa fuera del
+// viewport (efecto de la proyección 3D, no un bug de render) — probado con
+// capturas en el estado final de apertura antes de subir este número.
+const FLAP_ANGLE = 112;
+
+const TEXT_LINES: EnvelopeTextLine[] = [
+  { text: "ESTÁS", size: "sm" },
+  { text: "CORDIALMENTE", size: "lg" },
+  { text: "INVITADO", size: "sm" },
+];
 
 export function IntroEnvelope({
   settings,
-  bg,
-  fg,
   partner1,
   partner2,
   music,
 }: {
   settings: IntroSettings;
-  bg: string;
-  fg: string;
   partner1: string;
   partner2: string;
   music: { src: string; title: string } | null;
 }) {
+  const searchParams = useSearchParams();
+  const skipIntro = searchParams.get("skipIntro") === "1";
+
   const [mounted, setMounted] = useState(false);
-  const [stage, setStage] = useState<Stage>("sealed");
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [assetsReady, setAssetsReady] = useState(false);
+  const [tapped, setTapped] = useState(false);
+  const [textActive, setTextActive] = useState(false);
+  const [flapsHidden, setFlapsHidden] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [done, setDone] = useState(settings.type === "none" || skipIntro);
   const [playing, setPlaying] = useState(false);
+
   const audioRef = useRef<HTMLAudioElement>(null);
+  const paperRef = useRef<HTMLAudioElement>(null);
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const [sceneRef, { width, height }] = useElementSize<HTMLDivElement>();
 
   useEffect(() => {
-    if (settings.type === "none") {
-      setStage("done");
-    }
     setMounted(true);
-  }, [settings.type]);
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReducedMotion(mq.matches);
+
+    const urls = Object.values(settings.images).filter((u): u is string => !!u);
+    if (urls.length === 0) {
+      setAssetsReady(true);
+      return;
+    }
+    let remaining = urls.length;
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      setAssetsReady(true);
+    };
+    const t = setTimeout(finish, 2000);
+    urls.forEach((url) => {
+      const img = new Image();
+      img.onload = img.onerror = () => {
+        remaining -= 1;
+        if (remaining <= 0) {
+          clearTimeout(t);
+          finish();
+        }
+      };
+      img.src = url;
+    });
+    return () => clearTimeout(t);
+  }, [settings.images]);
 
   useEffect(() => {
-    if (stage === "opening") {
-      const t = setTimeout(() => setStage("invited"), 1650);
-      return () => clearTimeout(t);
-    }
-    if (stage === "invited") {
-      const t = setTimeout(() => setStage("closing"), 1900);
-      return () => clearTimeout(t);
-    }
-    if (stage === "closing") {
-      const t = setTimeout(() => setStage("done"), 650);
-      return () => clearTimeout(t);
-    }
-  }, [stage]);
+    return () => timers.current.forEach(clearTimeout);
+  }, []);
+
+  useEffect(() => {
+    document.body.style.overflow = !done ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [done]);
 
   function startOpening() {
-    setStage("opening");
-    // Disparado desde el mismo gesto del usuario (tocar el sello), así los
-    // navegadores permiten que el audio arranque solo, sin bloqueo de autoplay.
+    if (tapped || !assetsReady) return;
+    setTapped(true);
+
     if (music) {
       audioRef.current?.play().catch(() => {});
       setPlaying(true);
     }
+    paperRef.current?.play().catch(() => {});
+
+    if (reducedMotion) {
+      setFlapsHidden(true);
+      setTextActive(true);
+      timers.current.push(
+        setTimeout(() => setClosing(true), TIMING.textHold * 1000),
+        setTimeout(() => setDone(true), TIMING.textHold * 1000 + 600),
+      );
+      return;
+    }
+
+    const textDelayMs = TIMING.textDelay * 1000;
+    const textDurationMs = textRevealDurationMs(TEXT_LINES);
+    const closeAt = textDelayMs + textDurationMs + TIMING.textHold * 1000;
+
+    timers.current.push(
+      setTimeout(() => setTextActive(true), textDelayMs),
+      setTimeout(() => setFlapsHidden(true), TIMING.cleanup * 1000),
+      setTimeout(() => setClosing(true), closeAt),
+      setTimeout(() => setDone(true), closeAt + TIMING.crossfade * 1000),
+    );
   }
 
   function toggleMusic() {
     const audio = audioRef.current;
     if (!audio) return;
-    if (playing) {
-      audio.pause();
-    } else {
-      audio.play().catch(() => {});
-    }
+    if (playing) audio.pause();
+    else audio.play().catch(() => {});
     setPlaying(!playing);
   }
-
-  if (!mounted) return null;
-
-  const envelopeActive = stage !== "done" && settings.type !== "none";
-  const initials = `${partner1[0]}${partner2[0]}`;
-  const showEnvelope = stage === "sealed" || stage === "opening";
-  const open = stage === "opening";
 
   const fill = (url: string | null): CSSProperties =>
     url
       ? { backgroundImage: `url(${url})`, backgroundSize: "cover", backgroundPosition: "center" }
-      : { background: "var(--color-accent)" };
+      : { background: "color-mix(in srgb, var(--color-accent) 75%, white)" };
+
+  const sealSize = 112;
+  const shapesReady = width > 0 && height > 0;
+
+  const cardClip = shapesReady ? tornCardPolygon(width * 0.94, height * 0.94) : undefined;
+
+  if (!mounted) return null;
+
+  const envelopeActive = !done;
+  const initials = `${partner1[0] ?? ""}${partner2[0] ?? ""}`;
 
   return (
     <>
@@ -97,189 +186,201 @@ export function IntroEnvelope({
           </button>
         </>
       )}
+      <audio ref={paperRef} src="/assets/envelope/paper.mp3" />
 
       {envelopeActive && (
-    <motion.div
-      className="fixed inset-0 z-50 overflow-hidden"
-      animate={{ backgroundColor: showEnvelope ? fg : bg, opacity: stage === "closing" ? 0 : 1 }}
-      transition={{ duration: stage === "closing" ? 0.6 : 0.8 }}
-      style={{ pointerEvents: stage === "closing" ? "none" : "auto" }}
-    >
-      <AnimatePresence mode="wait">
-        {showEnvelope ? (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: "var(--color-accent)" }}
+          animate={{ opacity: closing ? 0 : 1 }}
+          transition={{ duration: closing ? TIMING.crossfade : 0.3 }}
+        >
           <motion.div
-            key="envelope"
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.4 }}
-            onClick={() => stage === "sealed" && startOpening()}
-            className="absolute inset-0 cursor-pointer"
-            style={{ perspective: 2600 }}
+            ref={sceneRef}
+            className="relative h-full w-full sm:aspect-[9/16] sm:h-dvh sm:max-h-dvh sm:w-auto"
+            style={{ perspective: 2600, cursor: assetsReady ? "pointer" : "default" }}
+            animate={{ scale: tapped ? TIMING.camera.scale : 1 }}
+            transition={{ duration: TIMING.camera.duration, delay: tapped ? TIMING.camera.delay : 0, ease: "easeInOut" }}
+            onClick={startOpening}
           >
-            {/* Resplandor central: se revela a medida que las solapas se abren */}
-            <motion.div
-              className="pointer-events-none absolute inset-0"
-              style={{ background: "radial-gradient(circle at center, rgba(255,232,200,0.32), transparent 55%)" }}
-              animate={{ opacity: open ? [0, 0.9, 0.45] : 0 }}
-              transition={{ duration: 1, ease: "easeInOut" }}
-            />
-
-            {/* Solapa superior */}
-            <motion.div
-              className="absolute inset-0"
+            {/* Tarjeta interior */}
+            <div
+              className="absolute inset-[3%]"
               style={{
-                clipPath: "polygon(0 0, 100% 0, 50% 50%)",
-                transformOrigin: "top center",
-                ...fill(settings.images.introTop),
+                clipPath: cardClip,
+                background: "var(--color-bg)",
+                boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
               }}
-              animate={{
-                rotateX: open ? -98 : 0,
-                boxShadow: open
-                  ? [
-                      "inset 0 0 0 0 rgba(0,0,0,0)",
-                      "inset 0 -60px 80px -20px rgba(0,0,0,0.6)",
-                      "inset 0 -16px 26px -12px rgba(0,0,0,0.22)",
-                    ]
-                  : "inset 0 0 0 0 rgba(0,0,0,0)",
-              }}
-              transition={{ duration: 1, ease: "easeInOut" }}
             >
               <div
-                className="pointer-events-none absolute inset-0"
-                style={{ background: "linear-gradient(to bottom, transparent 0%, transparent 42%, rgba(0,0,0,0.92) 50%)" }}
+                className="pointer-events-none absolute inset-0 opacity-[0.05]"
+                style={{
+                  backgroundImage:
+                    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
+                }}
               />
-            </motion.div>
+              <div className="absolute inset-0 flex items-center justify-center p-8">
+                <EnvelopeText
+                  lines={TEXT_LINES}
+                  color="var(--color-accent)"
+                  active={textActive && !closing}
+                  reducedMotion={reducedMotion}
+                />
+              </div>
+            </div>
 
-            {/* Solapa inferior */}
-            <motion.div
-              className="absolute inset-0"
-              style={{
-                clipPath: "polygon(0 100%, 100% 100%, 50% 50%)",
-                transformOrigin: "bottom center",
-                ...fill(settings.images.introBottom),
-              }}
-              animate={{
-                rotateX: open ? 98 : 0,
-                boxShadow: open
-                  ? [
-                      "inset 0 0 0 0 rgba(0,0,0,0)",
-                      "inset 0 60px 80px -20px rgba(0,0,0,0.6)",
-                      "inset 0 16px 26px -12px rgba(0,0,0,0.22)",
-                    ]
-                  : "inset 0 0 0 0 rgba(0,0,0,0)",
-              }}
-              transition={{ duration: 1, delay: 0.08, ease: "easeInOut" }}
-            >
-              <div
-                className="pointer-events-none absolute inset-0"
-                style={{ background: "linear-gradient(to top, transparent 0%, transparent 42%, rgba(0,0,0,0.92) 50%)" }}
-              />
-            </motion.div>
+            {!flapsHidden && shapesReady && (
+              <>
+                <Flap
+                  axis="rotateX"
+                  clipPath={flapPolygon("top", width, height)}
+                  transformOrigin="top center"
+                  closedFront={0}
+                  openFront={-FLAP_ANGLE}
+                  open={tapped}
+                  delay={TIMING.topBottomFlap.delay}
+                  duration={TIMING.topBottomFlap.duration}
+                  fill={fill(settings.images.introTop)}
+                  darkColor="color-mix(in srgb, var(--color-accent) 55%, black)"
+                  creaseGradient="linear-gradient(to bottom, transparent 0%, transparent 42%, rgba(0,0,0,0.9) 50%)"
+                  floralColor="var(--color-bg)"
+                  zIndex={10}
+                />
+                <Flap
+                  axis="rotateX"
+                  clipPath={flapPolygon("bottom", width, height)}
+                  transformOrigin="bottom center"
+                  closedFront={0}
+                  openFront={FLAP_ANGLE}
+                  open={tapped}
+                  delay={TIMING.topBottomFlap.delay + 0.05}
+                  duration={TIMING.topBottomFlap.duration}
+                  fill={fill(settings.images.introBottom)}
+                  darkColor="color-mix(in srgb, var(--color-accent) 55%, black)"
+                  creaseGradient="linear-gradient(to top, transparent 0%, transparent 42%, rgba(0,0,0,0.9) 50%)"
+                  floralColor="var(--color-bg)"
+                  zIndex={11}
+                />
+                <Flap
+                  axis="rotateY"
+                  clipPath={flapPolygon("right", width, height)}
+                  transformOrigin="right center"
+                  closedFront={0}
+                  openFront={FLAP_ANGLE}
+                  open={tapped}
+                  delay={TIMING.rightFlap.delay}
+                  duration={TIMING.rightFlap.duration}
+                  fill={fill(settings.images.introRight)}
+                  darkColor="color-mix(in srgb, var(--color-accent) 55%, black)"
+                  creaseGradient="linear-gradient(to left, transparent 0%, transparent 42%, rgba(0,0,0,0.88) 50%)"
+                  brightnessOpen={0.6}
+                  floralColor="var(--color-bg)"
+                  zIndex={20}
+                >
+                  <svg className="pointer-events-none absolute inset-0 h-full w-full" style={{ overflow: "visible" }}>
+                    <path
+                      d={pointsToSvgPath(flapStitchPath("right", width, height))}
+                      fill="none"
+                      stroke="var(--color-bg)"
+                      strokeOpacity={0.5}
+                      strokeWidth={1}
+                      strokeDasharray="4 5"
+                    />
+                  </svg>
+                </Flap>
+                <Flap
+                  axis="rotateY"
+                  clipPath={flapPolygon("left", width, height)}
+                  transformOrigin="left center"
+                  closedFront={0}
+                  openFront={-FLAP_ANGLE}
+                  open={tapped}
+                  delay={TIMING.leftFlap.delay}
+                  duration={TIMING.leftFlap.duration}
+                  fill={fill(settings.images.introLeft)}
+                  darkColor="color-mix(in srgb, var(--color-accent) 55%, black)"
+                  creaseGradient="linear-gradient(to right, transparent 0%, transparent 42%, rgba(0,0,0,0.88) 50%)"
+                  brightnessOpen={1.25}
+                  floralColor="var(--color-bg)"
+                  zIndex={30}
+                >
+                  <svg className="pointer-events-none absolute inset-0 h-full w-full" style={{ overflow: "visible" }}>
+                    <path
+                      d={pointsToSvgPath(flapStitchPath("left", width, height))}
+                      fill="none"
+                      stroke="var(--color-bg)"
+                      strokeOpacity={0.5}
+                      strokeWidth={1}
+                      strokeDasharray="4 5"
+                    />
+                  </svg>
 
-            {/* Solapa izquierda */}
-            <motion.div
-              className="absolute inset-0"
-              style={{
-                clipPath: "polygon(0 0, 0 100%, 50% 50%)",
-                transformOrigin: "left center",
-                ...fill(settings.images.introLeft),
-              }}
-              animate={{
-                rotateY: open ? -98 : 0,
-                boxShadow: open
-                  ? [
-                      "inset 0 0 0 0 rgba(0,0,0,0)",
-                      "inset -60px 0 80px -20px rgba(0,0,0,0.55)",
-                      "inset -14px 0 24px -10px rgba(0,0,0,0.2)",
-                    ]
-                  : "inset 0 0 0 0 rgba(0,0,0,0)",
-              }}
-              transition={{ duration: 1, delay: 0.16, ease: "easeInOut" }}
-            >
-              <div
-                className="pointer-events-none absolute inset-0"
-                style={{ background: "linear-gradient(to right, transparent 0%, transparent 42%, rgba(0,0,0,0.88) 50%)" }}
-              />
-            </motion.div>
+                  {/* Sello: hijo de la solapa izquierda para moverse con ella */}
+                  <motion.div
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Abrir invitación"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        startOpening();
+                      }
+                    }}
+                    className="absolute flex items-center justify-center outline-none"
+                    style={{
+                      left: "40%",
+                      top: "48%",
+                      width: sealSize,
+                      height: sealSize,
+                      marginLeft: -sealSize / 2,
+                      marginTop: -sealSize / 2,
+                      clipPath: sealBlobPolygon(sealSize),
+                      ...(settings.images.introSeal
+                        ? {
+                            backgroundImage: `url(${settings.images.introSeal})`,
+                            backgroundSize: "cover",
+                            backgroundPosition: "center",
+                          }
+                        : {
+                            background:
+                              "radial-gradient(circle at 35% 30%, #E3C27A, #B8893E 70%)",
+                          }),
+                      boxShadow:
+                        "0 2px 4px rgba(0,0,0,0.4), 0 8px 14px rgba(0,0,0,0.5), 0 18px 36px rgba(0,0,0,0.35), inset 0 2px 3px rgba(255,255,255,0.3), inset 0 -3px 5px rgba(0,0,0,0.25)",
+                    }}
+                    animate={{
+                      scale: !tapped ? [1, 1.03, 1] : [1.08, 0.3],
+                      opacity: !tapped ? 1 : [1, 1, 0],
+                    }}
+                    transition={
+                      !tapped
+                        ? { duration: TIMING.sealBreathe, repeat: Infinity, ease: "easeInOut" }
+                        : { duration: TIMING.prep + 0.3, times: [0, 0.57, 1], ease: "easeIn" }
+                    }
+                  >
+                    {!settings.images.introSeal && (
+                      <>
+                        <FloralMotif className="absolute inset-0 h-full w-full" color="#5a3313" opacity={0.3} />
+                        <span className="font-script text-2xl text-[#4a2a10]">{initials}</span>
+                      </>
+                    )}
+                  </motion.div>
+                </Flap>
+              </>
+            )}
 
-            {/* Solapa derecha */}
-            <motion.div
-              className="absolute inset-0"
-              style={{
-                clipPath: "polygon(100% 0, 100% 100%, 50% 50%)",
-                transformOrigin: "right center",
-                ...fill(settings.images.introRight),
-              }}
-              animate={{
-                rotateY: open ? 98 : 0,
-                boxShadow: open
-                  ? [
-                      "inset 0 0 0 0 rgba(0,0,0,0)",
-                      "inset 60px 0 80px -20px rgba(0,0,0,0.55)",
-                      "inset 14px 0 24px -10px rgba(0,0,0,0.2)",
-                    ]
-                  : "inset 0 0 0 0 rgba(0,0,0,0)",
-              }}
-              transition={{ duration: 1, delay: 0.16, ease: "easeInOut" }}
-            >
-              <div
-                className="pointer-events-none absolute inset-0"
-                style={{ background: "linear-gradient(to left, transparent 0%, transparent 42%, rgba(0,0,0,0.88) 50%)" }}
-              />
-            </motion.div>
-
-            {/* Sello */}
-            <motion.div
-              className="absolute left-1/2 top-1/2 flex h-36 w-36 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full"
-              style={{
-                ...fill(settings.images.introSeal),
-                boxShadow:
-                  "0 2px 4px rgba(0,0,0,0.4), 0 8px 14px rgba(0,0,0,0.5), 0 18px 36px rgba(0,0,0,0.35), inset 0 2px 3px rgba(255,255,255,0.3), inset 0 -3px 5px rgba(0,0,0,0.25)",
-              }}
-              animate={{
-                opacity: open ? 0 : 1,
-                scale: open ? 0.5 : [1, 1.05, 1],
-              }}
-              transition={
-                open
-                  ? { duration: 0.35 }
-                  : { duration: 2.2, repeat: Infinity, ease: "easeInOut" }
-              }
-            >
-              {!settings.images.introSeal && (
-                <span className="font-script text-4xl" style={{ color: bg }}>
-                  {initials}
-                </span>
-              )}
-            </motion.div>
-
-            {stage === "sealed" && (
-              <p
+            {!tapped && (
+              <motion.p
                 className="pointer-events-none absolute bottom-10 left-1/2 -translate-x-1/2 text-xs uppercase tracking-[0.2em]"
-                style={{ color: bg, opacity: 0.75 }}
+                style={{ color: "var(--color-bg)" }}
+                animate={{ opacity: [0.4, 0.85, 0.4] }}
+                transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
               >
-                Toca el sello para abrir
-              </p>
+                {assetsReady ? "Toca el sello para abrir" : "Cargando…"}
+              </motion.p>
             )}
           </motion.div>
-        ) : (
-          <motion.div
-            key="invited"
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7 }}
-            onClick={() => stage === "invited" && setStage("closing")}
-            className="flex h-full w-full cursor-pointer flex-col items-center justify-center gap-2 px-6 text-center"
-          >
-            <p className="text-sm uppercase tracking-[0.35em] text-[var(--color-muted)]">
-              Estás
-            </p>
-            <p className="font-script text-5xl text-[var(--color-accent)] sm:text-6xl">
-              cordialmente invitado
-            </p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
+        </motion.div>
       )}
     </>
   );
