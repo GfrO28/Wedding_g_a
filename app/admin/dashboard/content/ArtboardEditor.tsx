@@ -90,8 +90,21 @@ import {
 
 type Background = { color: string; image?: string | null; overlay?: boolean };
 type Snap = { layout: TextLayout; styles: TextStyle[] };
-type Drag = { id: string; mode: "move" | "corner" | "side" | "vside"; sign: number; startX: number; startY: number; el: TextElement; before: TextLayout };
-type Guides = { x?: number; y?: number };
+// resize: sx/sy dicen qué borde se mueve (-1 izquierda/arriba, 1 derecha/abajo,
+// 0 ninguno). h0 es el alto real al empezar (los textos no guardan alto).
+type Drag = {
+  id: string;
+  mode: "move" | "resize";
+  sx: number;
+  sy: number;
+  startX: number;
+  startY: number;
+  el: TextElement;
+  h0: number;
+  edges: { xs: number[]; ys: number[] };
+  before: TextLayout;
+};
+type Guides = { x?: number; y?: number; label?: { x: number; y: number; text: string } };
 type Popover = null | "style" | "tokens" | "color" | "advanced" | "menu" | "add";
 // Lo que el panel de la galería le pide al lienzo.
 export type EditorApi = { place: (item: GalleryItem) => void; unplace: (key: string) => void; manual: () => void };
@@ -401,7 +414,24 @@ export function ArtboardEditor({
     return { x: nx, y: ny, g };
   }
 
-  function startDrag(e: RPointerEvent, el: TextElement, mode: Drag["mode"], sign = 1) {
+  // Bordes y centros de lo demás (y de la mesa), para el imán al cambiar el tamaño.
+  function edgesExcept(id: string) {
+    const xs = [0, A.w / 2, A.w], ys = [0, A.h / 2, A.h];
+    const b = boardRef.current?.getBoundingClientRect();
+    if (b && k) {
+      for (const [eid, node] of elRefs.current) {
+        if (eid === id) continue;
+        const r = node.getBoundingClientRect();
+        if (!r.width && !r.height) continue;
+        const l = (r.left - b.left) / k, t = (r.top - b.top) / k, w = r.width / k, h = r.height / k;
+        xs.push(l, l + w / 2, l + w);
+        ys.push(t, t + h / 2, t + h);
+      }
+    }
+    return { xs, ys };
+  }
+
+  function startDrag(e: RPointerEvent, el: TextElement, mode: Drag["mode"], sx = 0, sy = 0) {
     e.stopPropagation();
     e.preventDefault();
     if (editing && editing.id !== el.id) finishEdit();
@@ -410,7 +440,13 @@ export function ArtboardEditor({
     areaRef.current?.focus({ preventScroll: true });
     if (el.locked) return; // bloqueado: se selecciona pero no se mueve
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    drag.current = { id: el.id, mode, sign, startX: e.clientX, startY: e.clientY, el: { ...el }, before: layout };
+    const node = elRefs.current.get(el.id);
+    drag.current = {
+      id: el.id, mode, sx, sy, startX: e.clientX, startY: e.clientY, el: { ...el },
+      h0: isSized(el) ? el.h : node?.offsetHeight ?? el.h,
+      edges: mode === "resize" ? edgesExcept(el.id) : { xs: [], ys: [] },
+      before: layout,
+    };
   }
 
   function onMove(e: RPointerEvent) {
@@ -422,21 +458,71 @@ export function ArtboardEditor({
       const s = snap(d.id, d.el.x + dx, d.el.y + dy, d.el.w);
       setGuides(s.g);
       changes = { x: Math.round(s.x), y: Math.round(s.y) };
-    } else if (d.mode === "corner") {
-      const f = Math.max(0.1, (d.el.w + 2 * dx * d.sign) / d.el.w);
-      changes = isSized(d.el)
-        ? { w: Math.round(d.el.w * f), h: Math.round(d.el.h * f) }
-        : { w: Math.round(d.el.w * f), fontSize: Math.round(d.el.fontSize * f * 10) / 10 };
-    } else if (d.mode === "vside") {
-      changes = { h: Math.max(40, Math.round(d.el.h + 2 * dy * d.sign)) };
     } else {
-      changes = { w: Math.max(40, Math.round(d.el.w + 2 * dx * d.sign)) };
+      changes = resizeChanges(d, dx, dy, e.altKey);
     }
     setLayout((prev) => {
       const next = clone(prev);
       next[orientation] = next[orientation].map((x) => (x.id === d.id ? { ...x, ...changes } : x));
       return next;
     });
+  }
+
+  // Cambiar el tamaño como en Canva: el borde (o la esquina) opuesto queda fijo.
+  // Las esquinas mantienen la proporción. Con Alt crece parejo desde el centro.
+  function resizeChanges(d: Drag, dx: number, dy: number, fromCenter: boolean): Partial<TextElement> {
+    const el0 = d.el, sized = isSized(el0);
+    const th = (el0.rotation * Math.PI) / 180, cos = Math.cos(th), sin = Math.sin(th);
+    // El movimiento del puntero, en los ejes del objeto (por si está girado).
+    const lx = dx * cos + dy * sin, ly = -dx * sin + dy * cos;
+    const m = fromCenter ? 2 : 1;
+    const w0 = el0.w, h0 = d.h0, MIN = 20;
+    let w = w0, h = h0;
+    if (d.sx && d.sy) {
+      const fx = (w0 + m * d.sx * lx) / w0, fy = (h0 + m * d.sy * ly) / h0;
+      const f = Math.max(MIN / Math.min(w0, h0), sized && Math.abs(fy - 1) > Math.abs(fx - 1) ? fy : fx);
+      w = w0 * f;
+      h = h0 * f;
+    } else if (d.sx) w = Math.max(MIN, w0 + m * d.sx * lx);
+    else h = Math.max(MIN, h0 + m * d.sy * ly);
+
+    // Imán: el borde que se mueve se pega a bordes y centros cercanos.
+    const cy0 = el0.kind === "panel" ? el0.y + h0 / 2 : el0.y;
+    const g: Guides = {};
+    if (!el0.rotation && !fromCenter) {
+      const tol = 6 / k;
+      const near = (v: number, list: number[]) => list.find((c) => Math.abs(v - c) < tol);
+      if (d.sx) {
+        const fixed = d.sx > 0 ? el0.x - w0 / 2 : el0.x + w0 / 2;
+        const c = near(fixed + d.sx * w, d.edges.xs);
+        if (c !== undefined && Math.abs(c - fixed) >= MIN) {
+          const nw = Math.abs(c - fixed);
+          if (d.sy) h = h0 * (nw / w0);
+          w = nw;
+          g.x = c;
+        }
+      }
+      if (d.sy && (!d.sx || (sized && g.x === undefined))) {
+        const fixed = d.sy > 0 ? cy0 - h0 / 2 : cy0 + h0 / 2;
+        const c = near(fixed + d.sy * h, d.edges.ys);
+        if (c !== undefined && Math.abs(c - fixed) >= MIN) {
+          const nh = Math.abs(c - fixed);
+          if (d.sx) w = w0 * (nh / h0);
+          h = nh;
+          g.y = c;
+        }
+      }
+    }
+
+    // Se corre el centro la mitad de lo que creció, hacia el lado que se movió.
+    const cxl = fromCenter ? 0 : (d.sx * (w - w0)) / 2, cyl = fromCenter ? 0 : (d.sy * (h - h0)) / 2;
+    const ncx = el0.x + cxl * cos - cyl * sin, ncy = cy0 + cxl * sin + cyl * cos;
+    const changes: Partial<TextElement> = { w: Math.round(w), x: Math.round(ncx), y: Math.round(el0.kind === "panel" ? ncy - h / 2 : ncy) };
+    if (sized) changes.h = Math.round(h);
+    else if (d.sx && d.sy) changes.fontSize = Math.round(el0.fontSize * (w / w0) * 10) / 10;
+    g.label = { x: ncx, y: ncy + h / 2 + 10 / (k || 1), text: sized ? `${Math.round(w)} × ${Math.round(h)}` : `${Math.round(w)} de ancho` };
+    setGuides(g);
+    return changes;
   }
 
   function endDrag() {
@@ -916,26 +1002,27 @@ export function ArtboardEditor({
                   )}
                   {isSel && !isEditing && !el.locked &&
                     ([
-                      ["corner", -1, "nwse-resize", { left: -handle / 2, top: -handle / 2 }],
-                      ["corner", 1, "nesw-resize", { right: -handle / 2, top: -handle / 2 }],
-                      ["corner", -1, "nesw-resize", { left: -handle / 2, bottom: -handle / 2 }],
-                      ["corner", 1, "nwse-resize", { right: -handle / 2, bottom: -handle / 2 }],
-                      ["side", -1, "ew-resize", { left: -handle / 2, top: `calc(50% - ${handle / 2}px)` }],
-                      ["side", 1, "ew-resize", { right: -handle / 2, top: `calc(50% - ${handle / 2}px)` }],
+                      [-1, -1, "nwse-resize", { left: -handle / 2, top: -handle / 2 }],
+                      [1, -1, "nesw-resize", { right: -handle / 2, top: -handle / 2 }],
+                      [-1, 1, "nesw-resize", { left: -handle / 2, bottom: -handle / 2 }],
+                      [1, 1, "nwse-resize", { right: -handle / 2, bottom: -handle / 2 }],
+                      [-1, 0, "ew-resize", { left: -handle / 2, top: `calc(50% - ${handle / 2}px)` }],
+                      [1, 0, "ew-resize", { right: -handle / 2, top: `calc(50% - ${handle / 2}px)` }],
                       ...(isSized(el)
                         ? ([
-                            ["vside", -1, "ns-resize", { top: -handle / 2, left: `calc(50% - ${handle / 2}px)` }],
-                            ["vside", 1, "ns-resize", { bottom: -handle / 2, left: `calc(50% - ${handle / 2}px)` }],
+                            [0, -1, "ns-resize", { top: -handle / 2, left: `calc(50% - ${handle / 2}px)` }],
+                            [0, 1, "ns-resize", { bottom: -handle / 2, left: `calc(50% - ${handle / 2}px)` }],
                           ] as const)
                         : []),
-                    ] as const).map(([mode, sign, cursor, pos], i) => (
+                    ] as const).map(([sx, sy, cursor, pos], i) => (
                       <span
                         key={i}
-                        onPointerDown={(e) => startDrag(e, el, mode, sign)}
+                        data-handle={`${sx},${sy}`}
+                        onPointerDown={(e) => startDrag(e, el, "resize", sx, sy)}
                         style={{
                           position: "absolute", width: handle, height: handle, background: "#fff",
                           border: `${1.5 / (k || 1)}px solid #2563eb`,
-                          borderRadius: mode === "side" || mode === "vside" ? handle : 2 / (k || 1),
+                          borderRadius: sx === 0 || sy === 0 ? handle : 2 / (k || 1),
                           cursor, touchAction: "none", ...pos,
                         }}
                       />
@@ -945,6 +1032,15 @@ export function ArtboardEditor({
             })}
             {guides.x !== undefined && <div className="pointer-events-none absolute top-0" style={{ left: guides.x, width: 1 / (k || 1), height: A.h, background: "#ec4899" }} />}
             {guides.y !== undefined && <div className="pointer-events-none absolute left-0" style={{ top: guides.y, height: 1 / (k || 1), width: A.w, background: "#ec4899" }} />}
+            {guides.label && (
+              <div
+                className="pointer-events-none absolute whitespace-nowrap rounded bg-neutral-900 px-1.5 py-0.5 text-xs tabular-nums text-white"
+                style={{ left: guides.label.x, top: guides.label.y, transform: `translateX(-50%) scale(${1 / (k || 1)})`, transformOrigin: "top center" }}
+                data-size-label
+              >
+                {guides.label.text}
+              </div>
+            )}
             {cover && closed && (
               <div key={`${orientation}-${replay}`} className="absolute inset-0" onPointerDown={(e) => e.stopPropagation()}>
                 {cover.render({ width: A.w, height: A.h, layout: resolved, onOpened })}
