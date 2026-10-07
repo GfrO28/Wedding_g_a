@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { ArrowLeft, Check, ExternalLink, Loader2, PanelRightClose, PanelRightOpen } from "lucide-react";
 import type { EnvelopeSlot } from "@/lib/envelopeAssets";
 import { applyStyles, LAYOUT_SECTIONS, pickStyle, type LayoutSection, type TextLayout, type TextStyle, type TokenValues } from "@/lib/textLayout";
-import { ArtboardEditor } from "./ArtboardEditor";
+import { ArtboardEditor, type CanvasCover } from "./ArtboardEditor";
+import { ENVELOPE_BG, EnvelopeCard, EnvelopeClosed } from "./EnvelopeCanvas";
 import { EnvelopeImagesPanel } from "./EnvelopeImagesPanel";
 import { discardDraftsAction, publishAction, saveDraftAction, saveStylesDraftAction } from "./layout-actions";
 import { StylesPanel } from "./StylesPanel";
@@ -50,7 +51,9 @@ export function EditorShell({
   const [enabled, setEnabled] = useState<Record<string, boolean>>(
     Object.fromEntries(sections.filter((s) => s.zone).map((s) => [s.id, s.enabled ?? true])),
   );
-  const [contentOpen, setContentOpen] = useState(false);
+  // El sobre abre con sus imágenes a la vista: es lo primero que se busca ahí.
+  const [contentOpen, setContentOpen] = useState(sections[0].id === "intro");
+  const [envelopeAssets, setEnvelopeAssets] = useState(envelope.assets);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [publishing, setPublishing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -186,13 +189,25 @@ export function EditorShell({
       aria-pressed={contentOpen}
       className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium ${contentOpen ? "bg-neutral-900 text-white" : "border border-neutral-300 hover:bg-neutral-50"}`}
     >
-      {contentOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />} Contenido
+      {contentOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />} {current.id === "intro" ? "Imágenes del sobre" : "Contenido"}
     </button>
   );
 
+  const isEnvelope = current.id === "intro";
+  const envelopeCover: CanvasCover | undefined = isEnvelope
+    ? {
+        closedLabel: "Sobre cerrado",
+        openLabel: "Tarjeta (textos)",
+        hint: "Así lo ven los invitados. Tocá el sello para ver la animación; al terminar pasás a editar los textos de la tarjeta.",
+        render: ({ width, height, layout, onOpened }) => (
+          <EnvelopeClosed assets={envelopeAssets} layout={layout} tokens={tokens} width={width} height={height} onOpened={onOpened} />
+        ),
+      }
+    : undefined;
+
   const panel =
     current.id === "intro" ? (
-      <EnvelopeImagesPanel initialAssets={envelope.assets} initialCustom={envelope.custom} textLayout={applyStyles(layouts.envelope, styles)} tokens={tokens} />
+      <EnvelopeImagesPanel initialAssets={envelopeAssets} initialCustom={envelope.custom} onAssetsChange={setEnvelopeAssets} textLayout={applyStyles(layouts.envelope, styles)} tokens={tokens} />
     ) : current.id === "styles" ? (
       <StylesPanel styles={styles} usage={styleUsage} tokens={tokens} onChange={handleStylesChange} onDelete={deleteStyle} />
     ) : (
@@ -254,7 +269,10 @@ export function EditorShell({
                     >
                       <button
                         type="button"
-                        onClick={() => setCurrentId(s.id)}
+                        onClick={() => {
+                          setCurrentId(s.id);
+                          if (s.id === "intro") setContentOpen(true);
+                        }}
                         aria-current={active ? "page" : undefined}
                         className={`flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left text-sm ${!isOn && !active ? "text-neutral-400" : ""}`}
                       >
@@ -297,7 +315,9 @@ export function EditorShell({
               section={design}
               initialLayout={layouts[design]}
               tokens={tokens}
-              background={current.background ?? { color: "var(--color-bg)" }}
+              background={isEnvelope ? { color: ENVELOPE_BG } : current.background ?? { color: "var(--color-bg)" }}
+              underlay={isEnvelope ? <EnvelopeCard /> : undefined}
+              cover={envelopeCover}
               blocks={blocks[design]}
               onChange={onDesignChange}
               actions={contentToggle}
@@ -319,7 +339,7 @@ export function EditorShell({
         {design && contentOpen && (
           <aside className="w-96 shrink-0 overflow-y-auto border-l border-neutral-200 bg-white p-4" aria-label={`Contenido de ${current.label}`}>
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="font-serif text-lg text-neutral-800">Contenido · {current.label}</h2>
+              <h2 className="font-serif text-lg text-neutral-800">{isEnvelope ? "Imágenes del sobre" : `Contenido · ${current.label}`}</h2>
               <button type="button" onClick={() => setContentOpen(false)} aria-label="Cerrar contenido" className="rounded p-1 text-neutral-500 hover:bg-neutral-100">
                 <PanelRightClose size={16} />
               </button>

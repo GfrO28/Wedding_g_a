@@ -27,6 +27,7 @@ import {
   Pencil,
   Plus,
   Redo2,
+  RotateCcw,
   SlidersHorizontal,
   Type,
   Undo2,
@@ -62,6 +63,13 @@ type Snap = { layout: TextLayout; styles: TextStyle[] };
 type Drag = { id: string; mode: "move" | "corner" | "side" | "vside"; sign: number; startX: number; startY: number; el: TextElement; before: TextLayout };
 type Guides = { x?: number; y?: number };
 type Popover = null | "style" | "tokens" | "color" | "advanced" | "menu";
+// Vista que tapa el lienzo (el sobre cerrado). Mientras se ve, los textos no se editan.
+export type CanvasCover = {
+  closedLabel: string;
+  openLabel: string;
+  hint: string;
+  render: (args: { width: number; height: number; layout: TextLayout; onOpened: () => void }) => ReactNode;
+};
 type Editing = { id: string; dirty: boolean; point: { x: number; y: number } | null };
 
 const DEVICES = [
@@ -92,6 +100,8 @@ export function ArtboardEditor({
   styles = [],
   onStylesChange,
   styleUsage = {},
+  underlay,
+  cover,
 }: {
   section: LayoutSection;
   initialLayout: TextLayout;
@@ -103,6 +113,8 @@ export function ArtboardEditor({
   styles?: TextStyle[];
   onStylesChange?: (styles: TextStyle[]) => void;
   styleUsage?: Record<string, number>;
+  underlay?: ReactNode; // fondo dibujado dentro de la mesa, detrás de los textos
+  cover?: CanvasCover;
 }) {
   const cfg = sectionConfig(section);
   const BOARDS = cfg.boards;
@@ -115,6 +127,9 @@ export function ArtboardEditor({
   const [popover, setPopover] = useState<Popover>(null);
   const [realSize, setRealSize] = useState(false);
   const [editing, setEditing] = useState<Editing | null>(null);
+  const [closed, setClosed] = useState(!!cover);
+  const [replay, setReplay] = useState(0);
+  const onOpened = useCallback(() => setClosed(false), []);
   const past = useRef<Snap[]>([]);
   const future = useRef<Snap[]>([]);
   const drag = useRef<Drag | null>(null);
@@ -465,6 +480,25 @@ export function ArtboardEditor({
           <IconButton label="Deshacer (Ctrl+Z)" onClick={undo} disabled={!hist.undo}><Undo2 size={15} /></IconButton>
           <IconButton label="Rehacer (Ctrl+Y)" onClick={redo} disabled={!hist.redo}><Redo2 size={15} /></IconButton>
         </div>
+        {cover && (
+          <div className="flex items-center gap-1">
+            <div className="flex rounded-md bg-neutral-100 p-0.5" role="tablist" aria-label="Vista del sobre">
+              {([true, false] as const).map((c) => (
+                <button
+                  key={String(c)}
+                  type="button"
+                  role="tab"
+                  aria-selected={closed === c}
+                  onClick={() => { setClosed(c); setSelectedId(null); setPopover(null); finishEdit(); if (c) setReplay((r) => r + 1); }}
+                  className={`rounded px-3 py-1 text-xs font-medium ${closed === c ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-800"}`}
+                >
+                  {c ? cover.closedLabel : cover.openLabel}
+                </button>
+              ))}
+            </div>
+            {closed && <IconButton label="Cerrar el sobre otra vez" onClick={() => setReplay((r) => r + 1)}><RotateCcw size={14} /></IconButton>}
+          </div>
+        )}
         <div className="ml-auto flex items-center gap-1.5">
           {actions}
           <button
@@ -490,7 +524,9 @@ export function ArtboardEditor({
 
       {/* Barra contextual */}
       <div className="flex min-h-[46px] flex-wrap items-center gap-1.5 border-b border-neutral-200 bg-white px-3 py-1.5">
-        {selected ? (
+        {cover && closed ? (
+          <p className="text-xs text-neutral-500">{cover.hint}</p>
+        ) : selected ? (
           <ContextToolbar
             el={selected}
             orientation={orientation}
@@ -526,6 +562,11 @@ export function ArtboardEditor({
       >
         <div className="relative shadow-lg" style={{ width: A.w * k, height: A.h * k, ...bgStyle }}>
           {overlay}
+          {underlay && (
+            <div className="pointer-events-none absolute left-0 top-0" style={{ width: A.w, height: A.h, transform: `scale(${k})`, transformOrigin: "0 0" }}>
+              {underlay}
+            </div>
+          )}
           <div
             ref={boardRef}
             className="absolute left-0 top-0"
@@ -607,6 +648,11 @@ export function ArtboardEditor({
             })}
             {guides.x !== undefined && <div className="pointer-events-none absolute top-0" style={{ left: guides.x, width: 1 / (k || 1), height: A.h, background: "#ec4899" }} />}
             {guides.y !== undefined && <div className="pointer-events-none absolute left-0" style={{ top: guides.y, height: 1 / (k || 1), width: A.w, background: "#ec4899" }} />}
+            {cover && closed && (
+              <div key={`${orientation}-${replay}`} className="absolute inset-0" onPointerDown={(e) => e.stopPropagation()}>
+                {cover.render({ width: A.w, height: A.h, layout: resolved, onOpened })}
+              </div>
+            )}
           </div>
         </div>
       </div>

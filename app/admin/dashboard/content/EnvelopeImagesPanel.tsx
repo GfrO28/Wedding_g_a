@@ -27,11 +27,13 @@ export function EnvelopeImagesPanel({
   initialCustom,
   textLayout,
   tokens,
+  onAssetsChange,
 }: {
   initialAssets: Record<EnvelopeSlot, string>;
   initialCustom: Record<EnvelopeSlot, boolean>;
   textLayout: TextLayout;
   tokens: TokenValues;
+  onAssetsChange?: (assets: Record<EnvelopeSlot, string>) => void;
 }) {
   const [assets, setAssets] = useState(initialAssets);
   const [custom, setCustom] = useState(initialCustom);
@@ -62,7 +64,9 @@ export function EnvelopeImagesPanel({
       }
       const { assetUrl } = await saveEnvelopeImageAction(slot, req.publicUrl);
       if (assetUrl) {
-        setAssets((a) => ({ ...a, [slot]: assetUrl }));
+        const next = { ...assets, [slot]: assetUrl };
+        setAssets(next);
+        onAssetsChange?.(next);
         setCustom((c) => ({ ...c, [slot]: true }));
       }
     } catch {
@@ -75,7 +79,9 @@ export function EnvelopeImagesPanel({
   async function reset(slot: EnvelopeSlot) {
     setBusy(slot);
     await resetEnvelopeImageAction(slot);
-    setAssets((a) => ({ ...a, [slot]: DEFAULT_ENVELOPE_ASSETS[slot] }));
+    const next = { ...assets, [slot]: DEFAULT_ENVELOPE_ASSETS[slot] };
+    setAssets(next);
+    onAssetsChange?.(next);
     setCustom((c) => ({ ...c, [slot]: false }));
     setBusy(null);
   }
