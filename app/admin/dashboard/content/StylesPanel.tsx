@@ -31,8 +31,9 @@ export function StylesPanel({
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-neutral-600">
-        Cada estilo define tipografía, color y formato. Al cambiarlo acá cambian todos los textos que lo usan, en celular y
-        en PC. El tamaño lo elegís en cada texto. Para vincular un texto, seleccionalo en el lienzo y tocá{" "}
+        Cada estilo define tipografía, color y formato. Cambiarlo acá cambia a la vez todos los textos que lo usan, en celular
+        y en PC (el número de la derecha dice cuántos). Si editás un texto desde la barra del lienzo, ese texto se separa del
+        estilo y no lo afecta a los demás. El tamaño lo elegís en cada texto. Para vincular un texto, seleccionalo en el lienzo y tocá{" "}
         <span className="font-medium">Estilo</span> en la barra.
       </p>
 

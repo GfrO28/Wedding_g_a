@@ -252,26 +252,21 @@ export function ArtboardEditor({
     [record, styles],
   );
 
-  // Si el texto está vinculado a un estilo, los cambios de tipografía y color
-  // van al estilo (y se ven en todos los textos que lo usan).
+  // Cada objeto es independiente: si un texto vinculado a un estilo cambia de
+  // tipografía, color o formato acá, se separa del estilo y conserva cómo se
+  // veía. Los demás textos con ese estilo no cambian (para cambiarlos a todos
+  // está el panel "Estilos de texto").
   function patch(id: string, changes: Partial<TextElement>) {
     const raw = layout[orientation].find((e) => e.id === id);
     const linked = raw?.style && !("style" in changes) ? styles.find((s) => s.id === raw.style) : undefined;
-    const styleChanges: Partial<TextStyle> = {};
-    const elChanges: Partial<TextElement> = {};
-    for (const [key, v] of Object.entries(changes)) {
-      if (linked && (STYLE_PROPS as readonly string[]).includes(key)) Object.assign(styleChanges, { [key]: v });
-      else Object.assign(elChanges, { [key]: v });
-    }
+    const touchesStyle = Object.keys(changes).some((k) => (STYLE_PROPS as readonly string[]).includes(k));
+    const elChanges: Partial<TextElement> = linked && touchesStyle ? { ...pickStyle(linked), ...changes, style: null } : { ...changes };
     record({ layout, styles });
     if (Object.keys(elChanges).length) {
       const next = clone(layout);
       next[orientation] = next[orientation].map((e) => (e.id === id ? { ...e, ...elChanges } : e));
       shareChanges(next, orientation, id, elChanges);
       setLayout(next);
-    }
-    if (linked && Object.keys(styleChanges).length) {
-      onStylesChange?.(styles.map((s) => (s.id === linked.id ? { ...s, ...styleChanges } : s)));
     }
     syncHist();
   }
@@ -978,7 +973,6 @@ function ContextToolbar({
   const toggle = (p: Popover) => setPopover(popover === p ? null : p);
   const sizeStep = isPanel ? 1 : 2;
   const [newName, setNewName] = useState("");
-  const uses = currentStyle ? styleUsage[currentStyle.id] ?? 1 : 0;
   const colorTool = (
     <div className="relative" data-popover>
             <ToolButton label="Color" active={popover === "color"} onClick={() => toggle("color")}>
@@ -1020,7 +1014,7 @@ function ContextToolbar({
           {popover === "style" && (
             <div className="absolute left-0 top-full z-30 mt-1 w-72 rounded-lg border border-neutral-200 bg-white p-2 shadow-lg">
               <p className="px-1.5 pb-1 text-[11px] text-neutral-500">
-                Los textos con el mismo estilo comparten tipografía, color y formato. El tamaño es de cada texto.
+                Aplicá un estilo para copiar su tipografía, color y formato. Si después cambiás este texto desde la barra, se separa del estilo y los demás no cambian.
               </p>
               {styles.map((s) => (
                 <button
@@ -1110,11 +1104,6 @@ function ContextToolbar({
         </div>
       )}
 
-      {currentStyle && (
-        <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[11px] text-blue-800" title="Tipografía, color y formato cambian en todos los textos con este estilo">
-          Cambia en {uses} {uses === 1 ? "texto" : "textos"}
-        </span>
-      )}
 
       {!isMedia && (
         <>
