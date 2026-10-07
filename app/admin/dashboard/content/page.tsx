@@ -61,7 +61,7 @@ const IMAGE_FOCUS = [
 ];
 
 export default async function ContentEditorPage() {
-  const [w, theme, envelope, { published, drafts }, tokens, allPhotos, galleryImages, gifts, approvedMessages] = await Promise.all([
+  const [w, theme, envelope, { published, drafts, styles }, tokens, allPhotos, galleryImages, gifts, approvedMessages] = await Promise.all([
     getWeddingContent(),
     getTheme(),
     getEnvelopeSettings(),
@@ -91,6 +91,7 @@ export default async function ContentEditorPage() {
     { id: "footer", label: "Pie de página", group: "sections", design: "footer", background: bg() },
     { id: "music", label: "Música", group: "general", zone: "music", enabled: w.zoneEnabled.music },
     { id: "palette", label: "Paleta de colores", group: "general" },
+    { id: "styles", label: "Estilos de texto", group: "general" },
   ];
 
   const blocks: Record<string, Record<string, ReactNode>> = {
@@ -283,6 +284,7 @@ export default async function ContentEditorPage() {
       blocks={blocks}
       published={published}
       drafts={drafts}
+      styles={styles}
       tokens={tokens}
       envelope={{ assets: envelope.assets, custom: envelope.custom }}
     />

@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -15,6 +16,8 @@ import {
   AlignLeft,
   AlignRight,
   Bold,
+  Braces,
+  Check,
   Eye,
   EyeOff,
   Italic,
@@ -25,13 +28,18 @@ import {
   Plus,
   Redo2,
   SlidersHorizontal,
+  Type,
   Undo2,
+  Unlink,
   X,
 } from "lucide-react";
 import { ElementContent, TextArtboard } from "@/app/components/TextArtboard";
 import {
+  applyStyles,
   ARTBOARDS,
   elementStyle,
+  pickStyle,
+  STYLE_PROPS,
   FONTS,
   MIN_READABLE_PX,
   orientationFor,
@@ -45,13 +53,16 @@ import {
   type Orientation,
   type TextElement,
   type TextLayout,
+  type TextStyle,
   type TokenValues,
 } from "@/lib/textLayout";
 
 type Background = { color: string; image?: string | null; overlay?: boolean };
+type Snap = { layout: TextLayout; styles: TextStyle[] };
 type Drag = { id: string; mode: "move" | "corner" | "side" | "vside"; sign: number; startX: number; startY: number; el: TextElement; before: TextLayout };
 type Guides = { x?: number; y?: number };
-type Popover = null | "text" | "color" | "advanced" | "menu";
+type Popover = null | "style" | "tokens" | "color" | "advanced" | "menu";
+type Editing = { id: string; dirty: boolean; point: { x: number; y: number } | null };
 
 const DEVICES = [
   { w: 390, h: 844, label: "Celular 390×844" },
@@ -78,6 +89,9 @@ export function ArtboardEditor({
   blocks,
   onChange,
   actions,
+  styles = [],
+  onStylesChange,
+  styleUsage = {},
 }: {
   section: LayoutSection;
   initialLayout: TextLayout;
@@ -86,6 +100,9 @@ export function ArtboardEditor({
   blocks?: Record<string, ReactNode>;
   onChange?: (layout: TextLayout) => void;
   actions?: ReactNode;
+  styles?: TextStyle[];
+  onStylesChange?: (styles: TextStyle[]) => void;
+  styleUsage?: Record<string, number>;
 }) {
   const cfg = sectionConfig(section);
   const BOARDS = cfg.boards;
@@ -97,19 +114,29 @@ export function ArtboardEditor({
   const [overflow, setOverflow] = useState<Set<string>>(new Set());
   const [popover, setPopover] = useState<Popover>(null);
   const [realSize, setRealSize] = useState(false);
-  const past = useRef<TextLayout[]>([]);
-  const future = useRef<TextLayout[]>([]);
+  const [editing, setEditing] = useState<Editing | null>(null);
+  const past = useRef<Snap[]>([]);
+  const future = useRef<Snap[]>([]);
   const drag = useRef<Drag | null>(null);
   const areaRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
+  const inlineRef = useRef<HTMLDivElement | null>(null);
   const elRefs = useRef(new Map<string, HTMLDivElement>());
+  const setInlineNode = useCallback((n: HTMLDivElement | null) => {
+    inlineRef.current = n;
+  }, []);
   const firstRender = useRef(true);
-  const [, force] = useState(0);
+  const [hist, setHist] = useState({ undo: 0, redo: 0 });
+  const syncHist = () => setHist({ undo: past.current.length, redo: future.current.length });
 
   const A = BOARDS[orientation];
   const k = area.w > 0 ? Math.max(0.05, Math.min((area.w - 48) / A.w, (area.h - 32) / A.h)) : 0;
-  const elements = layout[orientation];
+  // Lo que se ve: los textos vinculados toman tipografía y color de su estilo.
+  const resolved = useMemo(() => applyStyles(layout, styles), [layout, styles]);
+  const elements = resolved[orientation];
   const selected = elements.find((e) => e.id === selectedId) ?? null;
+  const selectedRaw = layout[orientation].find((e) => e.id === selectedId) ?? null;
+  const selectedStyle = selectedRaw?.style ? styles.find((s) => s.id === selectedRaw.style) ?? null : null;
 
   useEffect(() => {
     if (firstRender.current) {
@@ -152,33 +179,137 @@ export function ArtboardEditor({
     setOverflow((prev) => (prev.size === out.size && [...out].every((id) => prev.has(id)) ? prev : out));
   });
 
-  const commit = useCallback((next: TextLayout, before: TextLayout) => {
+  const record = useCallback((before: Snap) => {
     past.current.push(before);
     if (past.current.length > 100) past.current.shift();
     future.current = [];
-    setLayout(next);
+    setHist({ undo: past.current.length, redo: 0 });
   }, []);
 
+  const commit = useCallback(
+    (next: TextLayout, before: TextLayout) => {
+      record({ layout: before, styles });
+      setLayout(next);
+    },
+    [record, styles],
+  );
+
+  // Si el texto está vinculado a un estilo, los cambios de tipografía y color
+  // van al estilo (y se ven en todos los textos que lo usan).
   function patch(id: string, changes: Partial<TextElement>) {
-    const next = clone(layout);
-    next[orientation] = next[orientation].map((e) => (e.id === id ? { ...e, ...changes } : e));
-    commit(next, layout);
+    const raw = layout[orientation].find((e) => e.id === id);
+    const linked = raw?.style && !("style" in changes) ? styles.find((s) => s.id === raw.style) : undefined;
+    const styleChanges: Partial<TextStyle> = {};
+    const elChanges: Partial<TextElement> = {};
+    for (const [key, v] of Object.entries(changes)) {
+      if (linked && (STYLE_PROPS as readonly string[]).includes(key)) Object.assign(styleChanges, { [key]: v });
+      else Object.assign(elChanges, { [key]: v });
+    }
+    record({ layout, styles });
+    if (Object.keys(elChanges).length) {
+      const next = clone(layout);
+      next[orientation] = next[orientation].map((e) => (e.id === id ? { ...e, ...elChanges } : e));
+      setLayout(next);
+    }
+    if (linked && Object.keys(styleChanges).length) {
+      onStylesChange?.(styles.map((s) => (s.id === linked.id ? { ...s, ...styleChanges } : s)));
+    }
+    syncHist();
+  }
+
+  function restore(snap: Snap) {
+    setLayout(snap.layout);
+    if (snap.styles !== styles) onStylesChange?.(snap.styles);
+    syncHist();
   }
 
   function undo() {
     const prev = past.current.pop();
     if (!prev) return;
-    future.current.push(layout);
-    setLayout(prev);
-    force((n) => n + 1);
+    future.current.push({ layout, styles });
+    restore(prev);
   }
 
   function redo() {
     const next = future.current.pop();
     if (!next) return;
-    past.current.push(layout);
+    past.current.push({ layout, styles });
+    restore(next);
+  }
+
+  /* ---------- Edición del texto sobre el lienzo ---------- */
+
+  function startEdit(id: string, point: Editing["point"] = null) {
+    setSelectedId(id);
+    setPopover(null);
+    setEditing({ id, dirty: false, point });
+  }
+
+  function finishEdit() {
+    setEditing(null);
+  }
+
+  function onInlineInput(text: string) {
+    if (!editing) return;
+    // Una sola entrada en el historial por cada vez que se edita.
+    if (!editing.dirty) {
+      record({ layout, styles });
+      setEditing({ ...editing, dirty: true });
+    }
+    const id = editing.id;
+    setLayout((prev) => {
+      const next = clone(prev);
+      next[orientation] = next[orientation].map((e) => (e.id === id ? { ...e, text } : e));
+      return next;
+    });
+  }
+
+  function insertToken(key: string) {
+    const node = inlineRef.current;
+    if (editing && node) {
+      node.focus();
+      const sel = window.getSelection();
+      let range = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
+      if (!range || !node.contains(range.commonAncestorContainer)) {
+        range = document.createRange();
+        range.selectNodeContents(node);
+        range.collapse(false);
+      }
+      range.deleteContents();
+      const chip = tokenChip(key, tokens);
+      range.insertNode(chip);
+      range.setStartAfter(chip);
+      range.collapse(true);
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+      onInlineInput(serializeInline(node));
+      return;
+    }
+    if (selectedRaw) patch(selectedRaw.id, { text: selectedRaw.text + `{${key}}` });
+  }
+
+  /* ---------- Estilos ---------- */
+
+  function applyStyle(styleId: string | null) {
+    if (!selected) return;
+    if (styleId) patch(selected.id, { style: styleId });
+    // Desvincular: el texto se queda con cómo se ve ahora.
+    else patch(selected.id, { style: null, ...pickStyle(selected) });
+    setPopover(null);
+  }
+
+  function createStyle(name: string) {
+    if (!selected) return;
+    const base = name.trim().toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) || "estilo";
+    let id = base;
+    for (let i = 2; styles.some((s) => s.id === id); i++) id = `${base}-${i}`;
+    const style: TextStyle = { id, name: name.trim().slice(0, 40) || "Estilo", ...pickStyle(selected) };
+    record({ layout, styles });
+    onStylesChange?.([...styles, style]);
+    const next = clone(layout);
+    next[orientation] = next[orientation].map((e) => (e.id === selected.id ? { ...e, style: id } : e));
     setLayout(next);
-    force((n) => n + 1);
+    setPopover(null);
   }
 
   function snap(id: string, x: number, y: number, w: number) {
@@ -205,6 +336,7 @@ export function ArtboardEditor({
   function startDrag(e: RPointerEvent, el: TextElement, mode: Drag["mode"], sign = 1) {
     e.stopPropagation();
     e.preventDefault();
+    if (editing && editing.id !== el.id) finishEdit();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     setSelectedId(el.id);
     setPopover(null);
@@ -243,14 +375,12 @@ export function ArtboardEditor({
     setGuides({});
     if (!d) return;
     if (JSON.stringify(d.before) !== JSON.stringify(layout)) {
-      past.current.push(d.before);
-      future.current = [];
-      force((n) => n + 1);
+      record({ layout: d.before, styles });
     }
   }
 
   function onKey(e: React.KeyboardEvent) {
-    if ((e.target as HTMLElement).closest("input,textarea,select")) return;
+    if ((e.target as HTMLElement).closest("input,textarea,select,[contenteditable='true']")) return;
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === "z") {
       e.preventDefault();
@@ -268,6 +398,11 @@ export function ArtboardEditor({
       setPopover(null);
     }
     if (!selected) return;
+    if (e.key === "Enter" && selected.kind === "text") {
+      e.preventDefault();
+      startEdit(selected.id);
+      return;
+    }
     const step = e.shiftKey ? 10 : 1;
     const moves: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
     const m = moves[e.key];
@@ -319,7 +454,7 @@ export function ArtboardEditor({
               type="button"
               role="tab"
               aria-selected={o === orientation}
-              onClick={() => { setOrientation(o); setSelectedId(null); setPopover(null); }}
+              onClick={() => { setOrientation(o); setSelectedId(null); setPopover(null); finishEdit(); }}
               className={`rounded px-3 py-1 text-xs font-medium ${o === orientation ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-800"}`}
             >
               {ORIENTATION_LABEL[o]}
@@ -327,8 +462,8 @@ export function ArtboardEditor({
           ))}
         </div>
         <div className="flex items-center gap-1">
-          <IconButton label="Deshacer (Ctrl+Z)" onClick={undo} disabled={!past.current.length}><Undo2 size={15} /></IconButton>
-          <IconButton label="Rehacer (Ctrl+Y)" onClick={redo} disabled={!future.current.length}><Redo2 size={15} /></IconButton>
+          <IconButton label="Deshacer (Ctrl+Z)" onClick={undo} disabled={!hist.undo}><Undo2 size={15} /></IconButton>
+          <IconButton label="Rehacer (Ctrl+Y)" onClick={redo} disabled={!hist.redo}><Redo2 size={15} /></IconButton>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
           {actions}
@@ -364,9 +499,19 @@ export function ArtboardEditor({
             popover={popover}
             setPopover={setPopover}
             onPatch={(c) => patch(selected.id, c)}
+            editing={editing?.id === selected.id}
+            onEdit={() => (editing ? finishEdit() : startEdit(selected.id))}
+            onInsertToken={insertToken}
+            styles={styles}
+            currentStyle={selectedStyle}
+            styleUsage={styleUsage}
+            onApplyStyle={applyStyle}
+            onCreateStyle={createStyle}
           />
         ) : (
-          <p className="text-xs text-neutral-500">Tocá un texto o un bloque en el lienzo para editarlo.</p>
+          <p className="text-xs text-neutral-500">
+            Tocá un texto o un bloque en el lienzo para editarlo. Doble clic en un texto para escribir sobre él.
+          </p>
         )}
       </div>
 
@@ -375,7 +520,7 @@ export function ArtboardEditor({
         ref={areaRef}
         tabIndex={0}
         onKeyDown={onKey}
-        onPointerDown={() => { setSelectedId(null); setPopover(null); }}
+        onPointerDown={() => { setSelectedId(null); setPopover(null); finishEdit(); }}
         className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-neutral-200/70 outline-none"
         aria-label="Lienzo: tocá un elemento para seleccionarlo, arrastralo para moverlo, flechas para ajustar"
       >
@@ -391,6 +536,7 @@ export function ArtboardEditor({
           >
             {elements.map((el) => {
               const isSel = el.id === selectedId;
+              const isEditing = editing?.id === el.id;
               return (
                 <div
                   key={el.id}
@@ -399,7 +545,7 @@ export function ArtboardEditor({
                   ref={(n) => { if (n) elRefs.current.set(el.id, n); else elRefs.current.delete(el.id); }}
                   style={{
                     ...(elementStyle(el) as CSSProperties),
-                    cursor: "move",
+                    cursor: isEditing ? "text" : "move",
                     opacity: el.hidden ? 0.25 : 1,
                     outline: isSel
                       ? `${2 / (k || 1)}px solid #2563eb`
@@ -412,14 +558,25 @@ export function ArtboardEditor({
                     userSelect: "none",
                   }}
                   onPointerDown={(e) => startDrag(e, el, "move")}
-                  onDoubleClick={() => { if (el.kind === "text") setPopover("text"); }}
+                  onDoubleClick={(e) => { if (el.kind === "text" && !isEditing) startEdit(el.id, { x: e.clientX, y: e.clientY }); }}
                   onMouseEnter={(e) => { if (!isSel && !overflow.has(el.id) && el.kind !== "panel") e.currentTarget.style.outlineColor = "rgba(37,99,235,.5)"; }}
                   onMouseLeave={(e) => { if (!isSel && !overflow.has(el.id) && el.kind !== "panel") e.currentTarget.style.outlineColor = "transparent"; }}
                 >
-                  <div style={{ pointerEvents: "none", minHeight: "0.5em" }}>
-                    <ElementContent el={el} tokens={tokens} blocks={blocks} />
-                  </div>
-                  {isSel &&
+                  {isEditing ? (
+                    <InlineText
+                      text={layout[orientation].find((x) => x.id === el.id)?.text ?? el.text}
+                      tokens={tokens}
+                      point={editing.point}
+                      onNode={setInlineNode}
+                      onInput={onInlineInput}
+                      onDone={() => { finishEdit(); areaRef.current?.focus({ preventScroll: true }); }}
+                    />
+                  ) : (
+                    <div style={{ pointerEvents: "none", minHeight: "0.5em" }}>
+                      <ElementContent el={el} tokens={tokens} blocks={blocks} />
+                    </div>
+                  )}
+                  {isSel && !isEditing &&
                     ([
                       ["corner", -1, "nwse-resize", { left: -handle / 2, top: -handle / 2 }],
                       ["corner", 1, "nesw-resize", { right: -handle / 2, top: -handle / 2 }],
@@ -482,7 +639,7 @@ export function ArtboardEditor({
       {realSize && (
         <RealSizeModal
           onClose={() => setRealSize(false)}
-          layout={layout}
+          layout={resolved}
           tokens={tokens}
           blocks={blocks}
           bgStyle={bgStyle}
@@ -504,6 +661,14 @@ function ContextToolbar({
   popover,
   setPopover,
   onPatch,
+  editing,
+  onEdit,
+  onInsertToken,
+  styles,
+  currentStyle,
+  styleUsage,
+  onApplyStyle,
+  onCreateStyle,
 }: {
   el: TextElement;
   orientation: Orientation;
@@ -512,6 +677,14 @@ function ContextToolbar({
   popover: Popover;
   setPopover: (p: Popover) => void;
   onPatch: (c: Partial<TextElement>) => void;
+  editing: boolean;
+  onEdit: () => void;
+  onInsertToken: (key: string) => void;
+  styles: TextStyle[];
+  currentStyle: TextStyle | null;
+  styleUsage: Record<string, number>;
+  onApplyStyle: (id: string | null) => void;
+  onCreateStyle: (name: string) => void;
 }) {
   const isText = el.kind === "text";
   const isPanel = el.kind === "panel";
@@ -519,6 +692,8 @@ function ContextToolbar({
   const small = phonePx < MIN_READABLE_PX;
   const toggle = (p: Popover) => setPopover(popover === p ? null : p);
   const sizeStep = isPanel ? 1 : 2;
+  const [newName, setNewName] = useState("");
+  const uses = currentStyle ? styleUsage[currentStyle.id] ?? 1 : 0;
 
   return (
     <>
@@ -526,37 +701,107 @@ function ContextToolbar({
 
       {isText && (
         <div className="relative" data-popover>
-          <ToolButton label="Editar texto (doble clic en el lienzo)" active={popover === "text"} onClick={() => toggle("text")}>
-            <Pencil size={14} /> <span className="text-xs">Texto</span>
+          <ToolButton label="Estilo de texto" active={popover === "style"} onClick={() => toggle("style")}>
+            <Type size={14} />
+            <span className="max-w-[8rem] truncate text-xs">{currentStyle ? currentStyle.name : "Sin estilo"}</span>
           </ToolButton>
-          {popover === "text" && (
-            <div className="absolute left-0 top-full z-30 mt-1 w-80 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg">
-              <textarea
-                autoFocus
-                aria-label="Texto"
-                className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
-                rows={3}
-                value={el.text}
-                maxLength={300}
-                onChange={(e) => onPatch({ text: e.target.value })}
-              />
-              <p className="mb-1 mt-2 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Insertar dato</p>
+          {popover === "style" && (
+            <div className="absolute left-0 top-full z-30 mt-1 w-72 rounded-lg border border-neutral-200 bg-white p-2 shadow-lg">
+              <p className="px-1.5 pb-1 text-[11px] text-neutral-500">
+                Los textos con el mismo estilo comparten tipografía, color y formato. El tamaño es de cada texto.
+              </p>
+              {styles.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => onApplyStyle(s.id)}
+                  className={`flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-neutral-50 ${currentStyle?.id === s.id ? "bg-neutral-100" : ""}`}
+                >
+                  <span className="w-4 shrink-0">{currentStyle?.id === s.id && <Check size={14} />}</span>
+                  <span
+                    className="min-w-0 flex-1 truncate text-lg"
+                    style={{
+                      fontFamily: FONTS[s.font].css,
+                      fontWeight: s.weight,
+                      fontStyle: s.italic ? "italic" : "normal",
+                      textTransform: s.uppercase ? "uppercase" : "none",
+                      letterSpacing: `${Math.min(s.letterSpacing, 0.15)}em`,
+                      color: s.color,
+                    }}
+                  >
+                    {s.name}
+                  </span>
+                  <span className="text-[11px] text-neutral-400">{styleUsage[s.id] ?? 0}</span>
+                </button>
+              ))}
+              {currentStyle && (
+                <button type="button" onClick={() => onApplyStyle(null)} className="mt-1 flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-50">
+                  <Unlink size={14} /> Quitar estilo (editar este texto aparte)
+                </button>
+              )}
+              <form
+                className="mt-1 flex gap-1 border-t border-neutral-100 pt-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (newName.trim()) onCreateStyle(newName);
+                  setNewName("");
+                }}
+              >
+                <input
+                  aria-label="Nombre del estilo nuevo"
+                  placeholder="Nuevo estilo con este texto…"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  maxLength={40}
+                  className="min-w-0 flex-1 rounded-md border border-neutral-300 px-2 py-1 text-sm"
+                />
+                <button type="submit" disabled={!newName.trim()} className="rounded-md bg-neutral-900 px-2.5 text-xs font-medium text-white disabled:opacity-40">
+                  Crear
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isText && (
+        <ToolButton label={editing ? "Terminar de escribir (Esc)" : "Escribir en el lienzo (doble clic o Enter)"} active={editing} onClick={onEdit}>
+          <Pencil size={14} /> <span className="text-xs">{editing ? "Listo" : "Editar texto"}</span>
+        </ToolButton>
+      )}
+
+      {isText && tokens.length > 0 && (
+        <div className="relative" data-popover>
+          <ToolButton label="Insertar dato" active={popover === "tokens"} onClick={() => toggle("tokens")} keepFocus>
+            <Braces size={14} /> <span className="text-xs">Dato</span>
+          </ToolButton>
+          {popover === "tokens" && (
+            <div className="absolute left-0 top-full z-30 mt-1 w-72 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg">
+              <p className="mb-1.5 text-[11px] text-neutral-500">
+                {editing ? "Se inserta donde está el cursor." : "Se agrega al final del texto."} Se completa solo con lo que cargás en «Contenido».
+              </p>
               <div className="flex flex-wrap gap-1">
                 {tokens.map((t) => (
                   <button
                     key={t}
                     type="button"
-                    onClick={() => onPatch({ text: el.text + `{${t}}` })}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => onInsertToken(t)}
                     className="rounded-full border border-neutral-300 px-2 py-0.5 text-xs text-neutral-700 hover:bg-neutral-50"
                   >
                     {TOKEN_HELP[t] ?? t}
                   </button>
                 ))}
               </div>
-              <p className="mt-2 text-[11px] text-neutral-400">Los datos se completan solos con lo que cargás en «Contenido».</p>
             </div>
           )}
         </div>
+      )}
+
+      {currentStyle && (
+        <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[11px] text-blue-800" title="Tipografía, color y formato cambian en todos los textos con este estilo">
+          Cambia en {uses} {uses === 1 ? "texto" : "textos"}
+        </span>
       )}
 
       <select
@@ -664,13 +909,26 @@ function ContextToolbar({
   );
 }
 
-function ToolButton({ label, active, onClick, children }: { label: string; active?: boolean; onClick: () => void; children: ReactNode }) {
+function ToolButton({
+  label,
+  active,
+  onClick,
+  keepFocus,
+  children,
+}: {
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+  keepFocus?: boolean; // no le saca el cursor al texto que se está escribiendo
+  children: ReactNode;
+}) {
   return (
     <button
       type="button"
       title={label}
       aria-label={label}
       aria-pressed={active}
+      onMouseDown={keepFocus ? (e) => e.preventDefault() : undefined}
       onClick={onClick}
       className={`flex h-8 items-center gap-1 rounded-md px-2 ${active ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-neutral-100"}`}
     >
@@ -710,6 +968,120 @@ function Num({ label, value, step = 1, onChange }: { label: string; value: numbe
         }}
       />
     </label>
+  );
+}
+
+/* ---------- Escribir sobre el lienzo ---------- */
+
+// Los datos ({nombre1}…) se muestran como fichas con su valor real; no se
+// pueden cortar a la mitad, solo borrar enteros.
+function tokenChip(key: string, tokens: TokenValues) {
+  const chip = document.createElement("span");
+  chip.contentEditable = "false";
+  chip.dataset.token = key;
+  chip.textContent = tokens[key] || `[${TOKEN_HELP[key] ?? key}]`;
+  chip.title = `Dato: ${TOKEN_HELP[key] ?? key}`;
+  chip.style.cssText = "background:rgba(37,99,235,.13);border-radius:.15em;box-shadow:0 0 0 .04em rgba(37,99,235,.35)";
+  return chip;
+}
+
+function serializeInline(root: Node): string {
+  let out = "";
+  root.childNodes.forEach((c) => {
+    if (c.nodeType === Node.TEXT_NODE) out += c.textContent ?? "";
+    else if (c instanceof HTMLElement) {
+      if (c.dataset.token) out += `{${c.dataset.token}}`;
+      else if (c.tagName === "BR") out += "\n";
+      else {
+        const inner = serializeInline(c);
+        out += (c.tagName === "DIV" || c.tagName === "P") && out && !out.endsWith("\n") ? `\n${inner}` : inner;
+      }
+    }
+  });
+  return out;
+}
+
+function InlineText({
+  text,
+  tokens,
+  point,
+  onNode,
+  onInput,
+  onDone,
+}: {
+  text: string;
+  tokens: TokenValues;
+  point: { x: number; y: number } | null;
+  onNode: (n: HTMLDivElement | null) => void;
+  onInput: (text: string) => void;
+  onDone: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const initial = useRef(text);
+
+  // El contenido se arma una sola vez; después lo maneja el navegador.
+  useLayoutEffect(() => {
+    const n = ref.current!;
+    onNode(n);
+    n.replaceChildren();
+    for (const part of initial.current.split(/(\{\w+\})/)) {
+      if (!part) continue;
+      const m = part.match(/^\{(\w+)\}$/);
+      n.append(m && m[1] in tokens ? tokenChip(m[1], tokens) : document.createTextNode(part));
+    }
+    n.focus({ preventScroll: true });
+    const sel = window.getSelection();
+    let range: Range | null = null;
+    if (point && "caretRangeFromPoint" in document) range = document.caretRangeFromPoint(point.x, point.y);
+    if (!range || !n.contains(range.startContainer)) {
+      range = document.createRange();
+      range.selectNodeContents(n);
+      range.collapse(false);
+    }
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    return () => onNode(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- se arma una sola vez por edición
+  }, [point, tokens]);
+
+  const emit = () => {
+    const n = ref.current;
+    if (!n) return;
+    let t = serializeInline(n);
+    // Chrome deja un salto de línea de relleno al final.
+    if (n.lastChild instanceof HTMLBRElement && t.endsWith("\n")) t = t.slice(0, -1);
+    onInput(t.slice(0, 300));
+  };
+
+  return (
+    <div
+      ref={ref}
+      contentEditable
+      suppressContentEditableWarning
+      role="textbox"
+      aria-multiline="true"
+      aria-label="Texto"
+      data-inline-editor
+      onInput={emit}
+      onPointerDown={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          onDone();
+        } else if (e.key === "Enter") {
+          // Salto de línea como texto (no párrafos nuevos).
+          e.preventDefault();
+          document.execCommand("insertText", false, "\n");
+        }
+      }}
+      onPaste={(e) => {
+        e.preventDefault();
+        document.execCommand("insertText", false, e.clipboardData.getData("text/plain"));
+      }}
+      style={{ outline: "none", minHeight: "1em", cursor: "text", userSelect: "text", WebkitUserSelect: "text", caretColor: "#2563eb" }}
+    />
   );
 }
 

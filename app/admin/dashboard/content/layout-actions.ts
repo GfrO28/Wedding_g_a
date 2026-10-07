@@ -4,11 +4,14 @@ import { revalidatePath } from "next/cache";
 import { setJSON, setSetting } from "@/lib/kv";
 import { getSettingsMap } from "@/lib/settings";
 import {
+  DRAFT_STYLES_KEY,
   draftLayoutKey,
   isLayoutSection,
   LAYOUT_SECTIONS,
   layoutSettingKey,
   sanitizeLayout,
+  sanitizeStyles,
+  STYLES_KEY,
   type LayoutSection,
   type TextLayout,
 } from "@/lib/textLayout";
@@ -20,23 +23,36 @@ export async function saveDraftAction(section: string, layout: unknown): Promise
   return { ok: true };
 }
 
-// Publica los borradores: pasan a ser lo que ven los invitados.
+export async function saveStylesDraftAction(styles: unknown): Promise<{ ok: boolean }> {
+  await setJSON(DRAFT_STYLES_KEY, sanitizeStyles(styles));
+  return { ok: true };
+}
+
+function parse(raw: string | undefined): unknown {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+// Publica los borradores (diseños y estilos): pasan a ser lo que ven los invitados.
 export async function publishAction(): Promise<{ ok: boolean; published: Partial<Record<LayoutSection, TextLayout>> }> {
   const map = await getSettingsMap();
   const published: Partial<Record<LayoutSection, TextLayout>> = {};
   for (const s of LAYOUT_SECTIONS) {
-    const raw = map[draftLayoutKey(s)];
-    if (!raw) continue;
-    let parsed: unknown = null;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      continue;
-    }
+    const parsed = parse(map[draftLayoutKey(s)]);
+    if (!parsed) continue;
     const clean = sanitizeLayout(s, parsed);
     await setJSON(layoutSettingKey(s), clean);
     await setSetting(draftLayoutKey(s), "");
     published[s] = clean;
+  }
+  const styles = parse(map[DRAFT_STYLES_KEY]);
+  if (styles) {
+    await setJSON(STYLES_KEY, sanitizeStyles(styles));
+    await setSetting(DRAFT_STYLES_KEY, "");
   }
   revalidatePath("/", "layout");
   return { ok: true, published };
@@ -45,6 +61,7 @@ export async function publishAction(): Promise<{ ok: boolean; published: Partial
 // Descarta los borradores y vuelve a lo publicado.
 export async function discardDraftsAction(): Promise<{ ok: boolean }> {
   for (const s of LAYOUT_SECTIONS) await setSetting(draftLayoutKey(s), "");
+  await setSetting(DRAFT_STYLES_KEY, "");
   revalidatePath("/admin/dashboard/content");
   return { ok: true };
 }

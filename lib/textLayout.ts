@@ -80,9 +80,71 @@ export type TextElement = {
   uppercase: boolean;
   rotation: number;
   hidden: boolean;
+  // Estilo compartido: si tiene uno, la tipografía y el color salen del estilo
+  // (applyStyles) y los valores propios quedan sin uso.
+  style: string | null;
 };
 
 export type TextLayout = Record<Orientation, TextElement[]>;
+
+/* ---------- Estilos de texto compartidos ---------- */
+
+// El tamaño no forma parte del estilo: la mesa vertical usa letras del doble
+// de tamaño que la horizontal, y cada texto tiene el suyo.
+export const STYLE_PROPS = ["font", "color", "weight", "italic", "uppercase", "letterSpacing", "lineHeight"] as const;
+export type StyleProp = (typeof STYLE_PROPS)[number];
+export type TextStyle = { id: string; name: string } & Pick<TextElement, StyleProp>;
+
+const st = (id: string, name: string, s: Partial<TextStyle> & Pick<TextStyle, "font" | "color">): TextStyle => ({
+  id, name, weight: 400, italic: false, uppercase: false, letterSpacing: 0, lineHeight: 1.15, ...s,
+});
+
+export const DEFAULT_TEXT_STYLES: TextStyle[] = [
+  st("nombres", "Nombres", { font: "alexbrush", color: "var(--color-accent)", lineHeight: 1.05 }),
+  st("titulos", "Títulos", { font: "playfair", color: "var(--color-fg)" }),
+  st("antetitulo", "Antetítulo", { font: "inter", color: "var(--color-muted)", uppercase: true, letterSpacing: 0.2 }),
+  st("detalle", "Detalle", { font: "inter", color: "var(--color-muted)" }),
+  st("parrafo", "Párrafo", { font: "inter", color: "var(--color-muted)", lineHeight: 1.45 }),
+];
+
+export const STYLES_KEY = "text_styles";
+export const DRAFT_STYLES_KEY = "draft_text_styles";
+const STYLE_ID = /^[a-z0-9-]{1,40}$/;
+
+export const pickStyle = (s: Pick<TextElement, StyleProp>): Pick<TextElement, StyleProp> =>
+  Object.fromEntries(STYLE_PROPS.map((p) => [p, s[p]])) as Pick<TextElement, StyleProp>;
+
+// Aplica los estilos compartidos a los textos vinculados.
+export function applyStyles(layout: TextLayout, styles: TextStyle[]): TextLayout {
+  const byId = new Map(styles.map((s) => [s.id, s]));
+  const map = (list: TextElement[]) =>
+    list.map((e) => {
+      const s = e.kind === "text" && e.style ? byId.get(e.style) : undefined;
+      return s ? { ...e, ...pickStyle(s) } : e;
+    });
+  return { portrait: map(layout.portrait), landscape: map(layout.landscape) };
+}
+
+export function sanitizeStyles(input: unknown): TextStyle[] {
+  if (!Array.isArray(input)) return DEFAULT_TEXT_STYLES.map((s) => ({ ...s }));
+  const out: TextStyle[] = [];
+  for (const raw of input.slice(0, 30)) {
+    const s = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+    if (typeof s.id !== "string" || !STYLE_ID.test(s.id) || out.some((o) => o.id === s.id)) continue;
+    out.push({
+      id: s.id,
+      name: typeof s.name === "string" && s.name.trim() ? s.name.trim().slice(0, 40) : "Estilo",
+      font: typeof s.font === "string" && s.font in FONTS ? (s.font as FontKey) : "inter",
+      color: validColor(s.color, "var(--color-fg)"),
+      weight: [300, 400, 500, 600, 700].includes(s.weight as number) ? (s.weight as number) : 400,
+      italic: s.italic === true,
+      uppercase: s.uppercase === true,
+      letterSpacing: clamp(s.letterSpacing, -0.1, 1, 0),
+      lineHeight: clamp(s.lineHeight, 0.6, 3, 1.15),
+    });
+  }
+  return out;
+}
 
 /* ---------- Variables ---------- */
 
@@ -154,7 +216,7 @@ export function typeStyle(el: TextElement): Record<string, string> {
 
 const base = {
   kind: "text" as const, align: "center" as const, letterSpacing: 0, lineHeight: 1.15,
-  weight: 400, italic: false, uppercase: false, rotation: 0, hidden: false,
+  weight: 400, italic: false, uppercase: false, rotation: 0, hidden: false, style: null,
 };
 type Spec = Partial<TextElement> & Pick<TextElement, "id" | "name" | "text" | "fontSize" | "font" | "color">;
 const el = (s: Spec & { x?: number; y?: number; w?: number; h?: number }): TextElement => ({ ...base, x: 0, y: 0, w: 600, h: 0, ...s });
@@ -176,13 +238,13 @@ const layoutOf = (...items: Pair[]): TextLayout => ({ portrait: items.map((i) =>
 // ~51% en un celular, por eso sus tamaños son el doble que en la horizontal.
 const T = (text: string, py: number, ly: number, id = "title", name = "Título") =>
   pair(
-    el({ id, name, text, x: 384, y: py, w: 700, fontSize: 59, font: "playfair", color: "var(--color-fg)" }),
-    el({ id, name, text, x: 512, y: ly, w: 900, fontSize: 30, font: "playfair", color: "var(--color-fg)" }),
+    el({ id, name, text, x: 384, y: py, w: 700, fontSize: 59, font: "playfair", color: "var(--color-fg)", style: "titulos" }),
+    el({ id, name, text, x: 512, y: ly, w: 900, fontSize: 30, font: "playfair", color: "var(--color-fg)", style: "titulos" }),
   );
 const P = (id: string, name: string, text: string, p: { y: number; fs: number }, l: { y: number; fs: number }) =>
   pair(
-    el({ id, name, text, x: 384, y: p.y, w: 680, fontSize: p.fs, font: "inter", color: "var(--color-muted)", lineHeight: 1.45 }),
-    el({ id, name, text, x: 512, y: l.y, w: 720, fontSize: l.fs, font: "inter", color: "var(--color-muted)", lineHeight: 1.45 }),
+    el({ id, name, text, x: 384, y: p.y, w: 680, fontSize: p.fs, font: "inter", color: "var(--color-muted)", lineHeight: 1.45, style: "parrafo" }),
+    el({ id, name, text, x: 512, y: l.y, w: 720, fontSize: l.fs, font: "inter", color: "var(--color-muted)", lineHeight: 1.45, style: "parrafo" }),
   );
 const B = (p: { y: number; h: number }, l: { y: number; h: number; w: number }) =>
   pair(
@@ -215,16 +277,16 @@ export const SECTIONS = {
     tokens: [...COMMON_TOKENS, "invitado"],
     defaults: {
       portrait: [
-        el({ id: "eyebrow", name: "Antetítulo", text: "Nos casamos", x: 384, y: 245, w: 680, fontSize: 27, font: "inter", color: "var(--color-muted)", uppercase: true, letterSpacing: 0.2 }),
-        el({ id: "names", name: "Nombres", text: "{nombre1} & {nombre2}", x: 384, y: 440, w: 700, fontSize: 140, font: "alexbrush", color: "var(--color-accent)", lineHeight: 1.05 }),
-        el({ id: "date", name: "Fecha", text: "{fecha}", x: 384, y: 640, w: 680, fontSize: 35, font: "inter", color: "var(--color-muted)" }),
+        el({ id: "eyebrow", name: "Antetítulo", text: "Nos casamos", x: 384, y: 245, w: 680, fontSize: 27, font: "inter", color: "var(--color-muted)", uppercase: true, letterSpacing: 0.2, style: "antetitulo" }),
+        el({ id: "names", name: "Nombres", text: "{nombre1} & {nombre2}", x: 384, y: 440, w: 700, fontSize: 140, font: "alexbrush", color: "var(--color-accent)", lineHeight: 1.05, style: "nombres" }),
+        el({ id: "date", name: "Fecha", text: "{fecha}", x: 384, y: 640, w: 680, fontSize: 35, font: "inter", color: "var(--color-muted)", style: "detalle" }),
         el({ id: "greeting", name: "Saludo", text: "Querido/a {invitado}, ¡nos encantaría contar con vos!", x: 384, y: 730, w: 660, fontSize: 31, font: "inter", color: "var(--color-fg)", lineHeight: 1.35 }),
         el({ kind: "block", id: "countdown", name: "Cuenta regresiva", text: "", x: 384, y: 860, w: 560, fontSize: 26, font: "inter", color: "var(--color-fg)", weight: 600 }),
       ],
       landscape: [
-        el({ id: "eyebrow", name: "Antetítulo", text: "Nos casamos", x: 512, y: 190, w: 900, fontSize: 22, font: "inter", color: "var(--color-muted)", uppercase: true, letterSpacing: 0.2 }),
-        el({ id: "names", name: "Nombres", text: "{nombre1} & {nombre2}", x: 512, y: 300, w: 980, fontSize: 100, font: "alexbrush", color: "var(--color-accent)", lineHeight: 1.05 }),
-        el({ id: "date", name: "Fecha", text: "{fecha}", x: 512, y: 410, w: 900, fontSize: 28, font: "inter", color: "var(--color-muted)" }),
+        el({ id: "eyebrow", name: "Antetítulo", text: "Nos casamos", x: 512, y: 190, w: 900, fontSize: 22, font: "inter", color: "var(--color-muted)", uppercase: true, letterSpacing: 0.2, style: "antetitulo" }),
+        el({ id: "names", name: "Nombres", text: "{nombre1} & {nombre2}", x: 512, y: 300, w: 980, fontSize: 100, font: "alexbrush", color: "var(--color-accent)", lineHeight: 1.05, style: "nombres" }),
+        el({ id: "date", name: "Fecha", text: "{fecha}", x: 512, y: 410, w: 900, fontSize: 28, font: "inter", color: "var(--color-muted)", style: "detalle" }),
         el({ id: "greeting", name: "Saludo", text: "Querido/a {invitado}, ¡nos encantaría contar con vos!", x: 512, y: 475, w: 900, fontSize: 25, font: "inter", color: "var(--color-fg)", lineHeight: 1.35 }),
         el({ kind: "block", id: "countdown", name: "Cuenta regresiva", text: "", x: 512, y: 590, w: 600, fontSize: 24, font: "inter", color: "var(--color-fg)", weight: 600 }),
       ],
@@ -238,7 +300,7 @@ export const SECTIONS = {
     defaults: {
       portrait: [
         el({ id: "quote", name: "Frase", text: "“{frase}”", x: 384, y: 215, w: 640, fontSize: 35, font: "playfair", color: "var(--color-fg)", italic: true, lineHeight: 1.4 }),
-        el({ id: "source", name: "Fuente", text: "{fuente}", x: 384, y: 355, w: 600, fontSize: 27, font: "inter", color: "var(--color-muted)" }),
+        el({ id: "source", name: "Fuente", text: "{fuente}", x: 384, y: 355, w: 600, fontSize: 27, font: "inter", color: "var(--color-muted)", style: "detalle" }),
         el({ kind: "block", id: "divider", name: "Separador", text: "", x: 384, y: 425, w: 420, fontSize: 28, font: "inter", color: "var(--color-accent)" }),
         el({ id: "monogram", name: "Monograma", text: "{inicial1}{inicial2}", x: 384, y: 520, w: 400, fontSize: 118, font: "alexbrush", color: "var(--color-accent)", lineHeight: 1 }),
         el({ id: "label", name: "Leyenda", text: "¡Nos casamos!", x: 384, y: 615, w: 600, fontSize: 27, font: "inter", color: "var(--color-muted)", uppercase: true, letterSpacing: 0.25 }),
@@ -249,7 +311,7 @@ export const SECTIONS = {
       ],
       landscape: [
         el({ id: "quote", name: "Frase", text: "“{frase}”", x: 512, y: 150, w: 700, fontSize: 22, font: "playfair", color: "var(--color-fg)", italic: true, lineHeight: 1.4 }),
-        el({ id: "source", name: "Fuente", text: "{fuente}", x: 512, y: 230, w: 600, fontSize: 16, font: "inter", color: "var(--color-muted)" }),
+        el({ id: "source", name: "Fuente", text: "{fuente}", x: 512, y: 230, w: 600, fontSize: 16, font: "inter", color: "var(--color-muted)", style: "detalle" }),
         el({ kind: "block", id: "divider", name: "Separador", text: "", x: 512, y: 285, w: 320, fontSize: 16, font: "inter", color: "var(--color-accent)" }),
         el({ id: "monogram", name: "Monograma", text: "{inicial1}{inicial2}", x: 512, y: 360, w: 400, fontSize: 72, font: "alexbrush", color: "var(--color-accent)", lineHeight: 1 }),
         el({ id: "label", name: "Leyenda", text: "¡Nos casamos!", x: 512, y: 425, w: 600, fontSize: 16, font: "inter", color: "var(--color-muted)", uppercase: true, letterSpacing: 0.25 }),
@@ -267,12 +329,12 @@ export const SECTIONS = {
     tokens: COMMON_TOKENS,
     defaults: {
       portrait: [
-        el({ id: "names", name: "Nombres", text: "{nombre1} & {nombre2}", x: 384, y: 150, w: 720, fontSize: 71, font: "alexbrush", color: "var(--color-accent)", lineHeight: 1.05 }),
-        el({ id: "hashtag", name: "Hashtag", text: "{hashtag}", x: 384, y: 240, w: 600, fontSize: 28, font: "inter", color: "var(--color-muted)" }),
+        el({ id: "names", name: "Nombres", text: "{nombre1} & {nombre2}", x: 384, y: 150, w: 720, fontSize: 71, font: "alexbrush", color: "var(--color-accent)", lineHeight: 1.05, style: "nombres" }),
+        el({ id: "hashtag", name: "Hashtag", text: "{hashtag}", x: 384, y: 240, w: 600, fontSize: 28, font: "inter", color: "var(--color-muted)", style: "detalle" }),
       ],
       landscape: [
-        el({ id: "names", name: "Nombres", text: "{nombre1} & {nombre2}", x: 512, y: 52, w: 900, fontSize: 34, font: "alexbrush", color: "var(--color-accent)", lineHeight: 1.05 }),
-        el({ id: "hashtag", name: "Hashtag", text: "{hashtag}", x: 512, y: 94, w: 600, fontSize: 14, font: "inter", color: "var(--color-muted)" }),
+        el({ id: "names", name: "Nombres", text: "{nombre1} & {nombre2}", x: 512, y: 52, w: 900, fontSize: 34, font: "alexbrush", color: "var(--color-accent)", lineHeight: 1.05, style: "nombres" }),
+        el({ id: "hashtag", name: "Hashtag", text: "{hashtag}", x: 512, y: 94, w: 600, fontSize: 14, font: "inter", color: "var(--color-muted)", style: "detalle" }),
       ],
     },
   },
@@ -289,8 +351,8 @@ export const SECTIONS = {
       T("Confirmá tu asistencia", 160, 110),
       // Reemplaza al título una vez que el invitado confirmó.
       pair(
-        el({ id: "thanks", name: "Título al confirmar", text: "¡Gracias por responder!", x: 384, y: 160, w: 700, fontSize: 47, font: "playfair", color: "var(--color-fg)" }),
-        el({ id: "thanks", name: "Título al confirmar", text: "¡Gracias por responder!", x: 512, y: 110, w: 900, fontSize: 24, font: "playfair", color: "var(--color-fg)" }),
+        el({ id: "thanks", name: "Título al confirmar", text: "¡Gracias por responder!", x: 384, y: 160, w: 700, fontSize: 47, font: "playfair", color: "var(--color-fg)", style: "titulos" }),
+        el({ id: "thanks", name: "Título al confirmar", text: "¡Gracias por responder!", x: 512, y: 110, w: 900, fontSize: 24, font: "playfair", color: "var(--color-fg)", style: "titulos" }),
       ),
       B({ y: 600, h: 760 }, { y: 440, h: 560, w: 512 }),
     ),
@@ -335,7 +397,7 @@ export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayo
     const list = Array.isArray(src[o]) ? (src[o] as Record<string, unknown>[]) : [];
     out[o] = cfg.defaults[o].map((d) => {
       const s = list.find((e) => e && e.id === d.id) ?? {};
-      return {
+      const clean: TextElement = {
         ...d,
         text: typeof s.text === "string" ? s.text.slice(0, 300) : d.text,
         x: clamp(s.x, -A.w, 2 * A.w, d.x),
@@ -353,7 +415,18 @@ export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayo
         uppercase: typeof s.uppercase === "boolean" ? s.uppercase : d.uppercase,
         rotation: clamp(s.rotation, -180, 180, d.rotation),
         hidden: typeof s.hidden === "boolean" ? s.hidden : d.hidden,
+        style: null,
       };
+      if (d.kind !== "text") return clean;
+      if ("style" in s) {
+        clean.style = typeof s.style === "string" && STYLE_ID.test(s.style) ? s.style : null;
+      } else if (d.style) {
+        // Diseños guardados antes de los estilos: se vinculan solo si se ven
+        // igual que el estilo, para no cambiar nada que ya se haya ajustado.
+        const def = DEFAULT_TEXT_STYLES.find((x) => x.id === d.style);
+        if (def && STYLE_PROPS.every((p) => clean[p] === def[p])) clean.style = d.style;
+      }
+      return clean;
     });
   }
   return out;

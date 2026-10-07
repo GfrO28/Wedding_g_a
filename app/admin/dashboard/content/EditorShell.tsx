@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, Check, ExternalLink, Loader2, PanelRightClose, PanelRightOpen } from "lucide-react";
 import type { EnvelopeSlot } from "@/lib/envelopeAssets";
-import type { LayoutSection, TextLayout, TokenValues } from "@/lib/textLayout";
+import { applyStyles, LAYOUT_SECTIONS, pickStyle, type LayoutSection, type TextLayout, type TextStyle, type TokenValues } from "@/lib/textLayout";
 import { ArtboardEditor } from "./ArtboardEditor";
 import { EnvelopeImagesPanel } from "./EnvelopeImagesPanel";
-import { discardDraftsAction, publishAction, saveDraftAction } from "./layout-actions";
+import { discardDraftsAction, publishAction, saveDraftAction, saveStylesDraftAction } from "./layout-actions";
+import { StylesPanel } from "./StylesPanel";
 import { toggleZoneEnabledAction } from "./zone-actions";
 
 export type EditorSection = {
@@ -27,6 +28,7 @@ export function EditorShell({
   blocks,
   published,
   drafts,
+  styles: initialStyles,
   tokens,
   envelope,
 }: {
@@ -35,12 +37,16 @@ export function EditorShell({
   blocks: Record<string, Record<string, ReactNode>>;
   published: Record<LayoutSection, TextLayout>;
   drafts: Record<LayoutSection, TextLayout>;
+  styles: { published: TextStyle[]; draft: TextStyle[] };
   tokens: TokenValues;
   envelope: { assets: Record<EnvelopeSlot, string>; custom: Record<EnvelopeSlot, boolean> };
 }) {
   const [currentId, setCurrentId] = useState(sections[0].id);
   const [layouts, setLayouts] = useState(drafts);
   const [publishedState, setPublishedState] = useState(published);
+  const [styles, setStyles] = useState(initialStyles.draft);
+  const [publishedStyles, setPublishedStyles] = useState(initialStyles.published);
+  const pendingStyles = useRef<TextStyle[] | null>(null);
   const [enabled, setEnabled] = useState<Record<string, boolean>>(
     Object.fromEntries(sections.filter((s) => s.zone).map((s) => [s.id, s.enabled ?? true])),
   );
@@ -54,17 +60,32 @@ export function EditorShell({
 
   const current = sections.find((s) => s.id === currentId)!;
   const unpublished = (s: LayoutSection) => JSON.stringify(layouts[s]) !== JSON.stringify(publishedState[s]);
-  const anyUnpublished = sections.some((s) => s.design && unpublished(s.design));
+  const stylesUnpublished = JSON.stringify(styles) !== JSON.stringify(publishedStyles);
+  const anyUnpublished = stylesUnpublished || sections.some((s) => s.design && unpublished(s.design));
+
+  // Cuántos textos usan cada estilo (en todas las secciones y formatos).
+  const styleUsage = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const s of LAYOUT_SECTIONS)
+      for (const list of [layouts[s].portrait, layouts[s].landscape])
+        for (const e of list) if (e.kind === "text" && e.style) out[e.style] = (out[e.style] ?? 0) + 1;
+    return out;
+  }, [layouts]);
 
   const flush = useCallback(async () => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     const items = [...pending.current.entries()];
     pending.current.clear();
-    if (!items.length) return true;
+    const st = pendingStyles.current;
+    pendingStyles.current = null;
+    if (!items.length && !st) return true;
     setSaveState("saving");
     try {
-      const results = await Promise.all(items.map(([s, l]) => saveDraftAction(s, l)));
+      const results = await Promise.all([
+        ...items.map(([s, l]) => saveDraftAction(s, l)),
+        ...(st ? [saveStylesDraftAction(st)] : []),
+      ]);
       const ok = results.every((r) => r.ok);
       setSaveState(ok ? "saved" : "error");
       return ok;
@@ -85,12 +106,36 @@ export function EditorShell({
     },
     [flush],
   );
+  const handleStylesChange = useCallback(
+    (next: TextStyle[]) => {
+      setStyles(next);
+      pendingStyles.current = next;
+      setSaveState("saving");
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(flush, 800);
+    },
+    [flush],
+  );
+
+  // Al borrar un estilo, sus textos se quedan como se veían, pero sin estilo.
+  function deleteStyle(id: string) {
+    const style = styles.find((s) => s.id === id);
+    if (!style) return;
+    for (const s of LAYOUT_SECTIONS) {
+      const l = layouts[s];
+      if (![...l.portrait, ...l.landscape].some((e) => e.style === id)) continue;
+      const unlink = (list: TextLayout["portrait"]) => list.map((e) => (e.style === id ? { ...e, ...pickStyle(style), style: null } : e));
+      handleChange(s, { portrait: unlink(l.portrait), landscape: unlink(l.landscape) });
+    }
+    handleStylesChange(styles.filter((s) => s.id !== id));
+  }
+
   const design = current.design;
   const onDesignChange = useCallback((l: TextLayout) => design && handleChange(design, l), [design, handleChange]);
 
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
-      if (pending.current.size) e.preventDefault();
+      if (pending.current.size || pendingStyles.current) e.preventDefault();
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
@@ -109,6 +154,7 @@ export function EditorShell({
     setPublishing(false);
     if (res.ok) {
       setPublishedState(layouts);
+      setPublishedStyles(styles);
       setNotice("Publicado: los invitados ya ven estos cambios.");
     } else setNotice("No se pudo publicar. Probá de nuevo.");
   }
@@ -117,8 +163,10 @@ export function EditorShell({
     if (!window.confirm("¿Descartar los cambios sin publicar? El diseño vuelve a lo que ven los invitados.")) return;
     if (timer.current) clearTimeout(timer.current);
     pending.current.clear();
+    pendingStyles.current = null;
     await discardDraftsAction();
     setLayouts(publishedState);
+    setStyles(publishedStyles);
     setVersion((v) => v + 1);
     setSaveState("idle");
     setNotice("Se descartaron los cambios sin publicar.");
@@ -144,7 +192,9 @@ export function EditorShell({
 
   const panel =
     current.id === "intro" ? (
-      <EnvelopeImagesPanel initialAssets={envelope.assets} initialCustom={envelope.custom} textLayout={layouts.envelope} tokens={tokens} />
+      <EnvelopeImagesPanel initialAssets={envelope.assets} initialCustom={envelope.custom} textLayout={applyStyles(layouts.envelope, styles)} tokens={tokens} />
+    ) : current.id === "styles" ? (
+      <StylesPanel styles={styles} usage={styleUsage} tokens={tokens} onChange={handleStylesChange} onDelete={deleteStyle} />
     ) : (
       panels[current.id]
     );
@@ -209,7 +259,7 @@ export function EditorShell({
                         className={`flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left text-sm ${!isOn && !active ? "text-neutral-400" : ""}`}
                       >
                         <span className="truncate">{s.label}</span>
-                        {s.design && unpublished(s.design) && (
+                        {((s.design && unpublished(s.design)) || (s.id === "styles" && stylesUnpublished)) && (
                           <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? "bg-amber-300" : "bg-amber-500"}`} title="Cambios sin publicar" />
                         )}
                       </button>
@@ -251,6 +301,9 @@ export function EditorShell({
               blocks={blocks[design]}
               onChange={onDesignChange}
               actions={contentToggle}
+              styles={styles}
+              onStylesChange={handleStylesChange}
+              styleUsage={styleUsage}
             />
           ) : (
             <div className="h-full overflow-y-auto p-6">
