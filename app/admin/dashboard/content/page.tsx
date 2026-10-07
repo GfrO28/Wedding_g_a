@@ -22,8 +22,6 @@ import { Zone } from "./Zone";
 import { MusicUploader } from "./MusicUploader";
 import { GalleryUploader } from "../GalleryUploader";
 import { ThemeEditor } from "../ThemeEditor";
-import { IntroEditor } from "../IntroEditor";
-import { getIntroSettings } from "@/lib/intro";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +49,6 @@ const IMAGE_FOCUS = [
 export default async function ContentEditorPage() {
   const w = await getWeddingContent();
   const theme = await getTheme();
-  const introSettings = await getIntroSettings();
   const allPhotos = await db.select().from(photos).orderBy(desc(photos.createdAt));
 
   return (
@@ -69,17 +66,7 @@ export default async function ContentEditorPage() {
         </p>
       </div>
 
-      <Zone number={1} title="Animación de apertura" previewZone="intro">
-        <p className="text-sm text-neutral-500">
-          El sobre con sello que ve el invitado antes de entrar a la
-          invitación. Las imágenes se recortan con la misma forma (triángulo
-          para cada solapa, óvalo para el sello) que en el sitio real — la
-          vista previa de al lado muestra exactamente ese recorte.
-        </p>
-        <IntroEditor settings={introSettings} />
-      </Zone>
-
-      <Zone number={2} title="Portada" zone="hero" initialEnabled={w.zoneEnabled.hero}>
+      <Zone number={1} title="Portada" zone="hero" initialEnabled={w.zoneEnabled.hero}>
         <form action={updateCoupleAction} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Nombre 1">
             <input name="partner1" defaultValue={w.partner1} className={inputClass} />
@@ -102,7 +89,7 @@ export default async function ContentEditorPage() {
         <ZoneImageUpload zone="hero" url={w.zoneImages.hero} />
       </Zone>
 
-      <Zone number={3} title="Frase, monograma y padres" zone="blessing" initialEnabled={w.zoneEnabled.blessing}>
+      <Zone number={2} title="Frase, monograma y padres" zone="blessing" initialEnabled={w.zoneEnabled.blessing}>
         <form action={updateBlessingAction} className="flex flex-col gap-3">
           <Field label="Frase o versículo">
             <textarea name="quoteText" defaultValue={w.quote.text} rows={2} className={inputClass} />
@@ -125,7 +112,7 @@ export default async function ContentEditorPage() {
         <ZoneImageUpload zone="blessing" url={w.zoneImages.blessing} />
       </Zone>
 
-      <Zone number={4} title="Nuestra historia" zone="story" initialEnabled={w.zoneEnabled.story}>
+      <Zone number={3} title="Nuestra historia" zone="story" initialEnabled={w.zoneEnabled.story}>
         <ListItems
           items={w.story.map((c) => ({ id: c.id, label: `${c.year} — ${c.title}` }))}
           deleteAction={deleteStoryChapterAction}
@@ -165,7 +152,7 @@ export default async function ContentEditorPage() {
         </form>
       </Zone>
 
-      <Zone number={5} title="El evento" zone="event" initialEnabled={w.zoneEnabled.event}>
+      <Zone number={4} title="El evento" zone="event" initialEnabled={w.zoneEnabled.event}>
         <form action={updatePlacesAction} className="flex flex-col gap-6">
           <div>
             <p className="mb-2 text-sm font-medium text-neutral-700">Ceremonia</p>
@@ -198,7 +185,7 @@ export default async function ContentEditorPage() {
         </div>
       </Zone>
 
-      <Zone number={6} title="Itinerario del día" zone="itinerary" initialEnabled={w.zoneEnabled.itinerary}>
+      <Zone number={5} title="Itinerario del día" zone="itinerary" initialEnabled={w.zoneEnabled.itinerary}>
         <ListItems
           items={w.itinerary.map((s) => ({ id: s.id, label: `${s.time} — ${s.label} (${s.icon})` }))}
           deleteAction={deleteItineraryStepAction}
@@ -216,7 +203,7 @@ export default async function ContentEditorPage() {
         <ZoneImageUpload zone="itinerary" url={w.zoneImages.itinerary} />
       </Zone>
 
-      <Zone number={7} title="Cómo llegar" zone="location" initialEnabled={w.zoneEnabled.location}>
+      <Zone number={6} title="Cómo llegar" zone="location" initialEnabled={w.zoneEnabled.location}>
         <p className="text-sm text-neutral-500">
           Usa las mismas direcciones y links de Google Maps que cargaste en
           "El evento" — no hace falta repetirlos.
@@ -224,7 +211,7 @@ export default async function ContentEditorPage() {
         <ZoneImageUpload zone="location" url={w.zoneImages.location} />
       </Zone>
 
-      <Zone number={8} title="Alojamiento" zone="accommodation" initialEnabled={w.zoneEnabled.accommodation}>
+      <Zone number={7} title="Alojamiento" zone="accommodation" initialEnabled={w.zoneEnabled.accommodation}>
         <ListItems
           items={w.accommodation.map((h) => ({ id: h.id, label: h.name }))}
           deleteAction={deleteHotelAction}
@@ -249,15 +236,15 @@ export default async function ContentEditorPage() {
         <ZoneImageUpload zone="accommodation" url={w.zoneImages.accommodation} />
       </Zone>
 
-      <Zone number={9} title="Galería" zone="gallery" initialEnabled={w.zoneEnabled.gallery}>
+      <Zone number={8} title="Galería" zone="gallery" initialEnabled={w.zoneEnabled.gallery}>
         <GalleryUploader photos={allPhotos} />
       </Zone>
 
-      <Zone number={10} title="Música" zone="music" initialEnabled={w.zoneEnabled.music} showPreview={false}>
+      <Zone number={9} title="Música" zone="music" initialEnabled={w.zoneEnabled.music} showPreview={false}>
         <MusicUploader music={w.music} />
       </Zone>
 
-      <Zone number={11} title="Regalos" zone="gifts" initialEnabled={w.zoneEnabled.gifts}>
+      <Zone number={10} title="Regalos" zone="gifts" initialEnabled={w.zoneEnabled.gifts}>
         <form action={updateGiftsAction} className="flex flex-col gap-4">
           <Field label="Mensaje">
             <textarea name="message" defaultValue={w.gifts.message} rows={2} className={inputClass} />
@@ -280,7 +267,7 @@ export default async function ContentEditorPage() {
         <ZoneImageUpload zone="gifts" url={w.zoneImages.gifts} />
       </Zone>
 
-      <Zone number={12} title="Paleta de colores" >
+      <Zone number={11} title="Paleta de colores" >
         <p className="mb-3 text-sm text-neutral-500">
           Se aplica a todo el sitio, no a una sola viñeta — por eso no tiene
           vista previa chica acá al lado.

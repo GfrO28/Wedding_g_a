@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { guests, rsvps } from "@/lib/db/schema";
 import { Hero } from "@/app/components/Hero";
-import { IntroEnvelope } from "@/app/components/IntroEnvelope";
+import { MusicControl } from "@/app/components/MusicControl";
 import { Blessing } from "@/app/components/Blessing";
 import { OurStory } from "@/app/components/OurStory";
 import { Gallery } from "@/app/components/Gallery";
@@ -15,7 +15,6 @@ import { Gifts } from "@/app/components/Gifts";
 import { RSVPForm } from "@/app/components/RSVPForm";
 import { GuestMessages } from "@/app/components/GuestMessages";
 import { Footer } from "@/app/components/Footer";
-import { getIntroSettings } from "@/lib/intro";
 import { getWeddingContent } from "@/lib/weddingContent";
 
 export const dynamic = "force-dynamic";
@@ -39,19 +38,11 @@ export default async function GuestInvitationPage({
     .where(eq(rsvps.guestId, guest.id))
     .limit(1);
 
-  const [introSettings, content] = await Promise.all([
-    getIntroSettings(),
-    getWeddingContent(),
-  ]);
+  const content = await getWeddingContent();
 
   return (
     <>
-    <IntroEnvelope
-      settings={introSettings}
-      partner1={content.partner1}
-      partner2={content.partner2}
-      music={content.zoneEnabled.music ? content.music : null}
-    />
+    <MusicControl music={content.zoneEnabled.music ? content.music : null} />
     <main className="h-dvh snap-y snap-mandatory overflow-y-scroll scroll-smooth">
       {content.zoneEnabled.hero && <Hero guestName={guest.fullName} />}
       {content.zoneEnabled.blessing && <Blessing />}
