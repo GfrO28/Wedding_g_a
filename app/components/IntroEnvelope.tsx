@@ -150,7 +150,7 @@ export function IntroEnvelope({
   }
 
   const fill = (url: string | null): CSSProperties =>
-    url
+    url && assetsReady
       ? { backgroundImage: `url(${url})`, backgroundSize: "cover", backgroundPosition: "center" }
       : { background: "color-mix(in srgb, var(--color-accent) 75%, white)" };
 
@@ -308,51 +308,60 @@ export function IntroEnvelope({
                       strokeDasharray="4 5"
                     />
                   </svg>
-
-                  {/* Sello: hijo de la solapa izquierda para moverse con ella */}
-                  <motion.div
-                    role="button"
-                    tabIndex={0}
-                    aria-label="Abrir invitación"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        startOpening();
-                      }
-                    }}
-                    className="absolute flex items-center justify-center outline-none"
-                    style={{
-                      left: "50%",
-                      top: "50%",
-                      width: sealSize,
-                      height: sealSize,
-                      marginLeft: -sealSize / 2,
-                      marginTop: -sealSize / 2,
-                      clipPath: sealBlobPolygon(sealSize),
-                      ...(settings.images.introSeal
-                        ? {
-                            backgroundImage: `url(${settings.images.introSeal})`,
-                            backgroundSize: "cover",
-                            backgroundPosition: "center",
-                          }
-                        : {
-                            background:
-                              "radial-gradient(circle at 35% 30%, #E3C27A, #B8893E 70%)",
-                          }),
-                      boxShadow:
-                        "0 2px 4px rgba(0,0,0,0.4), 0 8px 14px rgba(0,0,0,0.5), 0 18px 36px rgba(0,0,0,0.35), inset 0 2px 3px rgba(255,255,255,0.3), inset 0 -3px 5px rgba(0,0,0,0.25)",
-                    }}
-                    animate={{ scale: tapped ? 1.08 : 1, opacity: 1 }}
-                    transition={{ duration: TIMING.prep, ease: "easeOut" }}
-                  >
-                    {!settings.images.introSeal && (
-                      <>
-                        <FloralMotif className="absolute inset-0 h-full w-full" color="#5a3313" opacity={0.3} />
-                        <span className="font-script text-2xl text-[#4a2a10]">{initials}</span>
-                      </>
-                    )}
-                  </motion.div>
                 </Flap>
+
+                {/* Sello: no va clipeado por ninguna solapa, para quedar superpuesto a
+                    todas; gira igual que la solapa izquierda para viajar pegado a ella. */}
+                <motion.div
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Abrir invitación"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      startOpening();
+                    }
+                  }}
+                  className="absolute flex items-center justify-center outline-none"
+                  style={{
+                    left: "50%",
+                    top: "50%",
+                    width: sealSize,
+                    height: sealSize,
+                    marginLeft: -sealSize / 2,
+                    marginTop: -sealSize / 2,
+                    transformOrigin: "left center",
+                    backfaceVisibility: "hidden",
+                    clipPath: sealBlobPolygon(sealSize),
+                    zIndex: 40,
+                    ...(settings.images.introSeal
+                      ? {
+                          backgroundImage: `url(${settings.images.introSeal})`,
+                          backgroundSize: "cover",
+                          backgroundPosition: "center",
+                        }
+                      : {
+                          background: "radial-gradient(circle at 35% 30%, #E3C27A, #B8893E 70%)",
+                        }),
+                    boxShadow:
+                      "0 2px 4px rgba(0,0,0,0.4), 0 8px 14px rgba(0,0,0,0.5), 0 18px 36px rgba(0,0,0,0.35), inset 0 2px 3px rgba(255,255,255,0.3), inset 0 -3px 5px rgba(0,0,0,0.25)",
+                  }}
+                  animate={{
+                    scale: tapped ? 1.08 : 1,
+                    rotateY: tapped ? -FLAP_ANGLE : 0,
+                  }}
+                  transition={{
+                    scale: { duration: TIMING.prep, ease: "easeOut" },
+                    rotateY: { duration: TIMING.leftFlap.duration, delay: tapped ? TIMING.leftFlap.delay : 0, ease: "easeInOut" },
+                  }}
+                >
+                  {!settings.images.introSeal && (
+                    <>
+                      <FloralMotif className="absolute inset-0 h-full w-full" color="#5a3313" opacity={0.3} />
+                      <span className="font-script text-2xl text-[#4a2a10]">{initials}</span>
+                    </>
+                  )}
+                </motion.div>
               </>
             )}
 
