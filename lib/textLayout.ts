@@ -104,6 +104,7 @@ export type TextLayout = Record<Orientation, TextElement[]> & {
   v?: number;
   overlay?: number;
   manualPhotos?: boolean;
+  arrange?: string; // Itinerario: acomodo automático de los pasos (ARRANGEMENTS)
 };
 
 export const DEFAULT_OVERLAY = 0.4;
@@ -121,8 +122,9 @@ export const EXTENTS = [1, 1.5, 2, 2.5, 3, 4] as const;
 
 /* ---------- Objetos agregados desde el editor ---------- */
 
-export const SHAPES = { rect: "Rectángulo", rounded: "Redondeado", circle: "Círculo", line: "Línea" } as const;
+export const SHAPES = { rect: "Rectángulo", rounded: "Redondeado", circle: "Círculo", line: "Línea", outline: "Recuadro (solo borde)" } as const;
 export const ORNAMENT_KEYS = [
+  "church", "utensils", "party", "clock",
   "divider", "rings", "heart", "flower", "flower2", "leaf", "sprout", "sparkles", "star", "feather", "gem", "crown", "wine",
 ] as const;
 const CUSTOM_KINDS = ["text", "photo", "shape", "ornament"] as const;
@@ -246,6 +248,12 @@ export const TOKEN_HELP: Record<string, string> = {
   lugar2: "Recepción (nombre y salón)",
   direccion1: "Dirección de la ceremonia",
   direccion2: "Dirección de la recepción",
+  evento1: "Nombre del evento 1 (Ceremonia)",
+  hora1: "Hora de la ceremonia",
+  salon1: "Lugar de la ceremonia",
+  evento2: "Nombre del evento 2 (Recepción)",
+  hora2: "Hora de la recepción",
+  salon2: "Lugar de la recepción",
 };
 
 export const mapEmbedUrl = (address: string) => `https://maps.google.com/maps?q=${encodeURIComponent(address)}&output=embed`;
@@ -376,7 +384,28 @@ export type SectionConfig = {
   defaults: TextLayout;
   extendable?: boolean; // puede medir más de una pantalla
   photos?: boolean; // tiene una foto por cada imagen de la galería (withDynamic)
+  steps?: boolean; // tiene un grupo de objetos por cada paso del itinerario (withDynamic)
 };
+
+// Cada tarjeta de "El evento": recuadro, nombre, hora, salón y dirección, sueltos.
+function eventCard(i: 1 | 2): Pair[] {
+  const py = i === 1 ? 380 : 700, lx = i === 1 ? 300 : 724, ly = 360;
+  const t = (id: string, name: string, text: string, p: Partial<TextElement>, l: Partial<TextElement>, extra: Partial<TextElement> = {}) =>
+    pair(
+      el({ id: `event${i}-${id}`, name: `${name} ${i}`, text, x: 384, w: 540, font: "inter", color: "var(--color-fg)", fontSize: 30, ...extra, ...p }),
+      el({ id: `event${i}-${id}`, name: `${name} ${i}`, text, x: lx, w: 340, font: "inter", color: "var(--color-fg)", fontSize: 16, ...extra, ...l }),
+    );
+  return [
+    pair(
+      el({ kind: "shape", id: `event${i}-card`, name: `Recuadro ${i}`, text: "", variant: "outline", x: 384, y: py, w: 600, h: 290, fontSize: 16, font: "inter", color: "var(--color-muted)", opacity: 0.5 }),
+      el({ kind: "shape", id: `event${i}-card`, name: `Recuadro ${i}`, text: "", variant: "outline", x: lx, y: ly, w: 380, h: 300, fontSize: 16, font: "inter", color: "var(--color-muted)", opacity: 0.5 }),
+    ),
+    t("name", "Evento", `{evento${i}}`, { y: py - 88, fontSize: 40 }, { y: ly - 95, fontSize: 24 }, { font: "playfair" }),
+    t("time", "Hora", `{hora${i}}`, { y: py - 25, fontSize: 52 }, { y: ly - 42, fontSize: 32 }, { weight: 300 }),
+    t("venue", "Salón", `{salon${i}}`, { y: py + 38, fontSize: 30 }, { y: ly + 14, fontSize: 18 }, { weight: 500 }),
+    t("address", "Dirección", `{direccion${i}}`, { y: py + 90, fontSize: 24 }, { y: ly + 60, fontSize: 14 }, { color: "var(--color-muted)", lineHeight: 1.35 }),
+  ];
+}
 
 // Cada lugar de "Cómo llegar": nombre, mapa y enlace, sueltos.
 function placeItems(i: 1 | 2): Pair[] {
@@ -477,8 +506,26 @@ export const SECTIONS = {
     },
   },
   story: { label: "Nuestra historia", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, extendable: true, defaults: layoutOf(T("Nuestra historia", 110, 70), B({ y: 580, h: 860 }, { y: 425, h: 640, w: 768 })) },
-  event: { label: "El evento", mode: "artboard", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "vestimenta"], extendable: true, defaults: layoutOf(T("El evento", 120, 80), B({ y: 540, h: 700 }, { y: 370, h: 440, w: 896 }), P("dressCode", "Código de vestimenta", "Código de vestimenta: {vestimenta}", { y: 960, fs: 28 }, { y: 660, fs: 14 })) },
-  itinerary: { label: "Itinerario", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, extendable: true, defaults: layoutOf(T("Itinerario", 260, 200), B({ y: 560, h: 460 }, { y: 420, h: 320, w: 672 })) },
+  event: {
+    label: "El evento", mode: "artboard", boards: ARTBOARDS, extendable: true,
+    tokens: [...COMMON_TOKENS, "vestimenta", "evento1", "hora1", "salon1", "direccion1", "evento2", "hora2", "salon2", "direccion2"],
+    defaults: layoutOf(
+      T("El evento", 120, 80),
+      ...eventCard(1),
+      ...eventCard(2),
+      P("dressCode", "Código de vestimenta", "Código de vestimenta: {vestimenta}", { y: 960, fs: 28 }, { y: 660, fs: 14 }),
+    ),
+  },
+  itinerary: {
+    label: "Itinerario", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, extendable: true, steps: true,
+    defaults: layoutOf(
+      T("Itinerario", 260, 200),
+      pair(
+        el({ kind: "shape", id: "timeline", name: "Línea de tiempo", text: "", variant: "line", x: 384, y: 500, w: 3, h: 300, fontSize: 16, font: "inter", color: "var(--color-accent)", opacity: 0.45, hidden: true }),
+        el({ kind: "shape", id: "timeline", name: "Línea de tiempo", text: "", variant: "line", x: 512, y: 400, w: 2, h: 200, fontSize: 16, font: "inter", color: "var(--color-accent)", opacity: 0.45, hidden: true }),
+      ),
+    ),
+  },
   location: { label: "Cómo llegar", mode: "artboard", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "lugar1", "lugar2", "direccion1", "direccion2"], extendable: true, defaults: layoutOf(T("Cómo llegar", 110, 70), ...placeItems(1), ...placeItems(2)) },
   gallery: { label: "Galería", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, extendable: true, photos: true, defaults: layoutOf(T("Galería", 110, 70)) },
   accommodation: { label: "Alojamiento", mode: "artboard", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "transporte"], extendable: true, defaults: layoutOf(T("Alojamiento", 110, 70), P("transport", "Transporte", "{transporte}", { y: 210, fs: 31 }, { y: 125, fs: 16 }), B({ y: 620, h: 760 }, { y: 440, h: 560, w: 768 })) },
@@ -515,17 +562,16 @@ export const VARIANTS: Partial<Record<LayoutSection, { element: string; default:
       "fund+payment": "Luna de miel + datos de pago",
     },
   },
-  itinerary: {
-    element: "body",
-    default: "row",
-    options: {
-      row: "Fila de íconos",
-      vertical: "Línea de tiempo vertical",
-      horizontal: "Línea de tiempo horizontal",
-      cards: "Tarjetas",
-    },
-  },
 };
+
+// Itinerario: cada versión acomoda los pasos de una manera; después se mueven libres.
+export const ARRANGEMENTS = {
+  row: "Fila de íconos",
+  vertical: "Línea de tiempo vertical",
+  horizontal: "Línea de tiempo horizontal",
+  cards: "Tarjetas",
+} as const;
+export type Arrangement = keyof typeof ARRANGEMENTS;
 export const layoutSettingKey = (s: LayoutSection) => `layout_${s}`;
 // Borrador del editor: se guarda solo; los invitados ven layoutSettingKey hasta publicar.
 export const draftLayoutKey = (s: LayoutSection) => `draft_layout_${s}`;
@@ -584,6 +630,8 @@ function cleanElement(d: TextElement, s: Record<string, unknown>, A: Board): Tex
     src: "",
     style: null,
   };
+  if (d.kind === "shape" && typeof s.variant === "string" && s.variant in SHAPES) clean.variant = s.variant;
+  if (d.kind === "ornament" && (ORNAMENT_KEYS as readonly string[]).includes(s.variant as string)) clean.variant = s.variant as string;
   if (d.kind !== "text") return clean;
   if ("style" in s) {
     clean.style = typeof s.style === "string" && STYLE_ID.test(s.style) ? s.style : null;
@@ -623,6 +671,13 @@ export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayo
         out[o].push(cleanElement({ ...photoTemplate(s.id), z: 20 + out[o].length }, s, A));
       }
     }
+    if (cfg.steps) {
+      for (const s of list) {
+        const m = s && typeof s.id === "string" ? STEP_ID.exec(s.id) : null;
+        if (!m || out[o].some((e) => e.id === s.id)) continue;
+        out[o].push(cleanElement(stepTemplate(m[1], m[2] as StepPart), s, A));
+      }
+    }
     // Objetos agregados: textos, imágenes, formas y adornos.
     let custom = 0;
     for (const s of list) {
@@ -642,6 +697,12 @@ export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayo
   }
   const ov = (src as { overlay?: unknown }).overlay;
   if (cfg.photos && (src as { manualPhotos?: unknown }).manualPhotos === true) out.manualPhotos = true;
+  if (cfg.steps) {
+    // Diseños de antes: la versión estaba en el panel "body".
+    const old = Array.isArray(src.portrait) ? (src.portrait as Record<string, unknown>[]).find((e) => e && e.id === "body")?.variant : undefined;
+    const a = (src as { arrange?: unknown }).arrange ?? old;
+    out.arrange = typeof a === "string" && a in ARRANGEMENTS ? a : "row";
+  }
   if (typeof ov === "number" && Number.isFinite(ov)) out.overlay = Math.round(Math.min(0.95, Math.max(0, ov)) * 100) / 100;
   if (cfg.extendable && src.extent && typeof src.extent === "object") {
     const e = src.extent as Record<string, unknown>;
@@ -672,9 +733,123 @@ export function galleryPhotoElement(o: Orientation, p: GalleryItem, i: number, a
   return { ...photoTemplate(photoId(p.key)), ...slot, ...at, src: p.src, text: p.alt, ref: p.key, name: `Foto ${i + 1}` };
 }
 
-export function withDynamic(section: LayoutSection, layout: TextLayout, photos: GalleryItem[]): TextLayout {
+/* ---------- Pasos del itinerario ---------- */
+
+export type StepItem = { key: string; icon: string };
+type StepPart = "card" | "icon" | "time" | "label";
+const STEP_ID = /^step-([A-Za-z0-9]{1,60})-(card|icon|time|label)$/;
+export const stepKey = (id: string) => id.replace(/[^A-Za-z0-9]/g, "").slice(0, 60);
+const STEP_ICON: Record<string, string> = { church: "church", glass: "wine", utensils: "utensils", party: "party", clock: "clock" };
+export const stepIcon = (icon: string) => STEP_ICON[icon] ?? "clock";
+
+function stepTemplate(key: string, part: StepPart): TextElement {
+  const id = `step-${key}-${part}`;
+  const base = { id, x: 0, y: 0, font: "inter" as FontKey, fontSize: 30, ref: key };
+  switch (part) {
+    case "card":
+      return el({ ...base, kind: "shape", name: "Recuadro", text: "", variant: "outline", w: 300, h: 230, color: "var(--color-muted)", opacity: 0.5, z: 6 });
+    case "icon":
+      return el({ ...base, kind: "ornament", name: "Ícono", text: "", variant: "clock", w: 72, h: 72, color: "var(--color-accent)", z: 8 });
+    case "time":
+      return el({ ...base, kind: "text", name: "Hora", text: `{hora_${key}}`, w: 240, fontSize: 36, weight: 500, color: "var(--color-fg)", z: 8 });
+    default:
+      return el({ ...base, kind: "text", name: "Nombre", text: `{paso_${key}}`, w: 240, fontSize: 24, uppercase: true, letterSpacing: 0.1, color: "var(--color-muted)", z: 8 });
+  }
+}
+
+// Posiciones de los pasos según la versión elegida (en celular y PC). Devuelve
+// los objetos de cada paso y la línea de tiempo ya acomodados.
+function arrangeFor(o: Orientation, arrange: string, steps: StepItem[]): Map<string, Partial<TextElement>> {
+  const P = o === "portrait";
+  const W = P ? 768 : 1024, top = P ? 380 : 300, n = steps.length;
+  const icon = P ? 72 : 46, tfs = P ? 36 : 21, lfs = P ? 24 : 13;
+  const out = new Map<string, Partial<TextElement>>();
+  const put = (k: string, i: number, cx: number, cy: number, card: Partial<TextElement> | null, align: { time?: number; label?: number } = {}) => {
+    out.set(`step-${k}-icon`, { x: cx, y: cy, w: icon, h: icon, hidden: false });
+    out.set(`step-${k}-time`, { x: align.time ?? cx, y: align.time !== undefined ? cy : cy + icon * 0.5 + tfs * 0.85, fontSize: tfs, w: P ? 240 : 160, align: align.time !== undefined ? "right" : "center", hidden: false });
+    out.set(`step-${k}-label`, { x: align.label ?? cx, y: align.label !== undefined ? cy : cy + icon * 0.5 + tfs * 1.6 + lfs * 0.6, fontSize: lfs, w: P ? 240 : 160, align: align.label !== undefined ? "left" : "center", hidden: false });
+    out.set(`step-${k}-card`, card ?? { hidden: true });
+  };
+  if (arrange === "vertical") {
+    const gap = P ? 150 : 92, side = icon / 2 + (P ? 26 : 16) + (P ? 120 : 80);
+    steps.forEach((s, i) => put(s.key, i, W / 2, top + i * gap, { variant: "circle", x: W / 2, y: top + i * gap, w: icon * 1.55, h: icon * 1.55, color: "var(--color-bg)", opacity: 1, hidden: false }, { time: W / 2 - side, label: W / 2 + side }));
+    out.set("timeline", { x: W / 2, y: top + ((n - 1) * gap) / 2, w: P ? 3 : 2, h: Math.max(0, (n - 1) * gap), hidden: n < 2 });
+  } else if (arrange === "horizontal") {
+    const span = W * 0.8, gap = n > 1 ? Math.min(P ? 220 : 200, span / (n - 1)) : 0;
+    steps.forEach((s, i) => {
+      const x = W / 2 + (i - (n - 1) / 2) * gap;
+      put(s.key, i, x, top, { variant: "circle", x, y: top, w: icon * 1.55, h: icon * 1.55, color: "var(--color-bg)", opacity: 1, hidden: false });
+    });
+    out.set("timeline", { x: W / 2, y: top, w: Math.max(0, (n - 1) * gap), h: P ? 3 : 2, hidden: n < 2 });
+  } else if (arrange === "cards") {
+    const cols = P ? 2 : Math.min(Math.max(n, 1), 4), cw = P ? 310 : 200, ch = P ? 240 : 160, gx = P ? 30 : 20, gy = P ? 30 : 20;
+    steps.forEach((s, i) => {
+      const c = i % cols, r = Math.floor(i / cols), inRow = Math.min(cols, n - r * cols);
+      const cx = W / 2 + (c - (inRow - 1) / 2) * (cw + gx), cy = top + ch / 2 - icon / 2 + r * (ch + gy);
+      put(s.key, i, cx, cy - ch * 0.18, { variant: "outline", x: cx, y: cy, w: cw, h: ch, color: "var(--color-muted)", opacity: 0.5, hidden: false });
+    });
+    out.set("timeline", { hidden: true });
+  } else {
+    const cols = P ? 3 : 5, cw = P ? 230 : 170, rh = P ? 250 : 160;
+    steps.forEach((s, i) => {
+      const c = i % cols, r = Math.floor(i / cols), inRow = Math.min(cols, n - r * cols);
+      put(s.key, i, W / 2 + (c - (inRow - 1) / 2) * cw, top + r * rh, null);
+    });
+    out.set("timeline", { hidden: true });
+  }
+  return out;
+}
+
+// Acomoda todos los pasos con la versión elegida (al cambiar de versión).
+export function arrangeSteps(layout: TextLayout, arrange: string, steps: StepItem[]): TextLayout {
+  const out: TextLayout = { ...layout, arrange };
+  for (const o of ["portrait", "landscape"] as Orientation[]) {
+    const pos = arrangeFor(o, arrange, steps);
+    out[o] = layout[o].map((e) => (pos.has(e.id) ? { ...e, ...pos.get(e.id) } : e));
+  }
+  return out;
+}
+
+export type DynamicItems = { photos?: GalleryItem[]; steps?: StepItem[] };
+
+// Pasos del itinerario: un grupo de objetos por paso. Los pasos nuevos se
+// ubican con la versión elegida; los borrados desaparecen.
+function withSteps(layout: TextLayout, steps: StepItem[]): TextLayout {
+  const keys = new Set(steps.map((s) => s.key));
+  const out: TextLayout = { ...layout };
+  const arrange = layout.arrange ?? "row";
+  for (const o of ["portrait", "landscape"] as Orientation[]) {
+    const kept = layout[o].filter((e) => !e.id.startsWith("step-") || keys.has(e.ref || (STEP_ID.exec(e.id)?.[1] ?? "")));
+    const before = new Set(kept.filter((e) => e.id.startsWith("step-")).map((e) => e.ref));
+    const changed = steps.some((s) => !before.has(s.key)) || before.size !== steps.length;
+    const pos = changed ? arrangeFor(o, arrange, steps) : null;
+    steps.forEach((s, i) => {
+      for (const part of ["card", "icon", "time", "label"] as StepPart[]) {
+        const id = `step-${s.key}-${part}`;
+        let e = kept.find((x) => x.id === id);
+        if (!e) {
+          e = { ...stepTemplate(s.key, part), ...(pos?.get(id) ?? {}) };
+          if (part === "icon") e.variant = stepIcon(s.icon);
+          kept.push(e);
+        }
+        e.name = `Paso ${i + 1} · ${{ card: "recuadro", icon: "ícono", time: "hora", label: "nombre" }[part]}`;
+      }
+    });
+    // La línea de tiempo acompaña la cantidad de pasos.
+    if (pos?.has("timeline")) {
+      const t = kept.findIndex((x) => x.id === "timeline");
+      if (t >= 0) kept[t] = { ...kept[t], ...pos.get("timeline") };
+    }
+    out[o] = kept;
+  }
+  return out;
+}
+
+export function withDynamic(section: LayoutSection, layout: TextLayout, items: DynamicItems): TextLayout {
   const cfg = sectionConfig(section);
+  if (cfg.steps) return withSteps(layout, items.steps ?? []);
   if (!cfg.photos) return layout;
+  const photos = items.photos ?? [];
   const out: TextLayout = { ...layout };
   const extent = { portrait: extentOf(layout, "portrait"), landscape: extentOf(layout, "landscape") };
   for (const o of ["portrait", "landscape"] as Orientation[]) {

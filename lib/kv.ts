@@ -11,7 +11,9 @@ export async function setSetting(key: string, value: string) {
 
 export async function getJSON<T>(key: string, fallback: T): Promise<T> {
   const map = await getSettingsMap();
-  if (!map[key]) return fallback;
+  // Copia: quien la reciba puede modificarla (p. ej. agregar un paso) sin
+  // tocar los valores por defecto que viven en memoria.
+  if (!map[key]) return structuredClone(fallback);
   try {
     return JSON.parse(map[key]) as T;
   } catch {

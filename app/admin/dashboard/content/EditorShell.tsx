@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, Check, ExternalLink, Loader2, PanelRightClose, PanelRightOpen } from "lucide-react";
 import type { EnvelopeSlot } from "@/lib/envelopeAssets";
-import { applyStyles, LAYOUT_SECTIONS, pickStyle, type LayoutSection, type TextLayout, type TextStyle, type TokenValues } from "@/lib/textLayout";
+import { applyStyles, LAYOUT_SECTIONS, pickStyle, withDynamic, type LayoutSection, type TextLayout, type TextStyle, type TokenValues } from "@/lib/textLayout";
 import { ArtboardEditor, type CanvasCover, type EditorApi } from "./ArtboardEditor";
 import { GalleryPhotosPanel, type LibraryPhoto } from "./GalleryPhotosPanel";
 import { ENVELOPE_BG, EnvelopeCard, EnvelopeClosed } from "./EnvelopeCanvas";
@@ -63,6 +63,20 @@ export function EditorShell({
   const [publishing, setPublishing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
+
+  // Al agregar o borrar un paso del itinerario en "Contenido", el servidor
+  // manda el diseño con los pasos al día: se suman o quitan en el lienzo sin
+  // perder lo que ya se acomodó.
+  const [seenDrafts, setSeenDrafts] = useState(drafts);
+  if (drafts !== seenDrafts) {
+    setSeenDrafts(drafts);
+    const merged = mergeSteps(layouts.itinerary, drafts.itinerary);
+    if (merged) {
+      setLayouts({ ...layouts, itinerary: merged });
+      setPublishedState({ ...publishedState, itinerary: mergeSteps(publishedState.itinerary, published.itinerary) ?? publishedState.itinerary });
+      setVersion((v) => v + 1);
+    }
+  }
   const pending = useRef(new Map<LayoutSection, TextLayout>());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -369,6 +383,24 @@ export function EditorShell({
       </div>
     </div>
   );
+}
+
+const stepKeys = (l: TextLayout) =>
+  l.portrait.filter((e) => /^step-.+-icon$/.test(e.id)).map((e) => e.ref).sort().join(",");
+
+// Suma los pasos nuevos (acomodados con la versión que está en pantalla) y
+// quita los borrados, conservando la posición del resto.
+function mergeSteps(current: TextLayout, incoming: TextLayout): TextLayout | null {
+  if (stepKeys(current) === stepKeys(incoming)) return null;
+  const steps = incoming.portrait.filter((e) => /^step-.+-icon$/.test(e.id)).map((e) => ({ key: e.ref, icon: "clock" }));
+  const merged = withDynamic("itinerary", current, { steps });
+  // Los íconos de los pasos nuevos vienen del servidor (el que se eligió al cargarlo).
+  for (const o of ["portrait", "landscape"] as const)
+    merged[o] = merged[o].map((e) => {
+      const fresh = /^step-.+-icon$/.test(e.id) && !current[o].some((x) => x.id === e.id) ? incoming[o].find((x) => x.id === e.id) : undefined;
+      return fresh ? { ...e, variant: fresh.variant } : e;
+    });
+  return merged;
 }
 
 function SaveIndicator({ state, anyUnpublished }: { state: SaveState; anyUnpublished: boolean }) {

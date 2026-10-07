@@ -66,6 +66,8 @@ import {
   overlayOf,
   FRAMES,
   VARIANTS,
+  ARRANGEMENTS,
+  arrangeSteps,
   withDynamic,
   type FrameKey,
   elementStyle,
@@ -730,9 +732,18 @@ export function ArtboardEditor({
   }
 
   // La versión del contenido vale para celular y PC.
+  // En el Itinerario la versión acomoda los pasos (después se mueven libres).
   const variants = VARIANTS[section];
-  const currentVariant = variants ? layout[orientation].find((e) => e.id === variants.element)?.variant || variants.default : "";
+  const variantOptions: Record<string, string> | null = cfg.steps ? ARRANGEMENTS : variants?.options ?? null;
+  const currentVariant = cfg.steps
+    ? layout.arrange ?? "row"
+    : variants ? layout[orientation].find((e) => e.id === variants.element)?.variant || variants.default : "";
   function setVariant(v: string) {
+    if (cfg.steps) {
+      const steps = layout.portrait.filter((e) => /^step-.+-icon$/.test(e.id)).map((e) => ({ key: e.ref, icon: e.variant }));
+      commit(arrangeSteps(layout, v, steps), layout);
+      return;
+    }
     if (!variants) return;
     const next = clone(layout);
     for (const o of ["portrait", "landscape"] as Orientation[])
@@ -741,8 +752,13 @@ export function ArtboardEditor({
   }
 
   function restoreOriginal() {
-    const photos = layout.portrait.filter((e) => e.kind === "photo").map((e) => ({ key: e.ref, src: e.src, alt: e.text }));
-    commit(withDynamic(section, sanitizeLayout(section, null), photos), layout);
+    const photos = layout.portrait.filter((e) => e.id.startsWith("photo-")).map((e) => ({ key: e.ref, src: e.src, alt: e.text }));
+    const steps = layout.portrait.filter((e) => /^step-.+-icon$/.test(e.id)).map((e) => ({ key: e.ref, icon: "clock" }));
+    const fresh = withDynamic(section, sanitizeLayout(section, null), { photos, steps });
+    // Los íconos de los pasos se conservan.
+    for (const o of ["portrait", "landscape"] as Orientation[])
+      fresh[o] = fresh[o].map((e) => (e.id.endsWith("-icon") && e.id.startsWith("step-") ? { ...e, variant: layout[o].find((x) => x.id === e.id)?.variant ?? e.variant } : e));
+    commit(fresh, layout);
     setSelectedId(null);
     setPopover(null);
   }
@@ -822,15 +838,15 @@ export function ArtboardEditor({
             ))}
           </select>
         )}
-        {variants && (
+        {variantOptions && (
           <select
             aria-label="Versión de la sección"
-            title="Cómo se muestra el contenido de esta sección (celular y PC)"
+            title={cfg.steps ? "Acomoda los pasos de una vez; después podés mover cada pieza" : "Cómo se muestra el contenido de esta sección (celular y PC)"}
             value={currentVariant}
             onChange={(e) => setVariant(e.target.value)}
             className="h-7 max-w-[16rem] rounded-md border border-neutral-300 px-1.5 text-xs font-medium"
           >
-            {Object.entries(variants.options).map(([v, label]) => (
+            {Object.entries(variantOptions).map(([v, label]) => (
               <option key={v} value={v}>Versión: {label}</option>
             ))}
           </select>

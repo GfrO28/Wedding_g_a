@@ -13,6 +13,8 @@ import {
   sanitizeLayout,
   sectionConfig,
   withDynamic,
+  stepKey,
+  type StepItem,
   type LayoutSection,
   type TextLayout,
   type TokenValues,
@@ -27,12 +29,19 @@ function parse(raw: string | undefined): unknown {
   }
 }
 
+// Pasos del itinerario, con la clave que usan sus objetos en el diseño.
+async function getSteps(): Promise<StepItem[]> {
+  const w = await getWeddingContent();
+  return w.itinerary.map((s) => ({ key: stepKey(s.id), icon: s.icon }));
+}
+
 // Lo que ven los invitados: siempre la versión publicada, con los estilos
 // aplicados y las fotos de la galería al día.
 export async function getTextLayout(section: LayoutSection): Promise<TextLayout> {
   const map = await getSettingsMap();
-  const photos = sectionConfig(section).photos ? await getGalleryImages() : [];
-  const layout = withDynamic(section, sanitizeLayout(section, parse(map[layoutSettingKey(section)])), photos);
+  const cfg = sectionConfig(section);
+  const items = { photos: cfg.photos ? await getGalleryImages() : [], steps: cfg.steps ? await getSteps() : [] };
+  const layout = withDynamic(section, sanitizeLayout(section, parse(map[layoutSettingKey(section)])), items);
   return applyStyles(layout, sanitizeStyles(parse(map[STYLES_KEY])));
 }
 
@@ -43,13 +52,14 @@ export async function getEditorLayouts(): Promise<{
   drafts: Record<LayoutSection, TextLayout>;
   styles: { published: TextStyle[]; draft: TextStyle[] };
 }> {
-  const [map, photos] = await Promise.all([getSettingsMap(), getGalleryImages()]);
+  const [map, photos, steps] = await Promise.all([getSettingsMap(), getGalleryImages(), getSteps()]);
+  const items = { photos, steps };
   const published = {} as Record<LayoutSection, TextLayout>;
   const drafts = {} as Record<LayoutSection, TextLayout>;
   for (const s of LAYOUT_SECTIONS) {
-    published[s] = withDynamic(s, sanitizeLayout(s, parse(map[layoutSettingKey(s)])), photos);
+    published[s] = withDynamic(s, sanitizeLayout(s, parse(map[layoutSettingKey(s)])), items);
     const draft = parse(map[draftLayoutKey(s)]);
-    drafts[s] = draft ? withDynamic(s, sanitizeLayout(s, draft), photos) : published[s];
+    drafts[s] = draft ? withDynamic(s, sanitizeLayout(s, draft), items) : published[s];
   }
   const publishedStyles = sanitizeStyles(parse(map[STYLES_KEY]));
   const draftStyles = parse(map[DRAFT_STYLES_KEY]);
@@ -84,5 +94,13 @@ export async function getTokenValues(guestName: string): Promise<TokenValues> {
     direccion2: w.reception.address,
     mapa1: w.ceremony.mapUrl,
     mapa2: w.reception.mapUrl,
+    evento1: w.ceremony.name,
+    hora1: w.ceremony.time,
+    salon1: w.ceremony.venue,
+    evento2: w.reception.name,
+    hora2: w.reception.time,
+    salon2: w.reception.venue,
+    // Hora y nombre de cada paso del itinerario.
+    ...Object.fromEntries(w.itinerary.flatMap((s) => [[`hora_${stepKey(s.id)}`, s.time], [`paso_${stepKey(s.id)}`, s.label]])),
   };
 }

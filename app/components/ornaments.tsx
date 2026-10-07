@@ -1,8 +1,29 @@
-import { Crown, Feather, Flower, Flower2, Gem, Heart, Leaf, Sparkles, Sprout, Star, Wine, type LucideIcon } from "lucide-react";
+import {
+  Church,
+  Clock,
+  Crown,
+  Feather,
+  Flower,
+  Flower2,
+  Gem,
+  Heart,
+  Leaf,
+  PartyPopper,
+  Sparkles,
+  Sprout,
+  Star,
+  UtensilsCrossed,
+  Wine,
+  type LucideIcon,
+} from "lucide-react";
 import type { CSSProperties } from "react";
 
 // Adornos que se pueden agregar al diseño. Toman el color del objeto.
 const ICONS: Record<string, { label: string; Icon: LucideIcon }> = {
+  church: { label: "Iglesia", Icon: Church },
+  utensils: { label: "Cubiertos", Icon: UtensilsCrossed },
+  party: { label: "Fiesta", Icon: PartyPopper },
+  clock: { label: "Reloj", Icon: Clock },
   heart: { label: "Corazón", Icon: Heart },
   flower: { label: "Flor", Icon: Flower },
   flower2: { label: "Flor abierta", Icon: Flower2 },

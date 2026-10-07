@@ -27,8 +27,6 @@ import { EditorShell, type EditorSection } from "./EditorShell";
 import { Countdown } from "@/app/components/Countdown";
 import { Divider } from "@/app/components/Divider";
 import { StoryBody } from "@/app/components/OurStory";
-import { EventBody } from "@/app/components/EventDetails";
-import { ItineraryBody } from "@/app/components/Itinerary";
 import { VARIANTS } from "@/lib/textLayout";
 import { AccommodationBody } from "@/app/components/Accommodation";
 import { GiftsBody, getGiftsData } from "@/app/components/Gifts";
@@ -95,11 +93,6 @@ export default async function ContentEditorPage() {
     hero: { countdown: <Countdown targetISO={w.weddingDateISO} scaled /> },
     blessing: { divider: <Divider scaled /> },
     story: { body: <StoryBody chapters={w.story} /> },
-    event: { body: <EventBody ceremony={w.ceremony} reception={w.reception} /> },
-    // Todas las versiones, para cambiar de una a otra en vivo.
-    itinerary: Object.fromEntries(
-      Object.keys(VARIANTS.itinerary!.options).map((v) => [`body:${v}`, <ItineraryBody key={v} variant={v} steps={w.itinerary} />]),
-    ),
     accommodation: { body: <AccommodationBody hotels={w.accommodation} /> },
     gifts: Object.fromEntries(
       Object.keys(VARIANTS.gifts!.options).map((v) => [
