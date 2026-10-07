@@ -108,6 +108,20 @@ const ORIENTATION_LABEL: Record<Orientation, string> = { portrait: "Celular", la
 
 const clone = (l: TextLayout): TextLayout => JSON.parse(JSON.stringify(l));
 
+// Lo que se ve igual en celular y PC: el texto, la tipografía, el color, el
+// formato, el estilo, el borde y la versión. La posición, el tamaño, la
+// alineación, el giro y si está oculto son de cada formato.
+const SHARED_PROPS = [...STYLE_PROPS, "text", "style", "frame", "variant", "opacity"] as const;
+const otherOf = (o: Orientation): Orientation => (o === "portrait" ? "landscape" : "portrait");
+
+// Aplica en el otro formato la parte compartida de un cambio.
+function shareChanges(layout: TextLayout, from: Orientation, id: string, changes: Partial<TextElement>) {
+  const shared = Object.fromEntries(Object.entries(changes).filter(([k]) => (SHARED_PROPS as readonly string[]).includes(k)));
+  if (!Object.keys(shared).length) return;
+  const o = otherOf(from);
+  layout[o] = layout[o].map((e) => (e.id === id ? { ...e, ...shared } : e));
+}
+
 const extentLabel = (x: number) => (x === 1 ? "1 pantalla" : `${String(x).replace(".5", "½")} pantallas`);
 
 function smallestPx(el: TextElement) {
@@ -253,11 +267,7 @@ export function ArtboardEditor({
     if (Object.keys(elChanges).length) {
       const next = clone(layout);
       next[orientation] = next[orientation].map((e) => (e.id === id ? { ...e, ...elChanges } : e));
-      // El borde es de la foto: vale para celular y PC.
-      if ("frame" in elChanges) {
-        const other: Orientation = orientation === "portrait" ? "landscape" : "portrait";
-        next[other] = next[other].map((e) => (e.id === id ? { ...e, frame: elChanges.frame! } : e));
-      }
+      shareChanges(next, orientation, id, elChanges);
       setLayout(next);
     }
     if (linked && Object.keys(styleChanges).length) {
@@ -309,6 +319,7 @@ export function ArtboardEditor({
     setLayout((prev) => {
       const next = clone(prev);
       next[orientation] = next[orientation].map((e) => (e.id === id ? { ...e, text } : e));
+      shareChanges(next, orientation, id, { text });
       return next;
     });
   }
@@ -357,6 +368,7 @@ export function ArtboardEditor({
     onStylesChange?.([...styles, style]);
     const next = clone(layout);
     next[orientation] = next[orientation].map((e) => (e.id === selected.id ? { ...e, style: id } : e));
+    shareChanges(next, orientation, selected.id, { style: id });
     setLayout(next);
     setPopover(null);
   }
