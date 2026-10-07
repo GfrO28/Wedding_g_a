@@ -54,6 +54,7 @@ export function IntroEnvelope({
   const [mounted, setMounted] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [assetsReady, setAssetsReady] = useState(false);
+  const [naturalSize, setNaturalSize] = useState<Record<string, { w: number; h: number }>>({});
   const [tapped, setTapped] = useState(false);
   const [textActive, setTextActive] = useState(false);
   const [flapsHidden, setFlapsHidden] = useState(false);
@@ -86,7 +87,15 @@ export function IntroEnvelope({
     const t = setTimeout(finish, 2000);
     urls.forEach((url) => {
       const img = new Image();
-      img.onload = img.onerror = () => {
+      img.onload = () => {
+        setNaturalSize((prev) => ({ ...prev, [url]: { w: img.naturalWidth, h: img.naturalHeight } }));
+        remaining -= 1;
+        if (remaining <= 0) {
+          clearTimeout(t);
+          finish();
+        }
+      };
+      img.onerror = () => {
         remaining -= 1;
         if (remaining <= 0) {
           clearTimeout(t);
@@ -149,12 +158,27 @@ export function IntroEnvelope({
     setPlaying(!playing);
   }
 
-  const fill = (url: string | null): CSSProperties => ({
-    background: "color-mix(in srgb, var(--color-accent) 75%, white)",
-    ...(url && assetsReady
-      ? { backgroundImage: `url(${url})`, backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat" as const }
-      : null),
-  });
+  // "cover" llena la caja sin dejar huecos, pero si la caja es mucho más
+  // angosta/ancha que la imagen, termina recortando casi todo el borde
+  // decorativo y solo se ve el centro liso. Si la proporción no coincide
+  // ni cerca, usamos "contain" (se ve completa, con un margen parejo del
+  // color de acento) en vez de perder el diseño.
+  const fill = (url: string | null, box: { width: number; height: number }): CSSProperties => {
+    const natural = url ? naturalSize[url] : undefined;
+    let size: "cover" | "contain" = "cover";
+    if (natural) {
+      const boxAR = box.width / box.height;
+      const imgAR = natural.w / natural.h;
+      const ratio = boxAR / imgAR;
+      if (ratio < 0.6 || ratio > 1.67) size = "contain";
+    }
+    return {
+      background: "color-mix(in srgb, var(--color-accent) 75%, white)",
+      ...(url && assetsReady
+        ? { backgroundImage: `url(${url})`, backgroundSize: size, backgroundPosition: "center", backgroundRepeat: "no-repeat" as const }
+        : null),
+    };
+  };
 
   const sealSize = 112;
   const shapesReady = width > 0 && height > 0;
@@ -237,7 +261,7 @@ export function IntroEnvelope({
                   open={tapped}
                   delay={TIMING.topBottomFlap.delay}
                   duration={TIMING.topBottomFlap.duration}
-                  fill={fill(settings.images.introTop)}
+                  fill={fill(settings.images.introTop, geoTop.box)}
                   hasImage={!!settings.images.introTop}
                   darkColor="color-mix(in srgb, var(--color-accent) 55%, black)"
                   creaseGradient="linear-gradient(to bottom, transparent 0%, transparent 72%, rgba(0,0,0,0.9) 96%)"
@@ -255,7 +279,7 @@ export function IntroEnvelope({
                   open={tapped}
                   delay={TIMING.topBottomFlap.delay + 0.05}
                   duration={TIMING.topBottomFlap.duration}
-                  fill={fill(settings.images.introBottom)}
+                  fill={fill(settings.images.introBottom, geoBottom.box)}
                   hasImage={!!settings.images.introBottom}
                   darkColor="color-mix(in srgb, var(--color-accent) 55%, black)"
                   creaseGradient="linear-gradient(to top, transparent 0%, transparent 72%, rgba(0,0,0,0.9) 96%)"
@@ -273,7 +297,7 @@ export function IntroEnvelope({
                   open={tapped}
                   delay={TIMING.rightFlap.delay}
                   duration={TIMING.rightFlap.duration}
-                  fill={fill(settings.images.introRight)}
+                  fill={fill(settings.images.introRight, geoRight.box)}
                   hasImage={!!settings.images.introRight}
                   darkColor="color-mix(in srgb, var(--color-accent) 55%, black)"
                   creaseGradient="linear-gradient(to left, transparent 0%, transparent 72%, rgba(0,0,0,0.88) 96%)"
@@ -303,7 +327,7 @@ export function IntroEnvelope({
                   open={tapped}
                   delay={TIMING.leftFlap.delay}
                   duration={TIMING.leftFlap.duration}
-                  fill={fill(settings.images.introLeft)}
+                  fill={fill(settings.images.introLeft, geoLeft.box)}
                   hasImage={!!settings.images.introLeft}
                   darkColor="color-mix(in srgb, var(--color-accent) 55%, black)"
                   creaseGradient="linear-gradient(to right, transparent 0%, transparent 72%, rgba(0,0,0,0.88) 96%)"
