@@ -5,10 +5,20 @@ export type Orientation = "portrait" | "landscape";
 export type Board = { w: number; h: number; label: string };
 export type Boards = Record<Orientation, Board>;
 
+// Celular: alto como las pantallas actuales (con la barra del navegador a la
+// vista). PC: 16:9, como notebooks y monitores.
 export const ARTBOARDS: Boards = {
-  portrait: { w: 768, h: 1024, label: "Vertical (celular)" },
-  landscape: { w: 1024, h: 768, label: "Horizontal (PC)" },
+  portrait: { w: 768, h: 1480, label: "Vertical (celular)" },
+  landscape: { w: 1366, h: 768, label: "Horizontal (PC)" },
 };
+
+// Medidas anteriores de la mesa (3:4 y 4:3). Los valores por defecto de las
+// secciones y los diseños guardados antes del cambio (v < 3) están en estas
+// coordenadas: se centran en la mesa actual.
+const LEGACY_BOARDS = { portrait: { w: 768, h: 1024 }, landscape: { w: 1024, h: 768 } } as const;
+export function boardShift(o: Orientation, extent = 1) {
+  return { dx: (ARTBOARDS[o].w - LEGACY_BOARDS[o].w) / 2, dy: ((ARTBOARDS[o].h - LEGACY_BOARDS[o].h) * extent) / 2 };
+}
 
 // El pie es una franja, no una pantalla completa.
 export const FOOTER_BOARDS: Boards = {
@@ -650,15 +660,28 @@ function cleanElement(d: TextElement, s: Record<string, unknown>, A: Board): Tex
 export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayout {
   const cfg = sectionConfig(section);
   const src = (input && typeof input === "object" ? input : {}) as Partial<Record<Orientation, unknown>> & { extent?: unknown };
-  const out = { v: 2 } as TextLayout;
-  // Antes los paneles se ubicaban por su centro con un alto fijo.
-  const legacy = (src as { v?: unknown }).v !== 2;
+  const out = { v: 3 } as TextLayout;
+  const version = typeof (src as { v?: unknown }).v === "number" ? ((src as { v: number }).v) : 1;
+  // v < 2: los paneles se ubicaban por su centro con un alto fijo.
+  const legacy = version < 2;
+  // v < 3: la mesa medía 768×1024 / 1024×768; todo se centra en la actual.
+  const recenter = cfg.boards === ARTBOARDS;
+  const storedExtent = (o: Orientation) => {
+    const e = src.extent && typeof src.extent === "object" ? (src.extent as Record<string, unknown>)[o] : undefined;
+    return (EXTENTS as readonly number[]).includes(e as number) ? (e as number) : 1;
+  };
   for (const o of ["portrait", "landscape"] as Orientation[]) {
     const A = cfg.boards[o];
-    const list = Array.isArray(src[o]) ? (src[o] as Record<string, unknown>[]) : [];
+    const def = recenter ? boardShift(o) : { dx: 0, dy: 0 };
+    const old = recenter && version < 3 ? boardShift(o, storedExtent(o)) : { dx: 0, dy: 0 };
+    const list = (Array.isArray(src[o]) ? (src[o] as Record<string, unknown>[]) : []).map((e) =>
+      e && typeof e === "object" && (old.dx || old.dy)
+        ? { ...e, ...(typeof e.x === "number" ? { x: e.x + old.dx } : null), ...(typeof e.y === "number" ? { y: e.y + old.dy } : null) }
+        : e,
+    );
     const v = VARIANTS[section];
     out[o] = cfg.defaults[o].map((d0, i) => {
-      const d = { ...d0, z: i };
+      const d = { ...d0, z: i, x: d0.x + def.dx, y: d0.y + def.dy };
       let s = list.find((e) => e && e.id === d.id) ?? {};
       if (legacy && d.kind === "panel" && typeof s.y === "number") s = { ...s, y: s.y - (typeof s.h === "number" ? s.h : d.h) / 2 };
       const clean = cleanElement(d, s, A);
@@ -716,12 +739,13 @@ export type GalleryItem = { key: string; src: string; alt: string };
 
 // Lugar inicial de la foto número i: una grilla de 2 columnas en celular y 4 en PC.
 function photoSlot(o: Orientation, i: number) {
+  const { dx, dy } = boardShift(o);
   if (o === "portrait") {
     const c = i % 2, r = Math.floor(i / 2);
-    return { x: 384 + (c === 0 ? -176 : 176), y: 380 + r * 352, w: 320, h: 320 };
+    return { x: dx + 384 + (c === 0 ? -176 : 176), y: dy + 380 + r * 352, w: 320, h: 320 };
   }
   const c = i % 4, r = Math.floor(i / 4);
-  return { x: 512 + (c - 1.5) * 224, y: 250 + r * 224, w: 200, h: 200 };
+  return { x: dx + 512 + (c - 1.5) * 224, y: dy + 250 + r * 224, w: 200, h: 200 };
 }
 
 // Las fotos de la galería son objetos del diseño: una por imagen subida. Las
@@ -761,7 +785,7 @@ function stepTemplate(key: string, part: StepPart): TextElement {
 // los objetos de cada paso y la línea de tiempo ya acomodados.
 function arrangeFor(o: Orientation, arrange: string, steps: StepItem[]): Map<string, Partial<TextElement>> {
   const P = o === "portrait";
-  const W = P ? 768 : 1024, top = P ? 380 : 300, n = steps.length;
+  const W = ARTBOARDS[o].w, top = (P ? 380 : 300) + boardShift(o).dy, n = steps.length;
   const icon = P ? 72 : 46, tfs = P ? 36 : 21, lfs = P ? 24 : 13;
   const out = new Map<string, Partial<TextElement>>();
   const put = (k: string, i: number, cx: number, cy: number, card: Partial<TextElement> | null, align: { time?: number; label?: number } = {}) => {
