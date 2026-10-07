@@ -22,7 +22,6 @@ import {
 } from "./content-actions";
 import { ZoneImageUpload } from "./ZoneImageUpload";
 import { MusicUploader } from "./MusicUploader";
-import { GalleryUploader } from "../GalleryUploader";
 import { ThemeEditor } from "../ThemeEditor";
 import { EditorShell, type EditorSection } from "./EditorShell";
 import { Countdown } from "@/app/components/Countdown";
@@ -230,7 +229,6 @@ export default async function ContentEditorPage() {
         <Group title="Foto de fondo"><ZoneImageUpload zone="location" url={w.zoneImages.location} /></Group>
       </Stack>
     ),
-    gallery: <GalleryUploader photos={allPhotos} />,
     accommodation: (
       <Stack>
         <Group title="Hoteles">
@@ -291,6 +289,7 @@ export default async function ContentEditorPage() {
       styles={styles}
       tokens={tokens}
       envelope={{ assets: envelope.assets, custom: envelope.custom }}
+      galleryPhotos={allPhotos.map((p) => ({ id: p.id, url: p.url, alt: p.alt }))}
     />
   );
 }

@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { ArrowLeft, Check, ExternalLink, Loader2, PanelRightClose, PanelRightOpen } from "lucide-react";
 import type { EnvelopeSlot } from "@/lib/envelopeAssets";
 import { applyStyles, LAYOUT_SECTIONS, pickStyle, type LayoutSection, type TextLayout, type TextStyle, type TokenValues } from "@/lib/textLayout";
-import { ArtboardEditor, type CanvasCover } from "./ArtboardEditor";
+import { ArtboardEditor, type CanvasCover, type EditorApi } from "./ArtboardEditor";
+import { GalleryPhotosPanel, type LibraryPhoto } from "./GalleryPhotosPanel";
 import { ENVELOPE_BG, EnvelopeCard, EnvelopeClosed } from "./EnvelopeCanvas";
 import { EnvelopeImagesPanel } from "./EnvelopeImagesPanel";
 import { discardDraftsAction, publishAction, saveDraftAction, saveStylesDraftAction } from "./layout-actions";
@@ -32,6 +33,7 @@ export function EditorShell({
   styles: initialStyles,
   tokens,
   envelope,
+  galleryPhotos: initialGalleryPhotos,
 }: {
   sections: EditorSection[];
   panels: Record<string, ReactNode>;
@@ -41,6 +43,7 @@ export function EditorShell({
   styles: { published: TextStyle[]; draft: TextStyle[] };
   tokens: TokenValues;
   envelope: { assets: Record<EnvelopeSlot, string>; custom: Record<EnvelopeSlot, boolean> };
+  galleryPhotos: LibraryPhoto[];
 }) {
   const [currentId, setCurrentId] = useState(sections[0].id);
   const [layouts, setLayouts] = useState(drafts);
@@ -54,6 +57,8 @@ export function EditorShell({
   // El sobre abre con sus imágenes a la vista: es lo primero que se busca ahí.
   const [contentOpen, setContentOpen] = useState(sections[0].id === "intro");
   const [envelopeAssets, setEnvelopeAssets] = useState(envelope.assets);
+  const [galleryPhotos, setGalleryPhotos] = useState(initialGalleryPhotos);
+  const editorApi = useRef<EditorApi>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [publishing, setPublishing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -208,6 +213,17 @@ export function EditorShell({
   const panel =
     current.id === "intro" ? (
       <EnvelopeImagesPanel initialAssets={envelopeAssets} initialCustom={envelope.custom} onAssetsChange={setEnvelopeAssets} textLayout={applyStyles(layouts.envelope, styles)} tokens={tokens} />
+    ) : current.id === "gallery" ? (
+      <GalleryPhotosPanel
+        photos={galleryPhotos}
+        placed={new Set(layouts.gallery.portrait.filter((e) => e.id.startsWith("photo-")).map((e) => e.ref || e.id.slice(6)))}
+        onPhotosChange={(list) => {
+          if (list.length > galleryPhotos.length) editorApi.current?.manual();
+          setGalleryPhotos(list);
+        }}
+        onPlace={(item) => editorApi.current?.place(item)}
+        onUnplace={(key) => editorApi.current?.unplace(key)}
+      />
     ) : current.id === "styles" ? (
       <StylesPanel styles={styles} usage={styleUsage} tokens={tokens} onChange={handleStylesChange} onDelete={deleteStyle} />
     ) : (
@@ -271,7 +287,8 @@ export function EditorShell({
                         type="button"
                         onClick={() => {
                           setCurrentId(s.id);
-                          if (s.id === "intro") setContentOpen(true);
+                          // El sobre y la galería abren con sus imágenes a la vista.
+                          if (s.id === "intro" || s.id === "gallery") setContentOpen(true);
                         }}
                         aria-current={active ? "page" : undefined}
                         className={`flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left text-sm ${!isOn && !active ? "text-neutral-400" : ""}`}
@@ -324,6 +341,8 @@ export function EditorShell({
               styles={styles}
               onStylesChange={handleStylesChange}
               styleUsage={styleUsage}
+              apiRef={editorApi}
+              onOpenLibrary={() => setContentOpen(true)}
             />
           ) : (
             <div className="h-full overflow-y-auto p-6">

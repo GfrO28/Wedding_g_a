@@ -48,12 +48,19 @@ export async function confirmPhotoUploadAction(
   url: string,
   alt: string,
 ) {
-  await db.insert(photos).values({ key, url, alt: alt || null });
+  const [row] = await db.insert(photos).values({ key, url, alt: alt || null }).returning();
   revalidatePath("/admin/dashboard");
+  revalidatePath("/", "layout");
+  return { id: row.id, url: row.url, alt: row.alt };
 }
 
 export async function deletePhotoAction(formData: FormData) {
-  const id = String(formData.get("id") ?? "");
+  await deletePhotoByIdAction(String(formData.get("id") ?? ""));
+}
+
+// Borra la foto de la galería (y del almacenamiento). Si estaba en el diseño,
+// desaparece de la invitación.
+export async function deletePhotoByIdAction(id: string) {
   if (!id) return;
 
   const [photo] = await db
@@ -69,4 +76,5 @@ export async function deletePhotoAction(formData: FormData) {
   }
 
   revalidatePath("/admin/dashboard");
+  revalidatePath("/", "layout");
 }

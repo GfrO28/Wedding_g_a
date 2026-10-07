@@ -97,7 +97,14 @@ export type TextElement = {
 // extent: alto de la sección en pantallas (1, 1½, 2…), por formato.
 // v: 2 = los paneles se ubican por su borde de arriba (crecen hacia abajo).
 // overlay: velo del color de fondo de la paleta sobre la foto de fondo (0 a 0.95).
-export type TextLayout = Record<Orientation, TextElement[]> & { extent?: Record<Orientation, number>; v?: number; overlay?: number };
+// manualPhotos: las fotos de la galería se ponen y se sacan a mano en el editor
+// (si no, aparecen solas todas las fotos subidas).
+export type TextLayout = Record<Orientation, TextElement[]> & {
+  extent?: Record<Orientation, number>;
+  v?: number;
+  overlay?: number;
+  manualPhotos?: boolean;
+};
 
 export const DEFAULT_OVERLAY = 0.4;
 export const overlayOf = (l: TextLayout) => l.overlay ?? DEFAULT_OVERLAY;
@@ -544,7 +551,7 @@ function validColor(v: unknown, d: string) {
 }
 
 const PHOTO_ID = /^photo-[A-Za-z0-9_-]{1,60}$/;
-const photoId = (key: string) => `photo-${key.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 60)}`;
+export const photoId = (key: string) => `photo-${key.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 60)}`;
 
 // Plantilla de una foto de la galería (su lugar inicial lo pone withDynamic).
 const photoTemplate = (id: string): TextElement =>
@@ -634,6 +641,7 @@ export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayo
     }
   }
   const ov = (src as { overlay?: unknown }).overlay;
+  if (cfg.photos && (src as { manualPhotos?: unknown }).manualPhotos === true) out.manualPhotos = true;
   if (typeof ov === "number" && Number.isFinite(ov)) out.overlay = Math.round(Math.min(0.95, Math.max(0, ov)) * 100) / 100;
   if (cfg.extendable && src.extent && typeof src.extent === "object") {
     const e = src.extent as Record<string, unknown>;
@@ -658,6 +666,12 @@ function photoSlot(o: Orientation, i: number) {
 // Las fotos de la galería son objetos del diseño: una por imagen subida. Las
 // nuevas aparecen al final (y la sección se alarga si hace falta); las que se
 // borraron desaparecen.
+// Una foto de la galería puesta en el diseño (en el lugar libre número i, o en x/y).
+export function galleryPhotoElement(o: Orientation, p: GalleryItem, i: number, at?: { x: number; y: number }): TextElement {
+  const slot = photoSlot(o, i);
+  return { ...photoTemplate(photoId(p.key)), ...slot, ...at, src: p.src, text: p.alt, ref: p.key, name: `Foto ${i + 1}` };
+}
+
 export function withDynamic(section: LayoutSection, layout: TextLayout, photos: GalleryItem[]): TextLayout {
   const cfg = sectionConfig(section);
   if (!cfg.photos) return layout;
@@ -672,12 +686,14 @@ export function withDynamic(section: LayoutSection, layout: TextLayout, photos: 
         const p = e.id.startsWith("photo-") ? byId.get(e.id) : undefined;
         return p ? { ...e, src: p.src, text: e.text || p.alt, ref: p.key } : e;
       });
-    photos.forEach((p, i) => {
-      const id = photoId(p.key);
-      if (kept.some((e) => e.id === id)) return;
-      kept.push({ ...photoTemplate(id), ...photoSlot(o, i), src: p.src, text: p.alt, ref: p.key, name: `Foto ${i + 1}` });
-      added = true;
-    });
+    if (!layout.manualPhotos) {
+      photos.forEach((p, i) => {
+        const id = photoId(p.key);
+        if (kept.some((e) => e.id === id)) return;
+        kept.push(galleryPhotoElement(o, p, i));
+        added = true;
+      });
+    }
     // Numera las fotos en el orden de la galería para la lista de capas.
     photos.forEach((p, i) => {
       const e = kept.find((x) => x.id === photoId(p.key));

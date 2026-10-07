@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -44,12 +45,16 @@ import {
 import { ElementContent, isSized, TextArtboard } from "@/app/components/TextArtboard";
 import { Ornament, ORNAMENT_LABELS } from "@/app/components/ornaments";
 import { requestDesignImageUploadAction } from "./zone-actions";
+import { GALLERY_DRAG_TYPE } from "./GalleryPhotosPanel";
 import {
   applyStyles,
   ARTBOARDS,
   byZ,
   customTemplate,
+  galleryPhotoElement,
   isCustom,
+  photoId,
+  type GalleryItem,
   MAX_CUSTOM,
   newCustomId,
   ORNAMENT_KEYS,
@@ -88,6 +93,9 @@ type Snap = { layout: TextLayout; styles: TextStyle[] };
 type Drag = { id: string; mode: "move" | "corner" | "side" | "vside"; sign: number; startX: number; startY: number; el: TextElement; before: TextLayout };
 type Guides = { x?: number; y?: number };
 type Popover = null | "style" | "tokens" | "color" | "advanced" | "menu" | "add";
+// Lo que el panel de la galería le pide al lienzo.
+export type EditorApi = { place: (item: GalleryItem) => void; unplace: (key: string) => void; manual: () => void };
+
 // Vista que tapa el lienzo (el sobre cerrado). Mientras se ve, los textos no se editan.
 export type CanvasCover = {
   closedLabel: string;
@@ -144,6 +152,8 @@ export function ArtboardEditor({
   styleUsage = {},
   underlay,
   cover,
+  apiRef,
+  onOpenLibrary,
 }: {
   section: LayoutSection;
   initialLayout: TextLayout;
@@ -157,6 +167,8 @@ export function ArtboardEditor({
   styleUsage?: Record<string, number>;
   underlay?: ReactNode; // fondo dibujado dentro de la mesa, detrás de los textos
   cover?: CanvasCover;
+  apiRef?: React.Ref<EditorApi>;
+  onOpenLibrary?: () => void; // Galería: "+ Agregar" lleva a la biblioteca de fotos
 }) {
   const cfg = sectionConfig(section);
   const BOARDS = cfg.boards;
@@ -456,7 +468,7 @@ export function ArtboardEditor({
       setPopover(null);
     }
     if (!selected) return;
-    if ((e.key === "Delete" || e.key === "Backspace") && isCustom(selected)) {
+    if ((e.key === "Delete" || e.key === "Backspace") && canRemove(selected)) {
       e.preventDefault();
       remove(selected.id);
       return;
@@ -550,9 +562,10 @@ export function ArtboardEditor({
   }
 
   function remove(id: string) {
-    if (!isCustom({ id })) return;
+    if (!isCustom({ id }) && !id.startsWith("photo-")) return;
     const next = clone(layout);
     for (const o of ["portrait", "landscape"] as Orientation[]) next[o] = next[o].filter((e) => e.id !== id);
+    if (id.startsWith("photo-")) next.manualPhotos = true; // sale de la diapositiva, sigue en la biblioteca
     commit(next, layout);
     setSelectedId(null);
     finishEdit();
@@ -570,6 +583,64 @@ export function ArtboardEditor({
     const next = clone(layout);
     for (const o of ["portrait", "landscape"] as Orientation[]) next[o] = next[o].map((e) => (e.id === id ? { ...e, locked: !el.locked } : e));
     commit(next, layout);
+  }
+
+  /* ---------- Fotos de la galería ---------- */
+
+  const isGalleryPhoto = (el: { id: string }) => el.id.startsWith("photo-");
+  const canRemove = (el: TextElement) => isCustom(el) || isGalleryPhoto(el);
+
+  // Pone una foto de la biblioteca en la diapositiva (donde se soltó, o en el
+  // próximo lugar libre). Desde ahí las fotos se manejan a mano.
+  function placePhoto(item: GalleryItem, at?: { x: number; y: number }) {
+    const id = photoId(item.key);
+    if (layout[orientation].some((e) => e.id === id)) {
+      setSelectedId(id);
+      return;
+    }
+    const next = clone(layout);
+    for (const o of ["portrait", "landscape"] as Orientation[]) {
+      const count = next[o].filter(isGalleryPhoto).length;
+      const el = galleryPhotoElement(o, item, count, o === orientation ? at : undefined);
+      next[o] = [...next[o], { ...el, z: maxZ(next[o]) + 1 }];
+    }
+    next.manualPhotos = true;
+    commit(next, layout);
+    setSelectedId(id);
+    setPopover(null);
+  }
+
+  function unplacePhoto(key: string) {
+    const id = photoId(key);
+    const next = clone(layout);
+    for (const o of ["portrait", "landscape"] as Orientation[]) next[o] = next[o].filter((e) => e.id !== id);
+    next.manualPhotos = true;
+    commit(next, layout);
+    if (selectedId === id) setSelectedId(null);
+  }
+
+  useImperativeHandle(apiRef, () => ({
+    place: (item) => placePhoto(item),
+    unplace: unplacePhoto,
+    // Fotos nuevas: quedan en la biblioteca hasta que se arrastran al lienzo.
+    manual: () => { if (!layout.manualPhotos) setLayout({ ...clone(layout), manualPhotos: true }); },
+  }));
+
+  const [dropping, setDropping] = useState(false);
+  const acceptsDrop = (e: React.DragEvent) => !!cfg.photos && e.dataTransfer.types.includes(GALLERY_DRAG_TYPE);
+  function onDrop(e: React.DragEvent) {
+    setDropping(false);
+    if (!acceptsDrop(e)) return;
+    e.preventDefault();
+    const board = boardRef.current;
+    if (!board || !k) return;
+    try {
+      const item = JSON.parse(e.dataTransfer.getData(GALLERY_DRAG_TYPE)) as GalleryItem;
+      const r = board.getBoundingClientRect();
+      placePhoto(item, { x: Math.round((e.clientX - r.left) / k), y: Math.round((e.clientY - r.top) / k) });
+    } catch {
+      /* arrastre de otra cosa */
+    }
   }
 
   // La versión del contenido vale para celular y PC.
@@ -713,6 +784,7 @@ export function ArtboardEditor({
             onToggle={() => setPopover(popover === "add" ? null : "add")}
             full={customCount >= MAX_CUSTOM}
             onAdd={addObject}
+            onOpenLibrary={cfg.photos ? () => { setPopover(null); onOpenLibrary?.(); } : undefined}
           />
         )}
         <div className="ml-auto flex items-center gap-1.5">
@@ -760,7 +832,8 @@ export function ArtboardEditor({
             onApplyStyle={applyStyle}
             onCreateStyle={createStyle}
             onDuplicate={canDuplicate(selected) ? () => duplicate(selected.id) : undefined}
-            onDelete={isCustom(selected) ? () => remove(selected.id) : undefined}
+            onDelete={canRemove(selected) ? () => remove(selected.id) : undefined}
+            deleteLabel={isGalleryPhoto(selected) ? "Quitar de la diapositiva (sigue en la galería)" : undefined}
             onFront={() => restack(selected.id, true)}
             onBack={() => restack(selected.id, false)}
             onToggleLock={() => toggleLock(selected.id)}
@@ -778,7 +851,10 @@ export function ArtboardEditor({
         tabIndex={0}
         onKeyDown={onKey}
         onPointerDown={() => { setSelectedId(null); setPopover(null); finishEdit(); }}
-        className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-neutral-200/70 outline-none"
+        onDragOver={(e) => { if (acceptsDrop(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setDropping(true); } }}
+        onDragLeave={(e) => { if (e.currentTarget === e.target) setDropping(false); }}
+        onDrop={onDrop}
+        className={`relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-neutral-200/70 outline-none ${dropping ? "ring-4 ring-inset ring-blue-400" : ""}`}
         aria-label="Lienzo: tocá un elemento para seleccionarlo, arrastralo para moverlo, flechas para ajustar"
       >
         <div className="relative shadow-lg" style={{ width: A.w * k, height: A.h * k, ...bgStyle }}>
@@ -942,6 +1018,7 @@ function ContextToolbar({
   onFront,
   onBack,
   onToggleLock,
+  deleteLabel,
 }: {
   el: TextElement;
   orientation: Orientation;
@@ -963,6 +1040,7 @@ function ContextToolbar({
   onFront: () => void;
   onBack: () => void;
   onToggleLock: () => void;
+  deleteLabel?: string;
 }) {
   const isText = el.kind === "text";
   const isPanel = el.kind === "panel";
@@ -1234,7 +1312,7 @@ function ContextToolbar({
       <ToolButton label={el.hidden ? "Mostrar" : "Ocultar"} onClick={() => onPatch({ hidden: !el.hidden })}>
         {el.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
       </ToolButton>
-      {onDelete && <ToolButton label="Eliminar (Supr)" onClick={onDelete}><Trash2 size={14} /></ToolButton>}
+      {onDelete && <ToolButton label={deleteLabel ?? "Eliminar (Supr)"} onClick={onDelete}><Trash2 size={14} /></ToolButton>}
 
       {small && (
         <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800" title={`Se ve a ${phonePx.toFixed(1)} px`}>
@@ -1314,11 +1392,13 @@ function AddMenu({
   onToggle,
   full,
   onAdd,
+  onOpenLibrary,
 }: {
   open: boolean;
   onToggle: () => void;
   full: boolean;
   onAdd: (kind: CustomKind, extra?: Partial<TextElement>) => void;
+  onOpenLibrary?: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1377,6 +1457,15 @@ function AddMenu({
           </div>
 
           <p className={head}>Imagen</p>
+          {onOpenLibrary ? (
+            <button
+              type="button"
+              onClick={onOpenLibrary}
+              className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-neutral-300 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
+            >
+              Elegir de las fotos de la galería
+            </button>
+          ) : (
           <label className={`flex cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-neutral-300 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 ${full || busy ? "pointer-events-none opacity-40" : ""}`}>
             {busy ? "Subiendo…" : "Subir imagen (JPG, PNG o WebP)"}
             <input
@@ -1392,7 +1481,10 @@ function AddMenu({
               }}
             />
           </label>
-          <p className="mt-1 text-[11px] text-neutral-400">Después podés darle borde Polaroid o vintage.</p>
+          )}
+          <p className="mt-1 text-[11px] text-neutral-400">
+            {onOpenLibrary ? "Las fotos se suben en el panel de la galería y se arrastran al lienzo." : "Después podés darle borde Polaroid o vintage."}
+          </p>
           {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
 
           <p className={head}>Formas</p>
