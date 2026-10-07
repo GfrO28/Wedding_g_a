@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Ornament } from "./ornaments";
 import {
   ARTBOARDS,
+  byZ,
   artboardFit,
   boardsFor,
   elementStyle,
@@ -22,7 +24,10 @@ import {
 } from "@/lib/textLayout";
 
 // Las fotos y los mapas ocupan toda su caja; el resto mide lo que su contenido.
-export const isSized = (el: TextElement) => el.kind === "photo" || el.kind === "map";
+export const isSized = (el: TextElement) =>
+  el.kind === "photo" || el.kind === "map" || el.kind === "shape" || el.kind === "ornament";
+
+const SHAPE_RADIUS: Record<string, string> = { rect: "0", rounded: "12%", circle: "50%", line: "999px" };
 
 export function ElementContent({
   el,
@@ -36,6 +41,8 @@ export function ElementContent({
   if (el.kind === "panel") return <PanelBox el={el}>{blocks?.[`${el.id}:${el.variant}`] ?? blocks?.[el.id] ?? null}</PanelBox>;
   if (el.kind === "block") return <>{blocks?.[el.id] ?? null}</>;
   if (el.kind === "photo") return <FramedPhoto el={el} />;
+  if (el.kind === "shape") return <div style={{ width: "100%", height: "100%", background: el.color, borderRadius: SHAPE_RADIUS[el.variant] ?? "0" }} />;
+  if (el.kind === "ornament") return <Ornament name={el.variant} color={el.color} />;
   if (el.kind === "map") {
     const address = tokens[`direccion${el.ref}`];
     return address ? (
@@ -188,7 +195,7 @@ export function TextArtboard({
     };
     content = (
       <div ref={boardRef} style={boardStyle}>
-        {layout[orientation]
+        {byZ(layout[orientation])
           .filter((el) => !el.hidden)
           .map((el, i) => (
             <div key={el.id} data-el style={elementStyle(el) as CSSProperties}>

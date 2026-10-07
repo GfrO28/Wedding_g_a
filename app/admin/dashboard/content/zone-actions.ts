@@ -122,3 +122,13 @@ export async function resetEnvelopeImageAction(slot: string) {
   await setSetting(envelopeSettingKey(slot), "");
   revalidate();
 }
+
+// Imágenes agregadas al diseño con "+ Agregar" (JPG, PNG o WebP).
+export async function requestDesignImageUploadAction(filename: string, contentType: string): Promise<UploadRequest> {
+  if (!ALLOWED_IMAGE_TYPES.includes(contentType)) {
+    return { error: "Subí una imagen JPG, PNG o WebP.", uploadUrl: null, publicUrl: null };
+  }
+  const key = `design/${crypto.randomUUID()}-${safeName(filename)}`;
+  const uploadUrl = await getUploadUrl(key, contentType);
+  return { error: null, uploadUrl, publicUrl: publicUrlFor(key) };
+}

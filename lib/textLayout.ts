@@ -64,7 +64,8 @@ export type TextElement = {
   // separador) · panel: contenido variable (tarjetas, formularios) que crece
   // con lo que tiene adentro · photo: foto con borde · map: mapa del lugar
   // `ref` · link: texto que abre el mapa del lugar `ref`.
-  kind: "text" | "block" | "panel" | "photo" | "map" | "link";
+  // shape: forma de color (variant = tipo) · ornament: adorno (variant = cuál).
+  kind: "text" | "block" | "panel" | "photo" | "map" | "link" | "shape" | "ornament";
   text: string; // en photo: texto alternativo
   x: number; // centro, en px de la mesa
   y: number; // centro (en los paneles: borde de arriba)
@@ -73,7 +74,10 @@ export type TextElement = {
   ref: string; // a qué dato apunta (foto de la galería, número de lugar)
   src: string; // photo: lo completa withDynamic con la foto actual, no se guarda
   frame: FrameKey; // borde de las fotos
-  variant: string; // versión del contenido de un panel (ver VARIANTS)
+  variant: string; // versión del panel (VARIANTS), tipo de forma o de adorno
+  z: number; // orden de apilado: más alto, más adelante
+  opacity: number; // 0.1 a 1
+  locked: boolean; // bloqueado: no se mueve ni cambia de tamaño en el editor
   fontSize: number;
   font: FontKey;
   color: string;
@@ -103,6 +107,40 @@ export const FRAMES = {
 export type FrameKey = keyof typeof FRAMES;
 
 export const EXTENTS = [1, 1.5, 2, 2.5, 3, 4] as const;
+
+/* ---------- Objetos agregados desde el editor ---------- */
+
+export const SHAPES = { rect: "Rectángulo", rounded: "Redondeado", circle: "Círculo", line: "Línea" } as const;
+export const ORNAMENT_KEYS = [
+  "divider", "rings", "heart", "flower", "flower2", "leaf", "sprout", "sparkles", "star", "feather", "gem", "crown", "wine",
+] as const;
+const CUSTOM_KINDS = ["text", "photo", "shape", "ornament"] as const;
+export type CustomKind = (typeof CUSTOM_KINDS)[number];
+const CUSTOM_ID = /^x-[a-z0-9]{4,16}$/;
+export const MAX_CUSTOM = 40;
+export const isCustom = (el: { id: string }) => CUSTOM_ID.test(el.id);
+export const newCustomId = () => `x-${Math.random().toString(36).slice(2, 10).padEnd(6, "0")}`;
+
+// Un objeto nuevo, centrado en (x, y) de la mesa.
+export function customTemplate(kind: CustomKind, id: string, x = 0, y = 0): TextElement {
+  const common = { id, x, y, fontSize: 32, font: "inter" as FontKey, color: "var(--color-accent)", z: 500 };
+  switch (kind) {
+    case "photo":
+      return el({ ...common, kind: "photo", name: "Imagen", text: "", w: 360, h: 360, frame: "none", color: "var(--color-fg)" });
+    case "shape":
+      return el({ ...common, kind: "shape", name: "Forma", text: "", w: 240, h: 240, variant: "rect", opacity: 0.85 });
+    case "ornament":
+      return el({ ...common, kind: "ornament", name: "Adorno", text: "", w: 180, h: 180, variant: "flower" });
+    default:
+      return el({ ...common, kind: "text", name: "Texto", text: "Escribí acá", w: 500, color: "var(--color-fg)", lineHeight: 1.3 });
+  }
+}
+
+const validSrc = (v: unknown) =>
+  typeof v === "string" && v.length <= 600 && (/^https:\/\/[^\s"'<>]+$/.test(v) || /^\/[A-Za-z0-9/_.-]+$/.test(v)) ? v : "";
+
+// Orden de apilado: lo de z más alto se dibuja arriba.
+export const byZ = (list: TextElement[]) => [...list].sort((a, b) => a.z - b.z);
 export const extentOf = (l: TextLayout, o: Orientation) => l.extent?.[o] ?? 1;
 
 // La mesa de una sección con su alto (las secciones pueden medir más de una pantalla).
@@ -226,7 +264,8 @@ export function elementStyle(el: TextElement): Record<string, string> {
       textAlign: el.align,
     };
   }
-  if (el.kind === "photo" || el.kind === "map") return { ...box, height: `${el.h}px` };
+  if (el.opacity < 1) Object.assign(box, { opacity: String(el.opacity) });
+  if (el.kind === "photo" || el.kind === "map" || el.kind === "shape" || el.kind === "ornament") return { ...box, height: `${el.h}px` };
   const text = { ...box, ...typeStyle(el), fontSize: `${el.fontSize}px`, whiteSpace: "pre-wrap", overflowWrap: "break-word" };
   return el.kind === "link" ? { ...text, textDecoration: "underline", textUnderlineOffset: "0.2em" } : text;
 }
@@ -280,7 +319,7 @@ export function typeStyle(el: TextElement): Record<string, string> {
 const base = {
   kind: "text" as const, align: "center" as const, letterSpacing: 0, lineHeight: 1.15,
   weight: 400, italic: false, uppercase: false, rotation: 0, hidden: false, style: null,
-  ref: "", src: "", frame: "none" as FrameKey, variant: "",
+  ref: "", src: "", frame: "none" as FrameKey, variant: "", z: 0, opacity: 1, locked: false,
 };
 type Spec = Partial<TextElement> & Pick<TextElement, "id" | "name" | "text" | "fontSize" | "font" | "color">;
 const el = (s: Spec & { x?: number; y?: number; w?: number; h?: number }): TextElement => ({ ...base, x: 0, y: 0, w: 600, h: 0, ...s });
@@ -508,7 +547,7 @@ const photoTemplate = (id: string): TextElement =>
   el({ kind: "photo", id, name: "Foto", text: "", x: 0, y: 0, w: 320, h: 320, fontSize: 16, font: "inter", color: "var(--color-fg)", frame: "rounded", ref: id.slice(6) });
 
 function cleanElement(d: TextElement, s: Record<string, unknown>, A: Board): TextElement {
-  const sized = d.kind === "photo" || d.kind === "map";
+  const sized = d.kind === "photo" || d.kind === "map" || d.kind === "shape" || d.kind === "ornament";
   const clean: TextElement = {
     ...d,
     text: typeof s.text === "string" ? s.text.slice(0, 300) : d.text,
@@ -528,6 +567,9 @@ function cleanElement(d: TextElement, s: Record<string, unknown>, A: Board): Tex
     rotation: clamp(s.rotation, -180, 180, d.rotation),
     hidden: typeof s.hidden === "boolean" ? s.hidden : d.hidden,
     frame: typeof s.frame === "string" && s.frame in FRAMES ? (s.frame as FrameKey) : d.frame,
+    z: clamp(s.z, -1000, 1000, d.z),
+    opacity: clamp(s.opacity, 0.1, 1, d.opacity),
+    locked: typeof s.locked === "boolean" ? s.locked : d.locked,
     src: "",
     style: null,
   };
@@ -556,7 +598,8 @@ export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayo
     const A = cfg.boards[o];
     const list = Array.isArray(src[o]) ? (src[o] as Record<string, unknown>[]) : [];
     const v = VARIANTS[section];
-    out[o] = cfg.defaults[o].map((d) => {
+    out[o] = cfg.defaults[o].map((d0, i) => {
+      const d = { ...d0, z: i };
       let s = list.find((e) => e && e.id === d.id) ?? {};
       if (legacy && d.kind === "panel" && typeof s.y === "number") s = { ...s, y: s.y - (typeof s.h === "number" ? s.h : d.h) / 2 };
       const clean = cleanElement(d, s, A);
@@ -566,8 +609,24 @@ export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayo
     if (cfg.photos) {
       for (const s of list) {
         if (!s || typeof s.id !== "string" || !PHOTO_ID.test(s.id) || out[o].some((e) => e.id === s.id)) continue;
-        out[o].push(cleanElement(photoTemplate(s.id), s, A));
+        out[o].push(cleanElement({ ...photoTemplate(s.id), z: 20 + out[o].length }, s, A));
       }
+    }
+    // Objetos agregados: textos, imágenes, formas y adornos.
+    let custom = 0;
+    for (const s of list) {
+      if (custom >= MAX_CUSTOM) break;
+      if (!s || typeof s.id !== "string" || !CUSTOM_ID.test(s.id) || out[o].some((e) => e.id === s.id)) continue;
+      const kind = (CUSTOM_KINDS as readonly string[]).includes(s.kind as string) ? (s.kind as CustomKind) : null;
+      if (!kind) continue;
+      const clean = cleanElement(customTemplate(kind, s.id), s, A);
+      if (typeof s.name === "string" && s.name.trim()) clean.name = s.name.trim().slice(0, 40);
+      if (kind === "photo") clean.src = validSrc(s.src);
+      if (kind === "shape") clean.variant = typeof s.variant === "string" && s.variant in SHAPES ? s.variant : "rect";
+      if (kind === "ornament") clean.variant = (ORNAMENT_KEYS as readonly string[]).includes(s.variant as string) ? (s.variant as string) : "flower";
+      if (kind === "photo" && !clean.src) continue;
+      out[o].push(clean);
+      custom++;
     }
   }
   if (cfg.extendable && src.extent && typeof src.extent === "object") {
@@ -602,9 +661,9 @@ export function withDynamic(section: LayoutSection, layout: TextLayout, photos: 
     const byId = new Map(photos.map((p) => [photoId(p.key), p]));
     let added = false;
     const kept = layout[o]
-      .filter((e) => e.kind !== "photo" || byId.has(e.id))
+      .filter((e) => !e.id.startsWith("photo-") || byId.has(e.id))
       .map((e) => {
-        const p = e.kind === "photo" ? byId.get(e.id) : undefined;
+        const p = e.id.startsWith("photo-") ? byId.get(e.id) : undefined;
         return p ? { ...e, src: p.src, text: e.text || p.alt, ref: p.key } : e;
       });
     photos.forEach((p, i) => {
@@ -621,7 +680,7 @@ export function withDynamic(section: LayoutSection, layout: TextLayout, photos: 
     out[o] = kept;
     if (added || !layout.extent) {
       const H = cfg.boards[o].h;
-      const bottom = Math.max(...kept.map((e) => (e.kind === "photo" ? e.y + e.h / 2 + 40 : 0)));
+      const bottom = Math.max(...kept.map((e) => (e.id.startsWith("photo-") ? e.y + e.h / 2 + 40 : 0)));
       const need = EXTENTS.find((x) => x * H >= bottom) ?? EXTENTS[EXTENTS.length - 1];
       extent[o] = Math.max(extent[o], need);
     }

@@ -17,10 +17,16 @@ import {
   AlignRight,
   Bold,
   Braces,
+  ArrowDownToLine,
+  ArrowUpToLine,
   Check,
+  Copy,
   Eye,
   EyeOff,
   Italic,
+  Loader2,
+  Lock,
+  LockOpen,
   Minus,
   MonitorSmartphone,
   MoreHorizontal,
@@ -29,15 +35,26 @@ import {
   Redo2,
   RotateCcw,
   SlidersHorizontal,
+  Trash2,
   Type,
   Undo2,
   Unlink,
   X,
 } from "lucide-react";
 import { ElementContent, isSized, TextArtboard } from "@/app/components/TextArtboard";
+import { Ornament, ORNAMENT_LABELS } from "@/app/components/ornaments";
+import { requestDesignImageUploadAction } from "./zone-actions";
 import {
   applyStyles,
   ARTBOARDS,
+  byZ,
+  customTemplate,
+  isCustom,
+  MAX_CUSTOM,
+  newCustomId,
+  ORNAMENT_KEYS,
+  SHAPES,
+  type CustomKind,
   boardsFor,
   EXTENTS,
   extentOf,
@@ -69,7 +86,7 @@ type Background = { color: string; image?: string | null; overlay?: boolean };
 type Snap = { layout: TextLayout; styles: TextStyle[] };
 type Drag = { id: string; mode: "move" | "corner" | "side" | "vside"; sign: number; startX: number; startY: number; el: TextElement; before: TextLayout };
 type Guides = { x?: number; y?: number };
-type Popover = null | "style" | "tokens" | "color" | "advanced" | "menu";
+type Popover = null | "style" | "tokens" | "color" | "advanced" | "menu" | "add";
 // Vista que tapa el lienzo (el sobre cerrado). Mientras se ve, los textos no se editan.
 export type CanvasCover = {
   closedLabel: string;
@@ -368,10 +385,11 @@ export function ArtboardEditor({
     e.stopPropagation();
     e.preventDefault();
     if (editing && editing.id !== el.id) finishEdit();
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
     setSelectedId(el.id);
     setPopover(null);
     areaRef.current?.focus({ preventScroll: true });
+    if (el.locked) return; // bloqueado: se selecciona pero no se mueve
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
     drag.current = { id: el.id, mode, sign, startX: e.clientX, startY: e.clientY, el: { ...el }, before: layout };
   }
 
@@ -430,6 +448,17 @@ export function ArtboardEditor({
       setPopover(null);
     }
     if (!selected) return;
+    if ((e.key === "Delete" || e.key === "Backspace") && isCustom(selected)) {
+      e.preventDefault();
+      remove(selected.id);
+      return;
+    }
+    if (mod && e.key.toLowerCase() === "d" && canDuplicate(selected)) {
+      e.preventDefault();
+      duplicate(selected.id);
+      return;
+    }
+    if (selected.locked) return;
     if (e.key === "Enter" && (selected.kind === "text" || selected.kind === "link")) {
       e.preventDefault();
       startEdit(selected.id);
@@ -464,6 +493,74 @@ export function ArtboardEditor({
   function setExtent(x: number) {
     const next = clone(layout);
     next.extent = { portrait: extentOf(layout, "portrait"), landscape: extentOf(layout, "landscape"), [orientation]: x };
+    commit(next, layout);
+  }
+
+  /* ---------- Objetos agregados ---------- */
+
+  // Los tamaños de las plantillas son para la mesa vertical; la horizontal usa
+  // letras y objetos de casi la mitad de tamaño.
+  const SCALE: Record<Orientation, number> = { portrait: 1, landscape: 0.55 };
+  const maxZ = (list: TextElement[]) => Math.max(0, ...list.map((e) => e.z));
+  const customCount = layout.portrait.filter(isCustom).length;
+
+  function addObject(kind: CustomKind, extra: Partial<TextElement> = {}) {
+    if (customCount >= MAX_CUSTOM) return;
+    const id = newCustomId();
+    const next = clone(layout);
+    for (const o of ["portrait", "landscape"] as Orientation[]) {
+      const B = BOARDS[o], f = SCALE[o];
+      // En el formato que estás viendo aparece en el centro de lo visible.
+      // Cada objeto nuevo se corre un poco para no tapar al anterior.
+      const step = (customCount % 6) * 28 * f;
+      const y = (o === orientation ? A.h / 2 : (B.h * extentOf(layout, o)) / 2) + step;
+      const t = { ...customTemplate(kind, id, B.w / 2 + step, y), ...extra };
+      next[o] = [...next[o], { ...t, w: Math.round(t.w * f), h: Math.max(2, Math.round(t.h * f)), fontSize: Math.round(t.fontSize * f), z: maxZ(next[o]) + 1 }];
+    }
+    commit(next, layout);
+    setSelectedId(id);
+    setPopover(null);
+  }
+
+  // Duplicar: los objetos agregados se copian tal cual; un texto fijo se copia
+  // como texto nuevo (con su estilo).
+  const canDuplicate = (el: TextElement) => isCustom(el) || el.kind === "text" || el.kind === "link";
+  function duplicate(id: string) {
+    if (customCount >= MAX_CUSTOM) return;
+    const nid = newCustomId();
+    const next = clone(layout);
+    for (const o of ["portrait", "landscape"] as Orientation[]) {
+      const src = next[o].find((e) => e.id === id);
+      if (!src) continue;
+      const copy: TextElement = isCustom(src)
+        ? { ...src, id: nid }
+        : { ...customTemplate("text", nid), ...src, id: nid, kind: "text", name: `${src.name} (copia)`, ref: "", variant: "" };
+      next[o] = [...next[o], { ...copy, x: copy.x + 24, y: copy.y + 24, locked: false, z: maxZ(next[o]) + 1 }];
+    }
+    commit(next, layout);
+    setSelectedId(nid);
+  }
+
+  function remove(id: string) {
+    if (!isCustom({ id })) return;
+    const next = clone(layout);
+    for (const o of ["portrait", "landscape"] as Orientation[]) next[o] = next[o].filter((e) => e.id !== id);
+    commit(next, layout);
+    setSelectedId(null);
+    finishEdit();
+  }
+
+  function restack(id: string, front: boolean) {
+    const list = layout[orientation];
+    const z = front ? maxZ(list) + 1 : Math.min(0, ...list.map((e) => e.z)) - 1;
+    patch(id, { z });
+  }
+
+  function toggleLock(id: string) {
+    const el = layout[orientation].find((e) => e.id === id);
+    if (!el) return;
+    const next = clone(layout);
+    for (const o of ["portrait", "landscape"] as Orientation[]) next[o] = next[o].map((e) => (e.id === id ? { ...e, locked: !el.locked } : e));
     commit(next, layout);
   }
 
@@ -571,6 +668,14 @@ export function ArtboardEditor({
             {closed && <IconButton label="Cerrar el sobre otra vez" onClick={() => setReplay((r) => r + 1)}><RotateCcw size={14} /></IconButton>}
           </div>
         )}
+        {!cover && (
+          <AddMenu
+            open={popover === "add"}
+            onToggle={() => setPopover(popover === "add" ? null : "add")}
+            full={customCount >= MAX_CUSTOM}
+            onAdd={addObject}
+          />
+        )}
         <div className="ml-auto flex items-center gap-1.5">
           {actions}
           <button
@@ -615,6 +720,11 @@ export function ArtboardEditor({
             styleUsage={styleUsage}
             onApplyStyle={applyStyle}
             onCreateStyle={createStyle}
+            onDuplicate={canDuplicate(selected) ? () => duplicate(selected.id) : undefined}
+            onDelete={isCustom(selected) ? () => remove(selected.id) : undefined}
+            onFront={() => restack(selected.id, true)}
+            onBack={() => restack(selected.id, false)}
+            onToggleLock={() => toggleLock(selected.id)}
           />
         ) : (
           <p className="text-xs text-neutral-500">
@@ -647,7 +757,7 @@ export function ArtboardEditor({
             onPointerUp={endDrag}
             onPointerCancel={endDrag}
           >
-            {elements.map((el) => {
+            {byZ(elements).map((el) => {
               const isSel = el.id === selectedId;
               const isEditing = editing?.id === el.id;
               return (
@@ -658,8 +768,8 @@ export function ArtboardEditor({
                   ref={(n) => { if (n) elRefs.current.set(el.id, n); else elRefs.current.delete(el.id); }}
                   style={{
                     ...(elementStyle(el) as CSSProperties),
-                    cursor: isEditing ? "text" : "move",
-                    opacity: el.hidden ? 0.25 : 1,
+                    cursor: isEditing ? "text" : el.locked ? "default" : "move",
+                    opacity: el.hidden ? 0.25 : el.opacity,
                     outline: isSel
                       ? `${2 / (k || 1)}px solid #2563eb`
                       : overflow.has(el.id)
@@ -689,7 +799,7 @@ export function ArtboardEditor({
                       <ElementContent el={el} tokens={tokens} blocks={blocks} />
                     </div>
                   )}
-                  {isSel && !isEditing &&
+                  {isSel && !isEditing && !el.locked &&
                     ([
                       ["corner", -1, "nwse-resize", { left: -handle / 2, top: -handle / 2 }],
                       ["corner", 1, "nesw-resize", { right: -handle / 2, top: -handle / 2 }],
@@ -732,13 +842,14 @@ export function ArtboardEditor({
       {/* Capas */}
       <div className="flex flex-wrap items-center gap-1.5 border-t border-neutral-200 bg-white px-3 py-2">
         <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Capas</span>
-        {elements.map((el) => {
+        {byZ(elements).map((el) => {
           const warn = !el.hidden && (smallestPx(el) < MIN_READABLE_PX || overflow.has(el.id));
           const isSel = el.id === selectedId;
           return (
             <span key={el.id} className={`inline-flex items-center rounded-full border text-xs ${isSel ? "border-blue-600 bg-blue-50 text-blue-800" : "border-neutral-200 text-neutral-700"}`}>
               <button type="button" onClick={() => setSelectedId(el.id)} className="flex items-center gap-1 py-0.5 pl-2.5 pr-1">
                 {warn && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-label="Revisar" />}
+                {el.locked && <Lock size={10} aria-label="Bloqueado" />}
                 <span className={el.hidden ? "line-through opacity-60" : ""}>{el.name}</span>
               </button>
               <button
@@ -787,6 +898,11 @@ function ContextToolbar({
   styleUsage,
   onApplyStyle,
   onCreateStyle,
+  onDuplicate,
+  onDelete,
+  onFront,
+  onBack,
+  onToggleLock,
 }: {
   el: TextElement;
   orientation: Orientation;
@@ -803,6 +919,11 @@ function ContextToolbar({
   styleUsage: Record<string, number>;
   onApplyStyle: (id: string | null) => void;
   onCreateStyle: (name: string) => void;
+  onDuplicate?: () => void;
+  onDelete?: () => void;
+  onFront: () => void;
+  onBack: () => void;
+  onToggleLock: () => void;
 }) {
   const isText = el.kind === "text";
   const isPanel = el.kind === "panel";
@@ -814,6 +935,33 @@ function ContextToolbar({
   const sizeStep = isPanel ? 1 : 2;
   const [newName, setNewName] = useState("");
   const uses = currentStyle ? styleUsage[currentStyle.id] ?? 1 : 0;
+  const colorTool = (
+    <div className="relative" data-popover>
+            <ToolButton label="Color" active={popover === "color"} onClick={() => toggle("color")}>
+              <span className="h-4 w-4 rounded-full border border-neutral-300" style={{ background: el.color }} />
+            </ToolButton>
+            {popover === "color" && (
+              <div className="absolute left-0 top-full z-30 mt-1 w-60 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg">
+                <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-neutral-400">De la paleta</p>
+                <div className="flex flex-col gap-1">
+                  {Object.entries(THEME_COLORS).map(([v, label]) => (
+                    <button key={v} type="button" onClick={() => onPatch({ color: v })} className={`flex items-center gap-2 rounded px-1.5 py-1 text-left text-sm hover:bg-neutral-50 ${el.color === v ? "bg-neutral-100" : ""}`}>
+                      <span className="h-4 w-4 rounded-full border border-neutral-300" style={{ background: v }} /> {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mb-1.5 mt-3 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Color propio</p>
+                <input
+                  type="color"
+                  aria-label="Elegir color propio"
+                  value={el.color.startsWith("#") ? el.color : "#5c1f2e"}
+                  onChange={(e) => onPatch({ color: e.target.value })}
+                  className="h-8 w-full cursor-pointer rounded border border-neutral-300"
+                />
+              </div>
+            )}
+          </div>
+  );
 
   return (
     <>
@@ -957,31 +1105,7 @@ function ContextToolbar({
         </button>
       </div>
 
-      <div className="relative" data-popover>
-        <ToolButton label="Color" active={popover === "color"} onClick={() => toggle("color")}>
-          <span className="h-4 w-4 rounded-full border border-neutral-300" style={{ background: el.color }} />
-        </ToolButton>
-        {popover === "color" && (
-          <div className="absolute left-0 top-full z-30 mt-1 w-60 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg">
-            <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-neutral-400">De la paleta</p>
-            <div className="flex flex-col gap-1">
-              {Object.entries(THEME_COLORS).map(([v, label]) => (
-                <button key={v} type="button" onClick={() => onPatch({ color: v })} className={`flex items-center gap-2 rounded px-1.5 py-1 text-left text-sm hover:bg-neutral-50 ${el.color === v ? "bg-neutral-100" : ""}`}>
-                  <span className="h-4 w-4 rounded-full border border-neutral-300" style={{ background: v }} /> {label}
-                </button>
-              ))}
-            </div>
-            <p className="mb-1.5 mt-3 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Color propio</p>
-            <input
-              type="color"
-              aria-label="Elegir color propio"
-              value={el.color.startsWith("#") ? el.color : "#5c1f2e"}
-              onChange={(e) => onPatch({ color: e.target.value })}
-              className="h-8 w-full cursor-pointer rounded border border-neutral-300"
-            />
-          </div>
-        )}
-      </div>
+      {colorTool}
 
       {!isPanel && (
         <>
@@ -1014,6 +1138,38 @@ function ContextToolbar({
         </select>
       )}
 
+      {el.kind === "shape" && (
+        <>
+          <select
+            aria-label="Tipo de forma"
+            className="h-8 rounded-md border border-neutral-300 px-2 text-sm"
+            value={el.variant}
+            onChange={(e) => onPatch({ variant: e.target.value })}
+          >
+            {Object.entries(SHAPES).map(([k, label]) => (
+              <option key={k} value={k}>{label}</option>
+            ))}
+          </select>
+          {colorTool}
+        </>
+      )}
+
+      {el.kind === "ornament" && (
+        <>
+          <select
+            aria-label="Adorno"
+            className="h-8 rounded-md border border-neutral-300 px-2 text-sm"
+            value={el.variant}
+            onChange={(e) => onPatch({ variant: e.target.value })}
+          >
+            {ORNAMENT_KEYS.map((k) => (
+              <option key={k} value={k}>{ORNAMENT_LABELS[k]}</option>
+            ))}
+          </select>
+          {colorTool}
+        </>
+      )}
+
       <div className="relative" data-popover>
         <ToolButton label="Avanzado" active={popover === "advanced"} onClick={() => toggle("advanced")}><SlidersHorizontal size={14} /></ToolButton>
         {popover === "advanced" && (
@@ -1026,6 +1182,7 @@ function ContextToolbar({
               <Num label="Rotación (°)" value={el.rotation} onChange={(v) => onPatch({ rotation: v })} />
               <Num label="Posición X" value={el.x} onChange={(v) => onPatch({ x: v })} />
               <Num label="Posición Y" value={el.y} onChange={(v) => onPatch({ y: v })} />
+              <Num label="Opacidad (%)" value={Math.round(el.opacity * 100)} step={5} onChange={(v) => onPatch({ opacity: Math.min(1, Math.max(0.1, v / 100)) })} />
             </div>
             <button type="button" onClick={() => onPatch({ x: artW / 2 })} className="mt-2 w-full rounded-md border border-neutral-300 px-2.5 py-1 text-xs hover:bg-neutral-50">
               Centrar horizontalmente
@@ -1034,9 +1191,17 @@ function ContextToolbar({
         )}
       </div>
 
+      <span className="mx-0.5 h-5 w-px bg-neutral-200" aria-hidden />
+      <ToolButton label="Traer al frente" onClick={onFront}><ArrowUpToLine size={14} /></ToolButton>
+      <ToolButton label="Enviar atrás" onClick={onBack}><ArrowDownToLine size={14} /></ToolButton>
+      <ToolButton label={el.locked ? "Desbloquear" : "Bloquear (no se mueve)"} active={el.locked} onClick={onToggleLock}>
+        {el.locked ? <Lock size={14} /> : <LockOpen size={14} />}
+      </ToolButton>
+      {onDuplicate && <ToolButton label="Duplicar (Ctrl+D)" onClick={onDuplicate}><Copy size={14} /></ToolButton>}
       <ToolButton label={el.hidden ? "Mostrar" : "Ocultar"} onClick={() => onPatch({ hidden: !el.hidden })}>
         {el.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
       </ToolButton>
+      {onDelete && <ToolButton label="Eliminar (Supr)" onClick={onDelete}><Trash2 size={14} /></ToolButton>}
 
       {small && (
         <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800" title={`Se ve a ${phonePx.toFixed(1)} px`}>
@@ -1106,6 +1271,136 @@ function Num({ label, value, step = 1, onChange }: { label: string; value: numbe
         }}
       />
     </label>
+  );
+}
+
+/* ---------- + Agregar ---------- */
+
+function AddMenu({
+  open,
+  onToggle,
+  full,
+  onAdd,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  full: boolean;
+  onAdd: (kind: CustomKind, extra?: Partial<TextElement>) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function upload(file: File) {
+    setError(null);
+    setBusy(true);
+    try {
+      const req = await requestDesignImageUploadAction(file.name, file.type);
+      if (!req.uploadUrl || !req.publicUrl) return setError(req.error ?? "No se pudo preparar la subida.");
+      const put = await fetch(req.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+      if (!put.ok) return setError("No se pudo subir la imagen. Probá de nuevo.");
+      // La caja toma la proporción de la imagen.
+      const ratio = await new Promise<number>((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(img.naturalHeight / img.naturalWidth || 1);
+        img.onerror = () => resolve(1);
+        img.src = URL.createObjectURL(file);
+      });
+      const w = 360;
+      onAdd("photo", { src: req.publicUrl, w, h: Math.round(Math.min(3, Math.max(0.2, ratio)) * w), text: file.name.replace(/\.[^.]+$/, "") });
+    } catch {
+      setError("No se pudo subir la imagen. Revisá tu conexión y probá de nuevo.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const head = "mb-1.5 mt-3 text-[11px] font-medium uppercase tracking-wide text-neutral-400 first:mt-0";
+  const tile = "flex items-center justify-center rounded-md border border-neutral-200 hover:border-neutral-400 hover:bg-neutral-50";
+
+  return (
+    <div className="relative" data-popover>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-700"
+      >
+        {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Agregar
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-30 mt-1 w-80 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg" role="menu" aria-label="Agregar al diseño">
+          {full && <p className="mb-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">Llegaste al máximo de objetos en esta sección.</p>}
+          <p className={head}>Texto</p>
+          <div className="flex flex-col gap-1">
+            <button type="button" disabled={full} onClick={() => onAdd("text", { text: "Título", fontSize: 59, style: "titulos", font: "playfair" })} className="rounded px-2 py-1 text-left font-serif text-xl hover:bg-neutral-50 disabled:opacity-40">
+              Agregar un título
+            </button>
+            <button type="button" disabled={full} onClick={() => onAdd("text", { text: "Subtítulo", fontSize: 35, style: "detalle", color: "var(--color-muted)" })} className="rounded px-2 py-1 text-left text-base hover:bg-neutral-50 disabled:opacity-40">
+              Agregar un subtítulo
+            </button>
+            <button type="button" disabled={full} onClick={() => onAdd("text", { text: "Escribí acá tu texto", fontSize: 28, style: "parrafo", color: "var(--color-muted)", lineHeight: 1.45 })} className="rounded px-2 py-1 text-left text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-40">
+              Agregar un párrafo
+            </button>
+          </div>
+
+          <p className={head}>Imagen</p>
+          <label className={`flex cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-neutral-300 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 ${full || busy ? "pointer-events-none opacity-40" : ""}`}>
+            {busy ? "Subiendo…" : "Subir imagen (JPG, PNG o WebP)"}
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              aria-label="Subir imagen"
+              disabled={full || busy}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) upload(file);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <p className="mt-1 text-[11px] text-neutral-400">Después podés darle borde Polaroid o vintage.</p>
+          {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+
+          <p className={head}>Formas</p>
+          <div className="grid grid-cols-4 gap-1.5">
+            {(Object.keys(SHAPES) as (keyof typeof SHAPES)[]).map((k) => (
+              <button
+                key={k}
+                type="button"
+                title={SHAPES[k]}
+                aria-label={`Forma: ${SHAPES[k]}`}
+                disabled={full}
+                onClick={() => onAdd("shape", k === "line" ? { variant: k, w: 400, h: 4, opacity: 1 } : { variant: k })}
+                className={`${tile} h-12 disabled:opacity-40`}
+              >
+                <span
+                  className="block bg-neutral-500"
+                  style={k === "line" ? { width: 28, height: 2 } : { width: 24, height: 24, borderRadius: k === "circle" ? "50%" : k === "rounded" ? 6 : 0 }}
+                />
+              </button>
+            ))}
+          </div>
+
+          <p className={head}>Adornos</p>
+          <div className="grid grid-cols-5 gap-1.5">
+            {ORNAMENT_KEYS.map((k) => (
+              <button
+                key={k}
+                type="button"
+                title={ORNAMENT_LABELS[k]}
+                aria-label={`Adorno: ${ORNAMENT_LABELS[k]}`}
+                disabled={full}
+                onClick={() => onAdd("ornament", k === "divider" ? { variant: k, w: 420, h: 40 } : { variant: k })}
+                className={`${tile} h-12 p-2.5 text-neutral-600 disabled:opacity-40`}
+              >
+                <Ornament name={k} color="currentColor" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
