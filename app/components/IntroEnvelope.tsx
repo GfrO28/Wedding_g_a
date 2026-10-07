@@ -14,7 +14,6 @@ import { EnvelopeText, textRevealDurationMs, type EnvelopeTextLine } from "./env
 // Todos los tiempos son relativos al toque del usuario (segundos). Ajustar
 // acá para cambiar el ritmo de la animación sin tocar el resto del componente.
 const TIMING = {
-  sealBreathe: 2.4,
   prep: 0.4,
   rightFlap: { delay: 0.4, duration: 1.2 },
   leftFlap: { delay: 0.5, duration: 1.2 },
@@ -323,8 +322,8 @@ export function IntroEnvelope({
                     }}
                     className="absolute flex items-center justify-center outline-none"
                     style={{
-                      left: "40%",
-                      top: "48%",
+                      left: "50%",
+                      top: "50%",
                       width: sealSize,
                       height: sealSize,
                       marginLeft: -sealSize / 2,
@@ -343,15 +342,8 @@ export function IntroEnvelope({
                       boxShadow:
                         "0 2px 4px rgba(0,0,0,0.4), 0 8px 14px rgba(0,0,0,0.5), 0 18px 36px rgba(0,0,0,0.35), inset 0 2px 3px rgba(255,255,255,0.3), inset 0 -3px 5px rgba(0,0,0,0.25)",
                     }}
-                    animate={{
-                      scale: !tapped ? [1, 1.03, 1] : [1.08, 0.3],
-                      opacity: !tapped ? 1 : [1, 1, 0],
-                    }}
-                    transition={
-                      !tapped
-                        ? { duration: TIMING.sealBreathe, repeat: Infinity, ease: "easeInOut" }
-                        : { duration: TIMING.prep + 0.3, times: [0, 0.57, 1], ease: "easeIn" }
-                    }
+                    animate={{ scale: tapped ? 1.08 : 1, opacity: 1 }}
+                    transition={{ duration: TIMING.prep, ease: "easeOut" }}
                   >
                     {!settings.images.introSeal && (
                       <>
