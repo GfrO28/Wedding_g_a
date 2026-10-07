@@ -27,7 +27,7 @@ export default async function PreviewPage() {
   ]);
 
   return (
-    <main className="h-dvh snap-y snap-mandatory overflow-y-scroll scroll-smooth">
+    <main className="h-dvh overflow-y-auto overscroll-y-contain">
       {content.zoneEnabled.hero && <Hero guestName="Invitado de ejemplo" />}
       {content.zoneEnabled.blessing && <Blessing />}
       {content.zoneEnabled.story && <OurStory />}

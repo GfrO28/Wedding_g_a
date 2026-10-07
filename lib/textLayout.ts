@@ -96,7 +96,11 @@ export type TextElement = {
 
 // extent: alto de la sección en pantallas (1, 1½, 2…), por formato.
 // v: 2 = los paneles se ubican por su borde de arriba (crecen hacia abajo).
-export type TextLayout = Record<Orientation, TextElement[]> & { extent?: Record<Orientation, number>; v?: number };
+// overlay: velo del color de fondo de la paleta sobre la foto de fondo (0 a 0.95).
+export type TextLayout = Record<Orientation, TextElement[]> & { extent?: Record<Orientation, number>; v?: number; overlay?: number };
+
+export const DEFAULT_OVERLAY = 0.4;
+export const overlayOf = (l: TextLayout) => l.overlay ?? DEFAULT_OVERLAY;
 
 export const FRAMES = {
   none: "Sin borde",
@@ -629,6 +633,8 @@ export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayo
       custom++;
     }
   }
+  const ov = (src as { overlay?: unknown }).overlay;
+  if (typeof ov === "number" && Number.isFinite(ov)) out.overlay = Math.round(Math.min(0.95, Math.max(0, ov)) * 100) / 100;
   if (cfg.extendable && src.extent && typeof src.extent === "object") {
     const e = src.extent as Record<string, unknown>;
     const pick = (v: unknown) => (EXTENTS as readonly number[]).includes(v as number) ? (v as number) : 1;

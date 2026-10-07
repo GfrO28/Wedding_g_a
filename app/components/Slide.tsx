@@ -5,15 +5,17 @@ export function Slide({
   className = "",
   bgImage,
   fullBleed = false,
+  overlay = 0.4,
 }: {
   children: ReactNode;
   className?: string;
   bgImage?: string | null;
   fullBleed?: boolean;
+  overlay?: number; // velo del color de fondo sobre la foto (0 a 1)
 }) {
   return (
     <section
-      className={`relative flex min-h-dvh snap-start flex-col items-center justify-center overflow-hidden ${className}`}
+      className={`relative flex min-h-dvh flex-col items-center justify-center overflow-hidden ${className}`}
     >
       {bgImage && (
         <>
@@ -21,7 +23,7 @@ export function Slide({
             className="absolute inset-0 bg-cover bg-center"
             style={{ backgroundImage: `url(${bgImage})` }}
           />
-          <div className="absolute inset-0 bg-[var(--color-bg)]/40" />
+          <div className="absolute inset-0 bg-[var(--color-bg)]" style={{ opacity: overlay }} />
         </>
       )}
       {fullBleed ? (

@@ -1,5 +1,6 @@
 import { getWeddingContent, type Place } from "@/lib/weddingContent";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
+import { overlayOf } from "@/lib/textLayout";
 import { FadeIn } from "./FadeIn";
 import { Slide } from "./Slide";
 import { TextArtboard } from "./TextArtboard";
@@ -18,7 +19,7 @@ function EventCard({ name, time, venue, address }: Pick<Place, "name" | "time" |
 export async function EventDetails() {
   const [WEDDING, layout, tokens] = await Promise.all([getWeddingContent(), getTextLayout("event"), getTokenValues("")]);
   return (
-    <Slide bgImage={WEDDING.zoneImages.event} fullBleed>
+    <Slide bgImage={WEDDING.zoneImages.event} overlay={overlayOf(layout)} fullBleed>
       <TextArtboard page
         layout={layout}
         tokens={tokens}

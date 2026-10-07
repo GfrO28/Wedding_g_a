@@ -58,6 +58,7 @@ import {
   boardsFor,
   EXTENTS,
   extentOf,
+  overlayOf,
   FRAMES,
   VARIANTS,
   withDynamic,
@@ -587,8 +588,20 @@ export function ArtboardEditor({
     ...(background.image ? { backgroundImage: `url(${background.image})`, backgroundSize: "cover", backgroundPosition: "center" } : null),
   };
   const overlay = background.overlay ? (
-    <div className="pointer-events-none absolute inset-0" style={{ background: "color-mix(in srgb, var(--color-bg) 40%, transparent)" }} />
+    <div className="pointer-events-none absolute inset-0" style={{ background: "var(--color-bg)", opacity: overlayOf(layout) }} />
   ) : null;
+
+  // Velo sobre la foto de fondo: mientras se arrastra el control queda una sola
+  // entrada en el historial.
+  const overlayDrag = useRef<TextLayout | null>(null);
+  function setOverlay(v: number) {
+    if (!overlayDrag.current) overlayDrag.current = layout;
+    setLayout({ ...clone(layout), overlay: v });
+  }
+  function endOverlay() {
+    if (overlayDrag.current) record({ layout: overlayDrag.current, styles });
+    overlayDrag.current = null;
+  }
   const handle = 10 / (k || 1);
 
   return (
@@ -613,6 +626,25 @@ export function ArtboardEditor({
           <IconButton label="Deshacer (Ctrl+Z)" onClick={undo} disabled={!hist.undo}><Undo2 size={15} /></IconButton>
           <IconButton label="Rehacer (Ctrl+Y)" onClick={redo} disabled={!hist.redo}><Redo2 size={15} /></IconButton>
         </div>
+        {background.overlay && (
+          <label className="flex items-center gap-1.5 text-xs text-neutral-600" title="Velo del color de fondo sobre la foto: más alto, la foto se ve más suave y el texto se lee mejor">
+            Velo
+            <input
+              type="range"
+              min={0}
+              max={95}
+              step={5}
+              aria-label="Opacidad del velo sobre la foto de fondo"
+              value={Math.round(overlayOf(layout) * 100)}
+              onChange={(e) => setOverlay(Number(e.target.value) / 100)}
+              onPointerUp={endOverlay}
+              onKeyUp={endOverlay}
+              onBlur={endOverlay}
+              className="w-24 accent-neutral-900"
+            />
+            <span className="w-8 tabular-nums">{Math.round(overlayOf(layout) * 100)}%</span>
+          </label>
+        )}
         {cfg.extendable && (
           <select
             aria-label="Alto de la sección"

@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { getWeddingContent, type ItineraryStep } from "@/lib/weddingContent";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
-import { usedVariants } from "@/lib/textLayout";
+import { overlayOf, usedVariants } from "@/lib/textLayout";
 import { FadeIn } from "./FadeIn";
 import { Slide } from "./Slide";
 import { TextArtboard } from "./TextArtboard";
@@ -29,7 +29,7 @@ export async function Itinerary() {
   );
 
   return (
-    <Slide bgImage={WEDDING.zoneImages.itinerary} fullBleed>
+    <Slide bgImage={WEDDING.zoneImages.itinerary} overlay={overlayOf(layout)} fullBleed>
       <TextArtboard page layout={layout} tokens={tokens} animate blocks={blocks} />
     </Slide>
   );

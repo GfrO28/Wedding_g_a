@@ -53,7 +53,7 @@ export default async function GuestInvitationPage({
     <>
     <MusicControl music={content.zoneEnabled.music ? content.music : null} />
     {content.zoneEnabled.intro && <EnvelopeIntro assets={envelope.assets} textLayout={envelopeText} tokens={tokens} />}
-    <main className="h-dvh snap-y snap-mandatory overflow-y-scroll scroll-smooth">
+    <main className="h-dvh overflow-y-auto overscroll-y-contain">
       {content.zoneEnabled.hero && <Hero guestName={guest.fullName} />}
       {content.zoneEnabled.blessing && <Blessing />}
       {content.zoneEnabled.story && <OurStory />}

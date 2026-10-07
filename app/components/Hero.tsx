@@ -1,5 +1,6 @@
 import { getWeddingContent } from "@/lib/weddingContent";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
+import { overlayOf } from "@/lib/textLayout";
 import { Countdown } from "./Countdown";
 import { Slide } from "./Slide";
 import { TextArtboard } from "./TextArtboard";
@@ -12,7 +13,7 @@ export async function Hero({ guestName }: { guestName: string }) {
   ]);
 
   return (
-    <Slide className="bg-[var(--color-bg)]" bgImage={WEDDING.zoneImages.hero} fullBleed>
+    <Slide className="bg-[var(--color-bg)]" bgImage={WEDDING.zoneImages.hero} overlay={overlayOf(layout)} fullBleed>
       <TextArtboard page
         layout={layout}
         tokens={tokens}
