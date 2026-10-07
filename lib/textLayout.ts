@@ -67,12 +67,13 @@ export type TextElement = {
   kind: "text" | "block" | "panel" | "photo" | "map" | "link";
   text: string; // en photo: texto alternativo
   x: number; // centro, en px de la mesa
-  y: number;
+  y: number; // centro (en los paneles: borde de arriba)
   w: number; // ancho de la caja (el texto se ajusta adentro)
   h: number; // alto de la caja (photo y map)
   ref: string; // a qué dato apunta (foto de la galería, número de lugar)
   src: string; // photo: lo completa withDynamic con la foto actual, no se guarda
   frame: FrameKey; // borde de las fotos
+  variant: string; // versión del contenido de un panel (ver VARIANTS)
   fontSize: number;
   font: FontKey;
   color: string;
@@ -90,7 +91,8 @@ export type TextElement = {
 };
 
 // extent: alto de la sección en pantallas (1, 1½, 2…), por formato.
-export type TextLayout = Record<Orientation, TextElement[]> & { extent?: Record<Orientation, number> };
+// v: 2 = los paneles se ubican por su borde de arriba (crecen hacia abajo).
+export type TextLayout = Record<Orientation, TextElement[]> & { extent?: Record<Orientation, number>; v?: number };
 
 export const FRAMES = {
   none: "Sin borde",
@@ -216,7 +218,13 @@ export function elementStyle(el: TextElement): Record<string, string> {
   if (el.kind === "panel") {
     // El contenido usa sus propios tamaños y define el alto (sin desplazarse
     // por dentro). El "tamaño" del panel escala todo lo de adentro (panelZoom).
-    return { ...box, fontFamily: FONTS[el.font]?.css ?? FONTS.inter.css, textAlign: el.align };
+    return {
+      ...box,
+      transform: `translate(-50%, 0) rotate(${el.rotation}deg)`,
+      transformOrigin: "50% 0",
+      fontFamily: FONTS[el.font]?.css ?? FONTS.inter.css,
+      textAlign: el.align,
+    };
   }
   if (el.kind === "photo" || el.kind === "map") return { ...box, height: `${el.h}px` };
   const text = { ...box, ...typeStyle(el), fontSize: `${el.fontSize}px`, whiteSpace: "pre-wrap", overflowWrap: "break-word" };
@@ -272,7 +280,7 @@ export function typeStyle(el: TextElement): Record<string, string> {
 const base = {
   kind: "text" as const, align: "center" as const, letterSpacing: 0, lineHeight: 1.15,
   weight: 400, italic: false, uppercase: false, rotation: 0, hidden: false, style: null,
-  ref: "", src: "", frame: "none" as FrameKey,
+  ref: "", src: "", frame: "none" as FrameKey, variant: "",
 };
 type Spec = Partial<TextElement> & Pick<TextElement, "id" | "name" | "text" | "fontSize" | "font" | "color">;
 const el = (s: Spec & { x?: number; y?: number; w?: number; h?: number }): TextElement => ({ ...base, x: 0, y: 0, w: 600, h: 0, ...s });
@@ -304,8 +312,8 @@ const P = (id: string, name: string, text: string, p: { y: number; fs: number },
   );
 const B = (p: { y: number; h: number }, l: { y: number; h: number; w: number }) =>
   pair(
-    el({ kind: "panel", id: "body", name: "Contenido", text: "", x: 384, y: p.y, w: 720, h: p.h, fontSize: 32, font: "inter", color: "var(--color-fg)" }),
-    el({ kind: "panel", id: "body", name: "Contenido", text: "", x: 512, y: l.y, w: l.w, h: l.h, fontSize: 16, font: "inter", color: "var(--color-fg)" }),
+    el({ kind: "panel", id: "body", name: "Contenido", text: "", x: 384, y: p.y - p.h / 2, w: 720, h: p.h, fontSize: 32, font: "inter", color: "var(--color-fg)" }),
+    el({ kind: "panel", id: "body", name: "Contenido", text: "", x: 512, y: l.y - l.h / 2, w: l.w, h: l.h, fontSize: 16, font: "inter", color: "var(--color-fg)" }),
   );
 
 const COMMON_TOKENS = ["nombre1", "nombre2", "fecha", "hashtag"];
@@ -424,7 +432,7 @@ export const SECTIONS = {
   location: { label: "Cómo llegar", mode: "artboard", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "lugar1", "lugar2", "direccion1", "direccion2"], extendable: true, defaults: layoutOf(T("Cómo llegar", 110, 70), ...placeItems(1), ...placeItems(2)) },
   gallery: { label: "Galería", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, extendable: true, photos: true, defaults: layoutOf(T("Galería", 110, 70)) },
   accommodation: { label: "Alojamiento", mode: "artboard", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "transporte"], extendable: true, defaults: layoutOf(T("Alojamiento", 110, 70), P("transport", "Transporte", "{transporte}", { y: 210, fs: 31 }, { y: 125, fs: 16 }), B({ y: 620, h: 760 }, { y: 440, h: 560, w: 768 })) },
-  gifts: { label: "Regalos", mode: "artboard", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "mensajeRegalos"], extendable: true, defaults: layoutOf(T("Regalos", 100, 60), P("message", "Mensaje", "{mensajeRegalos}", { y: 205, fs: 31 }, { y: 115, fs: 16 }), B({ y: 640, h: 740 }, { y: 450, h: 570, w: 672 })) },
+  gifts: { label: "Regalos", mode: "artboard", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "mensajeRegalos"], extendable: true, defaults: layoutOf(T("Regalos", 100, 60), P("message", "Mensaje", "{mensajeRegalos}", { y: 205, fs: 31 }, { y: 115, fs: 16 }), B({ y: 700, h: 740 }, { y: 450, h: 570, w: 672 })) },
   rsvp: {
     label: "Confirmación", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, extendable: true,
     defaults: layoutOf(
@@ -442,6 +450,32 @@ export const SECTIONS = {
 
 export type LayoutSection = keyof typeof SECTIONS;
 export const LAYOUT_SECTIONS = Object.keys(SECTIONS) as LayoutSection[];
+
+// Versiones del contenido de una sección: cómo se muestra el panel principal.
+export const VARIANTS: Partial<Record<LayoutSection, { element: string; default: string; options: Record<string, string> }>> = {
+  gifts: {
+    element: "body",
+    default: "all",
+    options: {
+      all: "Todo: lista, luna de miel y datos de pago",
+      registry: "Solo lista de regalos",
+      fund: "Solo luna de miel (barra con el monto)",
+      payment: "Solo datos de pago",
+      "registry+payment": "Lista de regalos + datos de pago",
+      "fund+payment": "Luna de miel + datos de pago",
+    },
+  },
+  itinerary: {
+    element: "body",
+    default: "row",
+    options: {
+      row: "Fila de íconos",
+      vertical: "Línea de tiempo vertical",
+      horizontal: "Línea de tiempo horizontal",
+      cards: "Tarjetas",
+    },
+  },
+};
 export const layoutSettingKey = (s: LayoutSection) => `layout_${s}`;
 // Borrador del editor: se guarda solo; los invitados ven layoutSettingKey hasta publicar.
 export const draftLayoutKey = (s: LayoutSection) => `draft_layout_${s}`;
@@ -515,11 +549,20 @@ function cleanElement(d: TextElement, s: Record<string, unknown>, A: Board): Tex
 export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayout {
   const cfg = sectionConfig(section);
   const src = (input && typeof input === "object" ? input : {}) as Partial<Record<Orientation, unknown>> & { extent?: unknown };
-  const out = {} as TextLayout;
+  const out = { v: 2 } as TextLayout;
+  // Antes los paneles se ubicaban por su centro con un alto fijo.
+  const legacy = (src as { v?: unknown }).v !== 2;
   for (const o of ["portrait", "landscape"] as Orientation[]) {
     const A = cfg.boards[o];
     const list = Array.isArray(src[o]) ? (src[o] as Record<string, unknown>[]) : [];
-    out[o] = cfg.defaults[o].map((d) => cleanElement(d, list.find((e) => e && e.id === d.id) ?? {}, A));
+    const v = VARIANTS[section];
+    out[o] = cfg.defaults[o].map((d) => {
+      let s = list.find((e) => e && e.id === d.id) ?? {};
+      if (legacy && d.kind === "panel" && typeof s.y === "number") s = { ...s, y: s.y - (typeof s.h === "number" ? s.h : d.h) / 2 };
+      const clean = cleanElement(d, s, A);
+      if (v && v.element === d.id) clean.variant = typeof s.variant === "string" && s.variant in v.options ? s.variant : v.default;
+      return clean;
+    });
     if (cfg.photos) {
       for (const s of list) {
         if (!s || typeof s.id !== "string" || !PHOTO_ID.test(s.id) || out[o].some((e) => e.id === s.id)) continue;
@@ -585,4 +628,11 @@ export function withDynamic(section: LayoutSection, layout: TextLayout, photos: 
   }
   out.extent = extent;
   return out;
+}
+
+// Las versiones que usa un diseño (para armar solo esos bloques).
+export function usedVariants(section: LayoutSection, layout: TextLayout): string[] {
+  const v = VARIANTS[section];
+  if (!v) return [];
+  return [...new Set([...layout.portrait, ...layout.landscape].filter((e) => e.id === v.element).map((e) => e.variant || v.default))];
 }

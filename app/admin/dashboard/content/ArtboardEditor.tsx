@@ -42,6 +42,7 @@ import {
   EXTENTS,
   extentOf,
   FRAMES,
+  VARIANTS,
   withDynamic,
   type FrameKey,
   elementStyle,
@@ -466,6 +467,17 @@ export function ArtboardEditor({
     commit(next, layout);
   }
 
+  // La versión del contenido vale para celular y PC.
+  const variants = VARIANTS[section];
+  const currentVariant = variants ? layout[orientation].find((e) => e.id === variants.element)?.variant || variants.default : "";
+  function setVariant(v: string) {
+    if (!variants) return;
+    const next = clone(layout);
+    for (const o of ["portrait", "landscape"] as Orientation[])
+      next[o] = next[o].map((e) => (e.id === variants.element ? { ...e, variant: v } : e));
+    commit(next, layout);
+  }
+
   function restoreOriginal() {
     const photos = layout.portrait.filter((e) => e.kind === "photo").map((e) => ({ key: e.ref, src: e.src, alt: e.text }));
     commit(withDynamic(section, sanitizeLayout(section, null), photos), layout);
@@ -514,6 +526,19 @@ export function ArtboardEditor({
           >
             {EXTENTS.map((x) => (
               <option key={x} value={x}>Alto: {extentLabel(x)}</option>
+            ))}
+          </select>
+        )}
+        {variants && (
+          <select
+            aria-label="Versión de la sección"
+            title="Cómo se muestra el contenido de esta sección (celular y PC)"
+            value={currentVariant}
+            onChange={(e) => setVariant(e.target.value)}
+            className="h-7 max-w-[16rem] rounded-md border border-neutral-300 px-1.5 text-xs font-medium"
+          >
+            {Object.entries(variants.options).map(([v, label]) => (
+              <option key={v} value={v}>Versión: {label}</option>
             ))}
           </select>
         )}

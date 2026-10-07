@@ -30,6 +30,7 @@ import { Divider } from "@/app/components/Divider";
 import { StoryBody } from "@/app/components/OurStory";
 import { EventBody } from "@/app/components/EventDetails";
 import { ItineraryBody } from "@/app/components/Itinerary";
+import { VARIANTS } from "@/lib/textLayout";
 import { AccommodationBody } from "@/app/components/Accommodation";
 import { GiftsBody, getGiftsData } from "@/app/components/Gifts";
 import { RSVPPreviewBody } from "@/app/components/RSVPForm";
@@ -96,9 +97,17 @@ export default async function ContentEditorPage() {
     blessing: { divider: <Divider scaled /> },
     story: { body: <StoryBody chapters={w.story} /> },
     event: { body: <EventBody ceremony={w.ceremony} reception={w.reception} /> },
-    itinerary: { body: <ItineraryBody steps={w.itinerary} /> },
+    // Todas las versiones, para cambiar de una a otra en vivo.
+    itinerary: Object.fromEntries(
+      Object.keys(VARIANTS.itinerary!.options).map((v) => [`body:${v}`, <ItineraryBody key={v} variant={v} steps={w.itinerary} />]),
+    ),
     accommodation: { body: <AccommodationBody hotels={w.accommodation} /> },
-    gifts: { body: <GiftsBody items={gifts.items} raised={gifts.raised} payment={w.gifts.payment} slug="preview" /> },
+    gifts: Object.fromEntries(
+      Object.keys(VARIANTS.gifts!.options).map((v) => [
+        `body:${v}`,
+        <GiftsBody key={v} variant={v} items={gifts.items} raised={gifts.raised} payment={w.gifts.payment} slug="preview" preview />,
+      ]),
+    ),
     rsvp: { body: <RSVPPreviewBody maxAttendees={2} /> },
     messages: { body: <MessagesBody messages={approvedMessages} slug="preview" /> },
   };

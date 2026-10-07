@@ -33,7 +33,7 @@ export function ElementContent({
   tokens: TokenValues;
   blocks?: Record<string, ReactNode>;
 }) {
-  if (el.kind === "panel") return <PanelBox el={el}>{blocks?.[el.id] ?? null}</PanelBox>;
+  if (el.kind === "panel") return <PanelBox el={el}>{blocks?.[`${el.id}:${el.variant}`] ?? blocks?.[el.id] ?? null}</PanelBox>;
   if (el.kind === "block") return <>{blocks?.[el.id] ?? null}</>;
   if (el.kind === "photo") return <FramedPhoto el={el} />;
   if (el.kind === "map") {

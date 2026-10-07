@@ -1,7 +1,8 @@
-import { desc, eq } from "drizzle-orm";
+import { desc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { giftContributions, giftItems } from "@/lib/db/schema";
 import { getWeddingContent } from "@/lib/weddingContent";
+import { usedVariants } from "@/lib/textLayout";
 import { FadeIn } from "./FadeIn";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
 import { CopyButton } from "./CopyButton";
@@ -28,69 +29,99 @@ export async function Gifts({ slug }: { slug: string }) {
     getTextLayout("gifts"),
     getTokenValues(""),
   ]);
+  // Un bloque por cada versión que use el diseño (celular y PC pueden diferir).
+  const blocks = Object.fromEntries(
+    usedVariants("gifts", layout).map((v) => [
+      `body:${v}`,
+      <GiftsBody key={v} variant={v} items={items} raised={raised} payment={WEDDING.gifts.payment} slug={slug} />,
+    ]),
+  );
 
   return (
     <Slide bgImage={WEDDING.zoneImages.gifts} fullBleed>
-      <TextArtboard page
-        layout={layout}
-        tokens={tokens}
-        animate
-        blocks={{ body: <GiftsBody items={items} raised={raised} payment={WEDDING.gifts.payment} slug={slug} /> }}
-      />
+      <TextArtboard page layout={layout} tokens={tokens} animate blocks={blocks} />
     </Slide>
   );
 }
 
 type Payment = Awaited<ReturnType<typeof getWeddingContent>>["gifts"]["payment"];
 
+// variant: "all", "registry", "fund", "payment" o combinaciones con "+".
+// preview: en el editor, las partes vacías muestran un aviso en vez de nada.
 export function GiftsBody({
+  variant = "all",
   items,
   raised,
   payment,
   slug,
+  preview = false,
 }: {
+  variant?: string;
   items: GiftItem[];
   raised: Record<string, number>;
   payment: Payment;
   slug: string;
+  preview?: boolean;
 }) {
+  const parts = variant === "all" ? ["registry", "fund", "payment"] : variant.split("+");
+  const registry = items.filter((i) => i.type !== "fund");
+  const funds = items.filter((i) => i.type === "fund");
+  const empty = (msg: string) =>
+    preview ? (
+      <p className="rounded-lg border border-dashed border-[var(--color-border)] p-4 text-center text-sm text-[var(--color-muted)]">{msg}</p>
+    ) : null;
+
   return (
-    <div className="px-1 py-2">
-      {items.length > 0 && (
-        <FadeIn delay={0.1}>
-          <div className="mb-10 space-y-3">
-            {items.map((item) =>
-              item.type === "fund" ? (
-                <FundGiftCard key={item.id} item={item} raised={raised[item.id] ?? 0} slug={slug} />
-              ) : (
+    <div className="space-y-8 px-1 py-2">
+      {parts.includes("registry") &&
+        (registry.length > 0 ? (
+          <FadeIn delay={0.1}>
+            <div className="space-y-3">
+              {registry.map((item) => (
                 <ClaimGiftCard key={item.id} item={item} slug={slug} />
-              ),
-            )}
+              ))}
+            </div>
+          </FadeIn>
+        ) : (
+          empty("Todavía no hay regalos en la lista. Se cargan en el panel de Regalos.")
+        ))}
+
+      {parts.includes("fund") &&
+        (funds.length > 0 ? (
+          <FadeIn delay={0.15}>
+            <div className="space-y-4">
+              {funds.map((item) => (
+                <FundGiftCard key={item.id} item={item} raised={raised[item.id] ?? 0} slug={slug} />
+              ))}
+            </div>
+          </FadeIn>
+        ) : (
+          empty("Todavía no hay un fondo de luna de miel. Crealo en el panel de Regalos como «fondo» con su monto meta.")
+        ))}
+
+      {parts.includes("payment") && (
+        <FadeIn delay={0.2}>
+          <div className="mx-auto max-w-sm space-y-4 rounded-lg border border-[var(--color-border)] p-6 text-left text-sm">
+            <div>
+              <p className="mb-1 font-medium text-[var(--color-fg)]">Yape</p>
+              <Row label="Número" value={payment.yape.phone} copyable />
+              <Row label="A nombre de" value={payment.yape.name} />
+            </div>
+            <div>
+              <p className="mb-1 font-medium text-[var(--color-fg)]">Plin</p>
+              <Row label="Número" value={payment.plin.phone} copyable />
+              <Row label="A nombre de" value={payment.plin.name} />
+            </div>
+            <div>
+              <p className="mb-1 font-medium text-[var(--color-fg)]">Transferencia bancaria</p>
+              <Row label="Banco" value={payment.bank.bank} />
+              <Row label="Titular" value={payment.bank.accountHolder} />
+              <Row label="Cuenta" value={payment.bank.accountNumber} copyable />
+              {payment.bank.cci && <Row label="CCI" value={payment.bank.cci} copyable />}
+            </div>
           </div>
         </FadeIn>
       )}
-
-      <FadeIn delay={0.2}>
-        <div className="mx-auto max-w-sm space-y-4 rounded-lg border border-[var(--color-border)] p-6 text-left text-sm">
-          <div>
-            <p className="mb-1 font-medium text-[var(--color-fg)]">Yape</p>
-            <Row label="Número" value={payment.yape.phone} copyable />
-            <Row label="A nombre de" value={payment.yape.name} />
-          </div>
-          <div>
-            <p className="mb-1 font-medium text-[var(--color-fg)]">Plin</p>
-            <Row label="Número" value={payment.plin.phone} copyable />
-            <Row label="A nombre de" value={payment.plin.name} />
-          </div>
-          <div>
-            <p className="mb-1 font-medium text-[var(--color-fg)]">Transferencia bancaria</p>
-            <Row label="Banco" value={payment.bank.bank} />
-            <Row label="Titular" value={payment.bank.accountHolder} />
-            <Row label="Cuenta" value={payment.bank.accountNumber} copyable />
-            {payment.bank.cci && <Row label="CCI" value={payment.bank.cci} copyable />}
-          </div>
-        </div>
-      </FadeIn>
     </div>
   );
 }
@@ -122,6 +153,9 @@ function ClaimGiftCard({ item, slug }: { item: GiftItem; slug: string }) {
   );
 }
 
+const soles = (n: number) => `S/ ${n.toLocaleString("es-PE")}`;
+
+// Barra de llenado (luna de miel u otro fondo) con el monto juntado a la vista.
 function FundGiftCard({
   item,
   raised,
@@ -136,27 +170,27 @@ function FundGiftCard({
   const complete = target > 0 && raised >= target;
 
   return (
-    <div className="rounded-lg border border-[var(--color-border)] p-4">
-      <div className="flex flex-col justify-between gap-3 @lg:flex-row @lg:items-center">
-        <div className="flex-1">
-          <h3 className="font-medium text-[var(--color-fg)]">{item.name}</h3>
-          {item.description && (
-            <p className="text-sm text-[var(--color-muted)]">{item.description}</p>
-          )}
-          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[var(--color-border)]">
-            <div
-              className="h-full rounded-full bg-[var(--color-accent)]"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-          <p className="mt-1 text-sm text-[var(--color-muted)]">
-            S/ {raised} recaudados {target > 0 ? `de S/ ${target}` : ""}
-          </p>
-        </div>
+    <div className="rounded-lg border border-[var(--color-border)] p-5 text-center">
+      <h3 className="font-medium text-[var(--color-fg)]">{item.name}</h3>
+      {item.description && <p className="mt-1 text-sm text-[var(--color-muted)]">{item.description}</p>}
+      <p className="mt-4 text-2xl font-medium text-[var(--color-fg)]">
+        {soles(raised)}
+        {target > 0 && <span className="text-base font-normal text-[var(--color-muted)]"> de {soles(target)}</span>}
+      </p>
+      <div
+        className="mt-3 h-3 w-full overflow-hidden rounded-full bg-[var(--color-border)]"
+        role="progressbar"
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`${item.name}: ${pct}%`}
+      >
+        <div className="h-full rounded-full bg-[var(--color-accent)] transition-[width] duration-700" style={{ width: `${pct}%` }} />
+      </div>
+      {target > 0 && <p className="mt-1 text-xs text-[var(--color-muted)]">{pct}% de la meta</p>}
+      <div className="mt-4 flex justify-center">
         {complete ? (
-          <span className="shrink-0 rounded-md bg-[var(--color-border)] px-4 py-2 text-center text-sm text-[var(--color-muted)]">
-            ¡Completo!
-          </span>
+          <span className="rounded-md bg-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-muted)]">¡Meta cumplida, gracias!</span>
         ) : (
           <GiftContributionForm id={item.id} slug={slug} />
         )}
