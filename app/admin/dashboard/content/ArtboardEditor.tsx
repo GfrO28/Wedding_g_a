@@ -35,6 +35,7 @@ import {
   Plus,
   Redo2,
   RotateCcw,
+  RotateCw,
   SlidersHorizontal,
   Trash2,
   Type,
@@ -96,7 +97,7 @@ type Snap = { layout: TextLayout; styles: TextStyle[] };
 // 0 ninguno). h0 es el alto real al empezar (los textos no guardan alto).
 type Drag = {
   id: string;
-  mode: "move" | "resize";
+  mode: "move" | "resize" | "rotate";
   sx: number;
   sy: number;
   startX: number;
@@ -460,6 +461,8 @@ export function ArtboardEditor({
       const s = snap(d.id, d.el.x + dx, d.el.y + dy, d.el.w);
       setGuides(s.g);
       changes = { x: Math.round(s.x), y: Math.round(s.y) };
+    } else if (d.mode === "rotate") {
+      changes = { rotation: rotateTo(d, e.clientX, e.clientY, e.shiftKey) };
     } else {
       changes = resizeChanges(d, dx, dy, e.altKey);
     }
@@ -468,6 +471,26 @@ export function ArtboardEditor({
       next[orientation] = next[orientation].map((x) => (x.id === d.id ? { ...x, ...changes } : x));
       return next;
     });
+  }
+
+  // Girar con el tirador de arriba: el objeto gira sobre su centro (los
+  // paneles, sobre el medio de su borde de arriba). Se pega a 0°, 45°, 90°…
+  // y con Shift avanza de a 15°.
+  function rotateTo(d: Drag, clientX: number, clientY: number, fine: boolean) {
+    const b = boardRef.current!.getBoundingClientRect();
+    const px = b.left + d.el.x * k, py = b.top + d.el.y * k;
+    const angle = (x: number, y: number) => (Math.atan2(y - py, x - px) * 180) / Math.PI;
+    let r = d.el.rotation + angle(clientX, clientY) - angle(d.startX, d.startY);
+    r = ((((r + 180) % 360) + 360) % 360) - 180;
+    if (fine) r = Math.round(r / 15) * 15;
+    else {
+      const near45 = Math.round(r / 45) * 45;
+      r = Math.abs(r - near45) < 4 ? near45 : Math.round(r);
+    }
+    if (r === -180) r = 180;
+    const top = d.el.kind === "panel" ? d.el.y : d.el.y - d.h0 / 2;
+    setGuides({ label: { x: d.el.x, y: top - 70 / (k || 1), text: `${r}°` } });
+    return r;
   }
 
   // Cambiar el tamaño como en Canva: el borde (o la esquina) opuesto queda fijo.
@@ -1043,6 +1066,27 @@ export function ArtboardEditor({
                         }}
                       />
                     ))}
+                  {isSel && !isEditing && !el.locked && (
+                    <>
+                      <span
+                        aria-hidden
+                        style={{ position: "absolute", left: "50%", top: -handle * 2.6, width: 1.5 / (k || 1), height: handle * 2.1, background: "#2563eb", transform: "translateX(-50%)", pointerEvents: "none" }}
+                      />
+                      <span
+                        data-rotate-handle
+                        title="Girar (Shift: de a 15°)"
+                        onPointerDown={(e) => startDrag(e, el, "rotate")}
+                        style={{
+                          position: "absolute", left: `calc(50% - ${handle * 0.8}px)`, top: -handle * 4.2,
+                          width: handle * 1.6, height: handle * 1.6, borderRadius: "50%", background: "#fff",
+                          border: `${1.5 / (k || 1)}px solid #2563eb`, cursor: "grab", touchAction: "none",
+                          display: "flex", alignItems: "center", justifyContent: "center", color: "#2563eb",
+                        }}
+                      >
+                        <RotateCw size={handle * 1.05} strokeWidth={2.5} style={{ pointerEvents: "none" }} />
+                      </span>
+                    </>
+                  )}
                 </div>
               );
             })}
