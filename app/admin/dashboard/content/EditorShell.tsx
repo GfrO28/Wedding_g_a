@@ -1,0 +1,301 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { ArrowLeft, Check, ExternalLink, Loader2, PanelRightClose, PanelRightOpen } from "lucide-react";
+import type { EnvelopeSlot } from "@/lib/envelopeAssets";
+import type { LayoutSection, TextLayout, TokenValues } from "@/lib/textLayout";
+import { ArtboardEditor } from "./ArtboardEditor";
+import { EnvelopeImagesPanel } from "./EnvelopeImagesPanel";
+import { discardDraftsAction, publishAction, saveDraftAction } from "./layout-actions";
+import { toggleZoneEnabledAction } from "./zone-actions";
+
+export type EditorSection = {
+  id: string;
+  label: string;
+  group: "sections" | "general";
+  zone?: string; // clave del interruptor visible/oculta
+  enabled?: boolean;
+  design?: LayoutSection; // tiene lienzo
+  background?: { color: string; image?: string | null; overlay?: boolean };
+};
+
+type SaveState = "idle" | "saving" | "saved" | "error";
+
+export function EditorShell({
+  sections,
+  panels,
+  blocks,
+  published,
+  drafts,
+  tokens,
+  envelope,
+}: {
+  sections: EditorSection[];
+  panels: Record<string, ReactNode>;
+  blocks: Record<string, Record<string, ReactNode>>;
+  published: Record<LayoutSection, TextLayout>;
+  drafts: Record<LayoutSection, TextLayout>;
+  tokens: TokenValues;
+  envelope: { assets: Record<EnvelopeSlot, string>; custom: Record<EnvelopeSlot, boolean> };
+}) {
+  const [currentId, setCurrentId] = useState(sections[0].id);
+  const [layouts, setLayouts] = useState(drafts);
+  const [publishedState, setPublishedState] = useState(published);
+  const [enabled, setEnabled] = useState<Record<string, boolean>>(
+    Object.fromEntries(sections.filter((s) => s.zone).map((s) => [s.id, s.enabled ?? true])),
+  );
+  const [contentOpen, setContentOpen] = useState(false);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [publishing, setPublishing] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [version, setVersion] = useState(0);
+  const pending = useRef(new Map<LayoutSection, TextLayout>());
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const current = sections.find((s) => s.id === currentId)!;
+  const unpublished = (s: LayoutSection) => JSON.stringify(layouts[s]) !== JSON.stringify(publishedState[s]);
+  const anyUnpublished = sections.some((s) => s.design && unpublished(s.design));
+
+  const flush = useCallback(async () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    const items = [...pending.current.entries()];
+    pending.current.clear();
+    if (!items.length) return true;
+    setSaveState("saving");
+    try {
+      const results = await Promise.all(items.map(([s, l]) => saveDraftAction(s, l)));
+      const ok = results.every((r) => r.ok);
+      setSaveState(ok ? "saved" : "error");
+      return ok;
+    } catch {
+      setSaveState("error");
+      return false;
+    }
+  }, []);
+
+  // Guardado automático: cada cambio se guarda como borrador después de una pausa corta.
+  const handleChange = useCallback(
+    (section: LayoutSection, layout: TextLayout) => {
+      setLayouts((prev) => (prev[section] === layout ? prev : { ...prev, [section]: layout }));
+      pending.current.set(section, layout);
+      setSaveState("saving");
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(flush, 800);
+    },
+    [flush],
+  );
+  const design = current.design;
+  const onDesignChange = useCallback((l: TextLayout) => design && handleChange(design, l), [design, handleChange]);
+
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      if (pending.current.size) e.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, []);
+
+  async function publish() {
+    setPublishing(true);
+    setNotice(null);
+    const saved = await flush();
+    if (!saved) {
+      setPublishing(false);
+      setNotice("No se pudo guardar el borrador. Revisá tu conexión y probá de nuevo.");
+      return;
+    }
+    const res = await publishAction();
+    setPublishing(false);
+    if (res.ok) {
+      setPublishedState(layouts);
+      setNotice("Publicado: los invitados ya ven estos cambios.");
+    } else setNotice("No se pudo publicar. Probá de nuevo.");
+  }
+
+  async function discard() {
+    if (!window.confirm("¿Descartar los cambios sin publicar? El diseño vuelve a lo que ven los invitados.")) return;
+    if (timer.current) clearTimeout(timer.current);
+    pending.current.clear();
+    await discardDraftsAction();
+    setLayouts(publishedState);
+    setVersion((v) => v + 1);
+    setSaveState("idle");
+    setNotice("Se descartaron los cambios sin publicar.");
+  }
+
+  async function toggleZone(s: EditorSection) {
+    if (!s.zone) return;
+    const next = !enabled[s.id];
+    setEnabled((e) => ({ ...e, [s.id]: next }));
+    await toggleZoneEnabledAction(s.zone, next);
+  }
+
+  const contentToggle = (
+    <button
+      type="button"
+      onClick={() => setContentOpen((o) => !o)}
+      aria-pressed={contentOpen}
+      className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium ${contentOpen ? "bg-neutral-900 text-white" : "border border-neutral-300 hover:bg-neutral-50"}`}
+    >
+      {contentOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />} Contenido
+    </button>
+  );
+
+  const panel =
+    current.id === "intro" ? (
+      <EnvelopeImagesPanel initialAssets={envelope.assets} initialCustom={envelope.custom} textLayout={layouts.envelope} tokens={tokens} />
+    ) : (
+      panels[current.id]
+    );
+
+  return (
+    <div className="flex h-dvh flex-col bg-neutral-100 text-neutral-900">
+      {/* Encabezado */}
+      <header className="flex flex-wrap items-center gap-3 border-b border-neutral-200 bg-white px-4 py-2.5">
+        <a href="/admin/dashboard" className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-900">
+          <ArrowLeft size={15} /> Panel
+        </a>
+        <h1 className="font-serif text-lg text-neutral-800">Editor de la invitación</h1>
+        <SaveIndicator state={saveState} anyUnpublished={anyUnpublished} />
+        <div className="ml-auto flex items-center gap-2">
+          {notice && <span className="hidden text-xs text-neutral-500 md:inline">{notice}</span>}
+          <a
+            href="/admin/dashboard/preview"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs text-neutral-600 hover:bg-neutral-100"
+          >
+            Ver invitación publicada <ExternalLink size={12} />
+          </a>
+          {anyUnpublished && (
+            <button type="button" onClick={discard} className="rounded-md px-2.5 py-1.5 text-xs text-neutral-600 hover:bg-neutral-100">
+              Descartar cambios
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={publish}
+            disabled={!anyUnpublished || publishing}
+            className="flex items-center gap-1.5 rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-40"
+          >
+            {publishing && <Loader2 size={14} className="animate-spin" />} Publicar
+          </button>
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+        {/* Secciones */}
+        <nav className="w-56 shrink-0 overflow-y-auto border-r border-neutral-200 bg-white p-2" aria-label="Secciones">
+          {(["sections", "general"] as const).map((group) => (
+            <div key={group} className="mb-3">
+              <p className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+                {group === "sections" ? "Secciones" : "General"}
+              </p>
+              {sections
+                .filter((s) => s.group === group)
+                .map((s) => {
+                  const active = s.id === currentId;
+                  const isOn = s.zone ? enabled[s.id] : true;
+                  return (
+                    <div
+                      key={s.id}
+                      className={`flex items-center gap-1 rounded-md pr-1.5 ${active ? "bg-neutral-900 text-white" : "hover:bg-neutral-100"}`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setCurrentId(s.id)}
+                        aria-current={active ? "page" : undefined}
+                        className={`flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left text-sm ${!isOn && !active ? "text-neutral-400" : ""}`}
+                      >
+                        <span className="truncate">{s.label}</span>
+                        {s.design && unpublished(s.design) && (
+                          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? "bg-amber-300" : "bg-amber-500"}`} title="Cambios sin publicar" />
+                        )}
+                      </button>
+                      {s.zone && (
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={isOn}
+                          aria-label={`Mostrar u ocultar ${s.label}`}
+                          title={isOn ? "Visible para los invitados" : "Oculta"}
+                          onClick={() => toggleZone(s)}
+                          className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${isOn ? (active ? "bg-white/90" : "bg-neutral-900") : active ? "bg-white/30" : "bg-neutral-300"}`}
+                        >
+                          <span
+                            className={`absolute left-0.5 top-0.5 h-3 w-3 rounded-full shadow transition-transform ${isOn ? "translate-x-3" : "translate-x-0"} ${active && isOn ? "bg-neutral-900" : "bg-white"}`}
+                          />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          ))}
+          <p className="px-2 text-[11px] leading-snug text-neutral-400">
+            El diseño se guarda solo como borrador. Los invitados lo ven al tocar Publicar. Los datos de «Contenido»
+            (textos, fotos, lugares) se publican al guardarlos.
+          </p>
+        </nav>
+
+        {/* Lienzo o contenido */}
+        <main className="min-w-0 flex-1">
+          {design ? (
+            <ArtboardEditor
+              key={`${design}-${version}`}
+              section={design}
+              initialLayout={layouts[design]}
+              tokens={tokens}
+              background={current.background ?? { color: "var(--color-bg)" }}
+              blocks={blocks[design]}
+              onChange={onDesignChange}
+              actions={contentToggle}
+            />
+          ) : (
+            <div className="h-full overflow-y-auto p-6">
+              <div className="mx-auto max-w-2xl rounded-lg border border-neutral-200 bg-white p-5">
+                <h2 className="mb-4 font-serif text-xl text-neutral-800">{current.label}</h2>
+                {panel}
+              </div>
+            </div>
+          )}
+        </main>
+
+        {/* Contenido de la sección */}
+        {design && contentOpen && (
+          <aside className="w-96 shrink-0 overflow-y-auto border-l border-neutral-200 bg-white p-4" aria-label={`Contenido de ${current.label}`}>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-serif text-lg text-neutral-800">Contenido · {current.label}</h2>
+              <button type="button" onClick={() => setContentOpen(false)} aria-label="Cerrar contenido" className="rounded p-1 text-neutral-500 hover:bg-neutral-100">
+                <PanelRightClose size={16} />
+              </button>
+            </div>
+            {panel}
+          </aside>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SaveIndicator({ state, anyUnpublished }: { state: SaveState; anyUnpublished: boolean }) {
+  if (state === "saving")
+    return (
+      <span className="flex items-center gap-1 text-xs text-neutral-500">
+        <Loader2 size={12} className="animate-spin" /> Guardando…
+      </span>
+    );
+  if (state === "error") return <span className="text-xs text-red-600">No se pudo guardar el borrador</span>;
+  if (anyUnpublished)
+    return (
+      <span className="flex items-center gap-1 text-xs text-amber-700">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Borrador guardado · sin publicar
+      </span>
+    );
+  return (
+    <span className="flex items-center gap-1 text-xs text-emerald-700">
+      <Check size={12} /> Todo publicado
+    </span>
+  );
+}

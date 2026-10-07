@@ -2,21 +2,49 @@
 
 import { revalidatePath } from "next/cache";
 import { setJSON, setSetting } from "@/lib/kv";
-import { isLayoutSection, layoutSettingKey, sanitizeLayout, type TextLayout } from "@/lib/textLayout";
+import { getSettingsMap } from "@/lib/settings";
+import {
+  draftLayoutKey,
+  isLayoutSection,
+  LAYOUT_SECTIONS,
+  layoutSettingKey,
+  sanitizeLayout,
+  type LayoutSection,
+  type TextLayout,
+} from "@/lib/textLayout";
 
-export async function saveTextLayoutAction(section: string, layout: unknown): Promise<{ ok: boolean; layout?: TextLayout }> {
+// Guardado automático del editor: solo toca el borrador, los invitados no lo ven.
+export async function saveDraftAction(section: string, layout: unknown): Promise<{ ok: boolean }> {
   if (!isLayoutSection(section)) return { ok: false };
-  const clean = sanitizeLayout(section, layout);
-  await setJSON(layoutSettingKey(section), clean);
-  revalidatePath("/", "layout");
-  revalidatePath("/admin/dashboard/content");
-  return { ok: true, layout: clean };
+  await setJSON(draftLayoutKey(section), sanitizeLayout(section, layout));
+  return { ok: true };
 }
 
-export async function resetTextLayoutAction(section: string): Promise<{ ok: boolean; layout?: TextLayout }> {
-  if (!isLayoutSection(section)) return { ok: false };
-  await setSetting(layoutSettingKey(section), "");
+// Publica los borradores: pasan a ser lo que ven los invitados.
+export async function publishAction(): Promise<{ ok: boolean; published: Partial<Record<LayoutSection, TextLayout>> }> {
+  const map = await getSettingsMap();
+  const published: Partial<Record<LayoutSection, TextLayout>> = {};
+  for (const s of LAYOUT_SECTIONS) {
+    const raw = map[draftLayoutKey(s)];
+    if (!raw) continue;
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    const clean = sanitizeLayout(s, parsed);
+    await setJSON(layoutSettingKey(s), clean);
+    await setSetting(draftLayoutKey(s), "");
+    published[s] = clean;
+  }
   revalidatePath("/", "layout");
+  return { ok: true, published };
+}
+
+// Descarta los borradores y vuelve a lo publicado.
+export async function discardDraftsAction(): Promise<{ ok: boolean }> {
+  for (const s of LAYOUT_SECTIONS) await setSetting(draftLayoutKey(s), "");
   revalidatePath("/admin/dashboard/content");
-  return { ok: true, layout: sanitizeLayout(section, null) };
+  return { ok: true };
 }

@@ -1,7 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as RPointerEvent, type ReactNode } from "react";
-import { AlignCenter, AlignLeft, AlignRight, Eye, EyeOff, Redo2, Undo2 } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as RPointerEvent,
+  type ReactNode,
+} from "react";
+import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  Bold,
+  Eye,
+  EyeOff,
+  Italic,
+  Minus,
+  MonitorSmartphone,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Redo2,
+  SlidersHorizontal,
+  Undo2,
+  X,
+} from "lucide-react";
 import { ElementContent, TextArtboard } from "@/app/components/TextArtboard";
 import {
   ARTBOARDS,
@@ -9,6 +35,7 @@ import {
   FONTS,
   MIN_READABLE_PX,
   orientationFor,
+  sanitizeLayout,
   sectionConfig,
   SMALLEST_SCALE,
   THEME_COLORS,
@@ -20,37 +47,25 @@ import {
   type TextLayout,
   type TokenValues,
 } from "@/lib/textLayout";
-import { resetTextLayoutAction, saveTextLayoutAction } from "./layout-actions";
 
 type Background = { color: string; image?: string | null; overlay?: boolean };
-type Drag = {
-  id: string;
-  mode: "move" | "corner" | "side" | "vside";
-  sign: number;
-  startX: number;
-  startY: number;
-  el: TextElement;
-  before: TextLayout;
-};
+type Drag = { id: string; mode: "move" | "corner" | "side" | "vside"; sign: number; startX: number; startY: number; el: TextElement; before: TextLayout };
 type Guides = { x?: number; y?: number };
+type Popover = null | "text" | "color" | "advanced" | "menu";
 
-const PREVIEW_DEVICES = [
-  { w: 390, h: 844, label: "390×844" },
-  { w: 768, h: 1024, label: "768×1024" },
-  { w: 1024, h: 768, label: "1024×768" },
-  { w: 1366, h: 768, label: "1366×768" },
-  { w: 1920, h: 1080, label: "1920×1080" },
+const DEVICES = [
+  { w: 390, h: 844, label: "Celular 390×844" },
+  { w: 768, h: 1024, label: "Tablet 768×1024" },
+  { w: 1366, h: 768, label: "PC 1366×768" },
+  { w: 1920, h: 1080, label: "PC 1920×1080" },
 ];
+
+const ORIENTATION_LABEL: Record<Orientation, string> = { portrait: "Celular", landscape: "PC" };
 
 const clone = (l: TextLayout): TextLayout => JSON.parse(JSON.stringify(l));
 
-export function smallLabel(o: Orientation) {
-  return o === "portrait" ? "letra chica en celular" : "letra chica en celular acostado";
-}
-
-export function smallestPx(el: TextElement) {
+function smallestPx(el: TextElement) {
   // Panel: lo más chico de adentro son textos de 12 px, escalados por el panel.
-  // Cuenta regresiva: las etiquetas van al tamaño base.
   if (el.kind === "panel") return 12 * (el.fontSize / 16) * SMALLEST_SCALE;
   return el.fontSize * SMALLEST_SCALE;
 }
@@ -62,6 +77,7 @@ export function ArtboardEditor({
   background,
   blocks,
   onChange,
+  actions,
 }: {
   section: LayoutSection;
   initialLayout: TextLayout;
@@ -69,46 +85,59 @@ export function ArtboardEditor({
   background: Background;
   blocks?: Record<string, ReactNode>;
   onChange?: (layout: TextLayout) => void;
+  actions?: ReactNode;
 }) {
+  const cfg = sectionConfig(section);
+  const BOARDS = cfg.boards;
   const [layout, setLayout] = useState(initialLayout);
-  const [saved, setSaved] = useState(initialLayout);
   const [orientation, setOrientation] = useState<Orientation>("portrait");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [guides, setGuides] = useState<Guides>({});
-  const [canvasW, setCanvasW] = useState(0);
-  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [confirmReset, setConfirmReset] = useState(false);
+  const [area, setArea] = useState({ w: 0, h: 0 });
   const [overflow, setOverflow] = useState<Set<string>>(new Set());
-  const [previewDevice, setPreviewDevice] = useState(0);
+  const [popover, setPopover] = useState<Popover>(null);
+  const [realSize, setRealSize] = useState(false);
   const past = useRef<TextLayout[]>([]);
   const future = useRef<TextLayout[]>([]);
   const drag = useRef<Drag | null>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
+  const areaRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   const elRefs = useRef(new Map<string, HTMLDivElement>());
+  const firstRender = useRef(true);
   const [, force] = useState(0);
 
-  const cfg = sectionConfig(section);
-  const BOARDS = cfg.boards;
   const A = BOARDS[orientation];
-  const k = canvasW > 0 ? Math.min((canvasW - 64) / A.w, 640 / A.h) : 0;
+  const k = area.w > 0 ? Math.max(0.05, Math.min((area.w - 48) / A.w, (area.h - 32) / A.h)) : 0;
   const elements = layout[orientation];
   const selected = elements.find((e) => e.id === selectedId) ?? null;
-  const dirty = JSON.stringify(layout) !== JSON.stringify(saved);
 
   useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
     onChange?.(layout);
   }, [layout, onChange]);
 
   useEffect(() => {
-    const el = wrapRef.current;
+    const el = areaRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setCanvasW(el.clientWidth));
+    const ro = new ResizeObserver(() => setArea({ w: el.clientWidth, h: el.clientHeight }));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
-  // Marca los textos que se salen de la mesa (lo que quede afuera no se ve).
+  // Cierra los menús al hacer clic afuera.
+  useEffect(() => {
+    if (!popover) return;
+    const close = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest("[data-popover]")) setPopover(null);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [popover]);
+
+  // Marca los elementos que se salen de la mesa (lo que quede afuera no se ve).
   useLayoutEffect(() => {
     const board = boardRef.current;
     if (!board || k === 0) return;
@@ -128,7 +157,6 @@ export function ArtboardEditor({
     if (past.current.length > 100) past.current.shift();
     future.current = [];
     setLayout(next);
-    setStatus("idle");
   }, []);
 
   function patch(id: string, changes: Partial<TextElement>) {
@@ -179,7 +207,8 @@ export function ArtboardEditor({
     e.preventDefault();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     setSelectedId(el.id);
-    wrapRef.current?.focus({ preventScroll: true });
+    setPopover(null);
+    areaRef.current?.focus({ preventScroll: true });
     drag.current = { id: el.id, mode, sign, startX: e.clientX, startY: e.clientY, el: { ...el }, before: layout };
   }
 
@@ -216,11 +245,12 @@ export function ArtboardEditor({
     if (JSON.stringify(d.before) !== JSON.stringify(layout)) {
       past.current.push(d.before);
       future.current = [];
-      setStatus("idle");
+      force((n) => n + 1);
     }
   }
 
   function onKey(e: React.KeyboardEvent) {
+    if ((e.target as HTMLElement).closest("input,textarea,select")) return;
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === "z") {
       e.preventDefault();
@@ -233,7 +263,10 @@ export function ArtboardEditor({
       redo();
       return;
     }
-    if (e.key === "Escape") setSelectedId(null);
+    if (e.key === "Escape") {
+      setSelectedId(null);
+      setPopover(null);
+    }
     if (!selected) return;
     const step = e.shiftKey ? 10 : 1;
     const moves: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
@@ -249,29 +282,21 @@ export function ArtboardEditor({
     const S = BOARDS[from], D = BOARDS[orientation];
     const fx = D.w / S.w, fy = D.h / S.h;
     const next = clone(layout);
-    next[orientation] = layout[from].map((e) => ({ ...e, x: Math.round(e.x * fx), y: Math.round(e.y * fy), w: Math.round(Math.min(e.w * fx, D.w * 1.2)) }));
+    next[orientation] = layout[from].map((e) => ({
+      ...e,
+      x: Math.round(e.x * fx),
+      y: Math.round(e.y * fy),
+      w: Math.round(Math.min(e.w * fx, D.w * 1.2)),
+      h: Math.round(e.h * fy),
+    }));
     commit(next, layout);
+    setPopover(null);
   }
 
-  async function save() {
-    setStatus("saving");
-    const res = await saveTextLayoutAction(section, layout);
-    if (res.ok && res.layout) {
-      setLayout(res.layout);
-      setSaved(res.layout);
-      setStatus("saved");
-    } else setStatus("error");
-  }
-
-  async function reset() {
-    setConfirmReset(false);
-    setStatus("saving");
-    const res = await resetTextLayoutAction(section);
-    if (res.ok && res.layout) {
-      commit(res.layout, layout);
-      setSaved(res.layout);
-      setStatus("saved");
-    } else setStatus("error");
+  function restoreOriginal() {
+    commit(sanitizeLayout(section, null), layout);
+    setSelectedId(null);
+    setPopover(null);
   }
 
   const bgStyle: CSSProperties = {
@@ -282,346 +307,477 @@ export function ArtboardEditor({
     <div className="pointer-events-none absolute inset-0" style={{ background: "color-mix(in srgb, var(--color-bg) 40%, transparent)" }} />
   ) : null;
   const handle = 10 / (k || 1);
-  const PD = PREVIEW_DEVICES[previewDevice];
-  const pdOrientation = orientationFor(PD.w, PD.h);
-  // Secciones a pantalla completa: se ve el dispositivo entero. Franjas (pie):
-  // se ve la franja al ancho del dispositivo, con la proporción de su mesa.
-  const fullScreen = BOARDS === ARTBOARDS;
-  const frameH = fullScreen ? PD.h : (PD.w * BOARDS[pdOrientation].h) / BOARDS[pdOrientation].w;
-  const pk = canvasW > 0 ? Math.min(1, canvasW / PD.w, 360 / frameH) : 0;
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex rounded-md border border-neutral-300 p-0.5" role="tablist" aria-label="Mesa de trabajo">
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Barra superior del lienzo */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-neutral-200 bg-white px-3 py-2">
+        <div className="flex rounded-md bg-neutral-100 p-0.5" role="tablist" aria-label="Formato">
           {(Object.keys(BOARDS) as Orientation[]).map((o) => (
             <button
               key={o}
               type="button"
               role="tab"
               aria-selected={o === orientation}
-              onClick={() => { setOrientation(o); setSelectedId(null); }}
-              className={`rounded px-3 py-1 text-xs ${o === orientation ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-100"}`}
+              onClick={() => { setOrientation(o); setSelectedId(null); setPopover(null); }}
+              className={`rounded px-3 py-1 text-xs font-medium ${o === orientation ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-800"}`}
             >
-              {BOARDS[o].label} · {BOARDS[o].w}×{BOARDS[o].h}
+              {ORIENTATION_LABEL[o]}
             </button>
           ))}
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button type="button" onClick={undo} disabled={!past.current.length} aria-label="Deshacer" className="rounded-md border border-neutral-300 p-1.5 disabled:opacity-40"><Undo2 size={14} /></button>
-          <button type="button" onClick={redo} disabled={!future.current.length} aria-label="Rehacer" className="rounded-md border border-neutral-300 p-1.5 disabled:opacity-40"><Redo2 size={14} /></button>
-          <button type="button" onClick={copyFromOther} className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs hover:bg-neutral-50">
-            Copiar desde {orientation === "portrait" ? "horizontal" : "vertical"}
-          </button>
-          {confirmReset ? (
-            <>
-              <button type="button" onClick={reset} className="rounded-md bg-red-600 px-2.5 py-1 text-xs text-white">Sí, volver al original</button>
-              <button type="button" onClick={() => setConfirmReset(false)} className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs">Cancelar</button>
-            </>
-          ) : (
-            <button type="button" onClick={() => setConfirmReset(true)} className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs hover:bg-neutral-50">Restaurar original</button>
-          )}
+        <div className="flex items-center gap-1">
+          <IconButton label="Deshacer (Ctrl+Z)" onClick={undo} disabled={!past.current.length}><Undo2 size={15} /></IconButton>
+          <IconButton label="Rehacer (Ctrl+Y)" onClick={redo} disabled={!future.current.length}><Redo2 size={15} /></IconButton>
+        </div>
+        <div className="ml-auto flex items-center gap-1.5">
+          {actions}
           <button
             type="button"
-            onClick={save}
-            disabled={!dirty || status === "saving"}
-            className="rounded-md bg-neutral-900 px-3 py-1 text-xs font-medium text-white hover:bg-neutral-700 disabled:opacity-40"
+            onClick={() => setRealSize(true)}
+            className="flex items-center gap-1.5 rounded-md border border-neutral-300 px-2.5 py-1 text-xs hover:bg-neutral-50"
           >
-            {status === "saving" ? "Guardando…" : "Guardar diseño"}
+            <MonitorSmartphone size={14} /> Ver en pantalla real
           </button>
-          <span className="text-xs text-neutral-500" aria-live="polite">
-            {status === "error" ? "No se pudo guardar." : dirty ? "Cambios sin guardar" : status === "saved" ? "Guardado" : ""}
-          </span>
+          <div className="relative" data-popover>
+            <IconButton label="Más opciones" onClick={() => setPopover(popover === "menu" ? null : "menu")}><MoreHorizontal size={16} /></IconButton>
+            {popover === "menu" && (
+              <div className="absolute right-0 top-full z-30 mt-1 w-64 rounded-lg border border-neutral-200 bg-white p-1 shadow-lg">
+                <MenuItem onClick={copyFromOther}>
+                  Copiar el diseño de {ORIENTATION_LABEL[orientation === "portrait" ? "landscape" : "portrait"]}
+                </MenuItem>
+                <MenuItem onClick={restoreOriginal}>Volver al diseño original de esta sección</MenuItem>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-        <div className="flex min-w-0 flex-col gap-3">
+      {/* Barra contextual */}
+      <div className="flex min-h-[46px] flex-wrap items-center gap-1.5 border-b border-neutral-200 bg-white px-3 py-1.5">
+        {selected ? (
+          <ContextToolbar
+            el={selected}
+            orientation={orientation}
+            tokens={cfg.tokens}
+            artW={A.w}
+            popover={popover}
+            setPopover={setPopover}
+            onPatch={(c) => patch(selected.id, c)}
+          />
+        ) : (
+          <p className="text-xs text-neutral-500">Tocá un texto o un bloque en el lienzo para editarlo.</p>
+        )}
+      </div>
+
+      {/* Lienzo */}
+      <div
+        ref={areaRef}
+        tabIndex={0}
+        onKeyDown={onKey}
+        onPointerDown={() => { setSelectedId(null); setPopover(null); }}
+        className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-neutral-200/70 outline-none"
+        aria-label="Lienzo: tocá un elemento para seleccionarlo, arrastralo para moverlo, flechas para ajustar"
+      >
+        <div className="relative shadow-lg" style={{ width: A.w * k, height: A.h * k, ...bgStyle }}>
+          {overlay}
           <div
-            ref={wrapRef}
-            tabIndex={0}
-            onKeyDown={onKey}
-            onPointerDown={() => setSelectedId(null)}
-            className="flex justify-center overflow-hidden rounded-lg bg-neutral-200 px-8 py-6 outline-none focus-visible:ring-2 focus-visible:ring-neutral-900"
-            aria-label="Mesa de trabajo: hacé clic en un texto para seleccionarlo, arrastralo para moverlo, flechas para ajustar"
+            ref={boardRef}
+            className="absolute left-0 top-0"
+            style={{ width: A.w, height: A.h, transform: `scale(${k})`, transformOrigin: "0 0" }}
+            onPointerMove={onMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
           >
-            {/* Sin recorte: lo que sobresale de la mesa se ve (y se puede agarrar) sobre el gris. */}
-            <div className="relative shadow" style={{ width: A.w * k, height: A.h * k, ...bgStyle }}>
-              {overlay}
-              <div
-                ref={boardRef}
-                className="absolute left-0 top-0"
-                style={{ width: A.w, height: A.h, transform: `scale(${k})`, transformOrigin: "0 0" }}
-                onPointerMove={onMove}
-                onPointerUp={endDrag}
-                onPointerCancel={endDrag}
-              >
-                {elements.map((el) => {
-                  const isSel = el.id === selectedId;
-                  return (
-                    <div
-                      key={el.id}
-                      data-artboard-el={el.id}
-                      data-selected={isSel ? "true" : undefined}
-                      ref={(n) => { if (n) elRefs.current.set(el.id, n); else elRefs.current.delete(el.id); }}
-                      style={{
-                        ...(elementStyle(el) as CSSProperties),
-                        cursor: "move",
-                        opacity: el.hidden ? 0.25 : 1,
-                        ...(el.kind === "panel" ? { background: "rgba(37,99,235,.04)" } : null),
-                        outline: isSel ? `${2 / (k || 1)}px solid #2563eb` : overflow.has(el.id) ? `${1.5 / (k || 1)}px dashed #dc2626` : `${1 / (k || 1)}px dashed transparent`,
-                        touchAction: "none",
-                        userSelect: "none",
-                      }}
-                      onPointerDown={(e) => startDrag(e, el, "move")}
-                      onMouseEnter={(e) => { if (!isSel && !overflow.has(el.id)) e.currentTarget.style.outlineColor = "rgba(37,99,235,.5)"; }}
-                      onMouseLeave={(e) => { if (!isSel && !overflow.has(el.id)) e.currentTarget.style.outlineColor = "transparent"; }}
-                    >
-                      <div style={{ pointerEvents: "none", minHeight: "0.5em" }}>
-                        <ElementContent el={el} tokens={tokens} blocks={blocks} />
-                      </div>
-                      {isSel &&
-                        ([
-                          ["corner", -1, "nwse-resize", { left: -handle / 2, top: -handle / 2 }],
-                          ["corner", 1, "nesw-resize", { right: -handle / 2, top: -handle / 2 }],
-                          ["corner", -1, "nesw-resize", { left: -handle / 2, bottom: -handle / 2 }],
-                          ["corner", 1, "nwse-resize", { right: -handle / 2, bottom: -handle / 2 }],
-                          ["side", -1, "ew-resize", { left: -handle / 2, top: `calc(50% - ${handle / 2}px)` }],
-                          ["side", 1, "ew-resize", { right: -handle / 2, top: `calc(50% - ${handle / 2}px)` }],
-                          ...(el.kind === "panel"
-                            ? ([
-                                ["vside", -1, "ns-resize", { top: -handle / 2, left: `calc(50% - ${handle / 2}px)` }],
-                                ["vside", 1, "ns-resize", { bottom: -handle / 2, left: `calc(50% - ${handle / 2}px)` }],
-                              ] as const)
-                            : []),
-                        ] as const).map(([mode, sign, cursor, pos], i) => (
-                          <span
-                            key={i}
-                            onPointerDown={(e) => startDrag(e, el, mode, sign)}
-                            style={{
-                              position: "absolute", width: handle, height: handle, background: "#fff",
-                              border: `${1.5 / (k || 1)}px solid #2563eb`, borderRadius: mode === "side" || mode === "vside" ? handle : 2 / (k || 1),
-                              cursor, touchAction: "none", ...pos,
-                            }}
-                          />
-                        ))}
-                    </div>
-                  );
-                })}
-                {guides.x !== undefined && <div className="pointer-events-none absolute top-0" style={{ left: guides.x, width: 1 / (k || 1), height: A.h, background: "#ec4899" }} />}
-                {guides.y !== undefined && <div className="pointer-events-none absolute left-0" style={{ top: guides.y, height: 1 / (k || 1), width: A.w, background: "#ec4899" }} />}
-              </div>
-            </div>
-          </div>
-          <p className="text-xs text-neutral-500">
-            Arrastrá para mover · esquinas: tamaño · lados: ancho · flechas: 1 px (Shift: 10 px) · Ctrl+Z deshacer. Las guías rosas
-            aparecen al alinear con el centro o con otro texto.
-          </p>
-
-          <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-3">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="mr-1 text-xs font-medium text-neutral-700">Cómo se ve en:</span>
-              {PREVIEW_DEVICES.map((d, i) => (
-                <button
-                  key={d.label}
-                  type="button"
-                  aria-pressed={i === previewDevice}
-                  onClick={() => setPreviewDevice(i)}
-                  className={`rounded-full border px-2 py-0.5 text-xs tabular-nums ${i === previewDevice ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-300 text-neutral-600"}`}
-                >
-                  {d.label}
-                </button>
-              ))}
-            </div>
-            <div className="flex justify-center rounded bg-neutral-900 p-2">
-              <div className="relative overflow-hidden" style={{ width: PD.w * pk, height: frameH * pk }}>
-                <div className="absolute left-0 top-0" style={{ width: PD.w, height: frameH, transform: `scale(${pk})`, transformOrigin: "0 0", ...bgStyle }}>
-                  {overlay}
-                  <TextArtboard layout={layout} tokens={tokens} blocks={blocks} boards={BOARDS} forceOrientation={pdOrientation} />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex min-w-0 flex-col gap-3">
-          <div className="flex flex-col gap-1">
-            <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Textos</p>
             {elements.map((el) => {
-              const small = !el.hidden && smallestPx(el) < MIN_READABLE_PX;
+              const isSel = el.id === selectedId;
               return (
-                <div key={el.id} className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-sm ${el.id === selectedId ? "border-blue-600 bg-blue-50" : "border-neutral-200"}`}>
-                  <button type="button" className="min-w-0 flex-1 truncate text-left" onClick={() => setSelectedId(el.id)}>
-                    {el.name}
-                    {small && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800">{smallLabel(orientation)}</span>}
-                    {overflow.has(el.id) && <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-[11px] text-red-700">se sale</span>}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => patch(el.id, { hidden: !el.hidden })}
-                    aria-label={el.hidden ? `Mostrar ${el.name}` : `Ocultar ${el.name}`}
-                    className="text-neutral-500 hover:text-neutral-900"
-                  >
-                    {el.hidden ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
+                <div
+                  key={el.id}
+                  data-artboard-el={el.id}
+                  data-selected={isSel ? "true" : undefined}
+                  ref={(n) => { if (n) elRefs.current.set(el.id, n); else elRefs.current.delete(el.id); }}
+                  style={{
+                    ...(elementStyle(el) as CSSProperties),
+                    cursor: "move",
+                    opacity: el.hidden ? 0.25 : 1,
+                    outline: isSel
+                      ? `${2 / (k || 1)}px solid #2563eb`
+                      : overflow.has(el.id)
+                        ? `${1.5 / (k || 1)}px dashed #dc2626`
+                        : el.kind === "panel"
+                          ? `${1 / (k || 1)}px dashed rgba(37,99,235,.45)`
+                          : `${1 / (k || 1)}px dashed transparent`,
+                    touchAction: "none",
+                    userSelect: "none",
+                  }}
+                  onPointerDown={(e) => startDrag(e, el, "move")}
+                  onDoubleClick={() => { if (el.kind === "text") setPopover("text"); }}
+                  onMouseEnter={(e) => { if (!isSel && !overflow.has(el.id) && el.kind !== "panel") e.currentTarget.style.outlineColor = "rgba(37,99,235,.5)"; }}
+                  onMouseLeave={(e) => { if (!isSel && !overflow.has(el.id) && el.kind !== "panel") e.currentTarget.style.outlineColor = "transparent"; }}
+                >
+                  <div style={{ pointerEvents: "none", minHeight: "0.5em" }}>
+                    <ElementContent el={el} tokens={tokens} blocks={blocks} />
+                  </div>
+                  {isSel &&
+                    ([
+                      ["corner", -1, "nwse-resize", { left: -handle / 2, top: -handle / 2 }],
+                      ["corner", 1, "nesw-resize", { right: -handle / 2, top: -handle / 2 }],
+                      ["corner", -1, "nesw-resize", { left: -handle / 2, bottom: -handle / 2 }],
+                      ["corner", 1, "nwse-resize", { right: -handle / 2, bottom: -handle / 2 }],
+                      ["side", -1, "ew-resize", { left: -handle / 2, top: `calc(50% - ${handle / 2}px)` }],
+                      ["side", 1, "ew-resize", { right: -handle / 2, top: `calc(50% - ${handle / 2}px)` }],
+                      ...(el.kind === "panel"
+                        ? ([
+                            ["vside", -1, "ns-resize", { top: -handle / 2, left: `calc(50% - ${handle / 2}px)` }],
+                            ["vside", 1, "ns-resize", { bottom: -handle / 2, left: `calc(50% - ${handle / 2}px)` }],
+                          ] as const)
+                        : []),
+                    ] as const).map(([mode, sign, cursor, pos], i) => (
+                      <span
+                        key={i}
+                        onPointerDown={(e) => startDrag(e, el, mode, sign)}
+                        style={{
+                          position: "absolute", width: handle, height: handle, background: "#fff",
+                          border: `${1.5 / (k || 1)}px solid #2563eb`,
+                          borderRadius: mode === "side" || mode === "vside" ? handle : 2 / (k || 1),
+                          cursor, touchAction: "none", ...pos,
+                        }}
+                      />
+                    ))}
                 </div>
               );
             })}
+            {guides.x !== undefined && <div className="pointer-events-none absolute top-0" style={{ left: guides.x, width: 1 / (k || 1), height: A.h, background: "#ec4899" }} />}
+            {guides.y !== undefined && <div className="pointer-events-none absolute left-0" style={{ top: guides.y, height: 1 / (k || 1), width: A.w, background: "#ec4899" }} />}
           </div>
-
-          {selected ? (
-            <ElementPanel el={selected} onPatch={(c) => patch(selected.id, c)} artW={A.w} tokens={cfg.tokens} orientation={orientation} />
-          ) : (
-            <p className="rounded-md bg-neutral-50 p-3 text-sm text-neutral-500">Elegí un texto en la mesa o en la lista para editarlo.</p>
-          )}
         </div>
       </div>
+
+      {/* Capas */}
+      <div className="flex flex-wrap items-center gap-1.5 border-t border-neutral-200 bg-white px-3 py-2">
+        <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Capas</span>
+        {elements.map((el) => {
+          const warn = !el.hidden && (smallestPx(el) < MIN_READABLE_PX || overflow.has(el.id));
+          const isSel = el.id === selectedId;
+          return (
+            <span key={el.id} className={`inline-flex items-center rounded-full border text-xs ${isSel ? "border-blue-600 bg-blue-50 text-blue-800" : "border-neutral-200 text-neutral-700"}`}>
+              <button type="button" onClick={() => setSelectedId(el.id)} className="flex items-center gap-1 py-0.5 pl-2.5 pr-1">
+                {warn && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-label="Revisar" />}
+                <span className={el.hidden ? "line-through opacity-60" : ""}>{el.name}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => patch(el.id, { hidden: !el.hidden })}
+                aria-label={el.hidden ? `Mostrar ${el.name}` : `Ocultar ${el.name}`}
+                className="py-0.5 pl-0.5 pr-2 text-neutral-400 hover:text-neutral-800"
+              >
+                {el.hidden ? <EyeOff size={12} /> : <Eye size={12} />}
+              </button>
+            </span>
+          );
+        })}
+      </div>
+
+      {realSize && (
+        <RealSizeModal
+          onClose={() => setRealSize(false)}
+          layout={layout}
+          tokens={tokens}
+          blocks={blocks}
+          bgStyle={bgStyle}
+          overlay={overlay}
+          section={section}
+        />
+      )}
     </div>
   );
 }
 
-export function ElementPanel({
+/* ---------- Barra contextual ---------- */
+
+function ContextToolbar({
   el,
-  onPatch,
-  artW,
-  tokens,
   orientation,
-  positioned = true,
+  tokens,
+  artW,
+  popover,
+  setPopover,
+  onPatch,
 }: {
   el: TextElement;
-  onPatch: (c: Partial<TextElement>) => void;
-  artW: number;
-  tokens: string[];
   orientation: Orientation;
-  positioned?: boolean;
+  tokens: string[];
+  artW: number;
+  popover: Popover;
+  setPopover: (p: Popover) => void;
+  onPatch: (c: Partial<TextElement>) => void;
 }) {
-  const isTheme = el.color in THEME_COLORS;
+  const isText = el.kind === "text";
   const isPanel = el.kind === "panel";
   const phonePx = smallestPx(el);
-  const field = "w-full rounded-md border border-neutral-300 px-2 py-1 text-sm";
-  const num = (label: string, value: number, key: keyof TextElement, step = 1, min?: number, max?: number) => (
+  const small = phonePx < MIN_READABLE_PX;
+  const toggle = (p: Popover) => setPopover(popover === p ? null : p);
+  const sizeStep = isPanel ? 1 : 2;
+
+  return (
+    <>
+      <span className="mr-1 text-xs font-medium text-neutral-800">{el.name}</span>
+
+      {isText && (
+        <div className="relative" data-popover>
+          <ToolButton label="Editar texto (doble clic en el lienzo)" active={popover === "text"} onClick={() => toggle("text")}>
+            <Pencil size={14} /> <span className="text-xs">Texto</span>
+          </ToolButton>
+          {popover === "text" && (
+            <div className="absolute left-0 top-full z-30 mt-1 w-80 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg">
+              <textarea
+                autoFocus
+                aria-label="Texto"
+                className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+                rows={3}
+                value={el.text}
+                maxLength={300}
+                onChange={(e) => onPatch({ text: e.target.value })}
+              />
+              <p className="mb-1 mt-2 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Insertar dato</p>
+              <div className="flex flex-wrap gap-1">
+                {tokens.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => onPatch({ text: el.text + `{${t}}` })}
+                    className="rounded-full border border-neutral-300 px-2 py-0.5 text-xs text-neutral-700 hover:bg-neutral-50"
+                  >
+                    {TOKEN_HELP[t] ?? t}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] text-neutral-400">Los datos se completan solos con lo que cargás en «Contenido».</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      <select
+        aria-label="Tipografía"
+        className="h-8 max-w-[11rem] rounded-md border border-neutral-300 px-2 text-sm"
+        value={el.font}
+        onChange={(e) => onPatch({ font: e.target.value as FontKey })}
+        style={{ fontFamily: FONTS[el.font].css }}
+      >
+        {(Object.keys(FONTS) as FontKey[]).map((f) => (
+          <option key={f} value={f} style={{ fontFamily: FONTS[f].css }}>{FONTS[f].label}</option>
+        ))}
+      </select>
+
+      <div className="flex h-8 items-center rounded-md border border-neutral-300">
+        <button type="button" aria-label="Achicar" className="px-1.5 text-neutral-600 hover:text-neutral-900" onClick={() => onPatch({ fontSize: Math.max(isPanel ? 4 : 6, el.fontSize - sizeStep) })}>
+          <Minus size={13} />
+        </button>
+        <input
+          aria-label={isPanel ? "Tamaño del contenido (16 = normal)" : "Tamaño"}
+          type="number"
+          className="h-full w-12 border-x border-neutral-300 text-center text-sm"
+          value={Math.round(el.fontSize * 10) / 10}
+          onChange={(e) => {
+            const v = parseFloat(e.target.value);
+            if (Number.isFinite(v)) onPatch({ fontSize: v });
+          }}
+        />
+        <button type="button" aria-label="Agrandar" className="px-1.5 text-neutral-600 hover:text-neutral-900" onClick={() => onPatch({ fontSize: Math.min(400, el.fontSize + sizeStep) })}>
+          <Plus size={13} />
+        </button>
+      </div>
+
+      <div className="relative" data-popover>
+        <ToolButton label="Color" active={popover === "color"} onClick={() => toggle("color")}>
+          <span className="h-4 w-4 rounded-full border border-neutral-300" style={{ background: el.color }} />
+        </ToolButton>
+        {popover === "color" && (
+          <div className="absolute left-0 top-full z-30 mt-1 w-60 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg">
+            <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-neutral-400">De la paleta</p>
+            <div className="flex flex-col gap-1">
+              {Object.entries(THEME_COLORS).map(([v, label]) => (
+                <button key={v} type="button" onClick={() => onPatch({ color: v })} className={`flex items-center gap-2 rounded px-1.5 py-1 text-left text-sm hover:bg-neutral-50 ${el.color === v ? "bg-neutral-100" : ""}`}>
+                  <span className="h-4 w-4 rounded-full border border-neutral-300" style={{ background: v }} /> {label}
+                </button>
+              ))}
+            </div>
+            <p className="mb-1.5 mt-3 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Color propio</p>
+            <input
+              type="color"
+              aria-label="Elegir color propio"
+              value={el.color.startsWith("#") ? el.color : "#5c1f2e"}
+              onChange={(e) => onPatch({ color: e.target.value })}
+              className="h-8 w-full cursor-pointer rounded border border-neutral-300"
+            />
+          </div>
+        )}
+      </div>
+
+      {!isPanel && (
+        <>
+          <ToolButton label="Negrita" active={el.weight >= 600} onClick={() => onPatch({ weight: el.weight >= 600 ? 400 : 700 })}><Bold size={14} /></ToolButton>
+          <ToolButton label="Cursiva" active={el.italic} onClick={() => onPatch({ italic: !el.italic })}><Italic size={14} /></ToolButton>
+          <ToolButton label="Mayúsculas" active={el.uppercase} onClick={() => onPatch({ uppercase: !el.uppercase })}><span className="text-xs font-semibold">Aa</span></ToolButton>
+        </>
+      )}
+
+      <ToolButton
+        label={`Alineación: ${el.align === "left" ? "izquierda" : el.align === "right" ? "derecha" : "centro"}`}
+        onClick={() => onPatch({ align: el.align === "left" ? "center" : el.align === "center" ? "right" : "left" })}
+      >
+        {el.align === "left" ? <AlignLeft size={14} /> : el.align === "right" ? <AlignRight size={14} /> : <AlignCenter size={14} />}
+      </ToolButton>
+
+      <div className="relative" data-popover>
+        <ToolButton label="Avanzado" active={popover === "advanced"} onClick={() => toggle("advanced")}><SlidersHorizontal size={14} /></ToolButton>
+        {popover === "advanced" && (
+          <div className="absolute right-0 top-full z-30 mt-1 w-72 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg sm:left-0 sm:right-auto">
+            <div className="grid grid-cols-2 gap-2">
+              {!isPanel && <Num label="Espaciado (em)" value={el.letterSpacing} step={0.01} onChange={(v) => onPatch({ letterSpacing: v })} />}
+              {!isPanel && <Num label="Interlineado" value={el.lineHeight} step={0.05} onChange={(v) => onPatch({ lineHeight: v })} />}
+              {isPanel && <Num label="Alto de la caja" value={el.h} onChange={(v) => onPatch({ h: v })} />}
+              <Num label="Ancho de la caja" value={el.w} onChange={(v) => onPatch({ w: v })} />
+              <Num label="Rotación (°)" value={el.rotation} onChange={(v) => onPatch({ rotation: v })} />
+              <Num label="Posición X" value={el.x} onChange={(v) => onPatch({ x: v })} />
+              <Num label="Posición Y" value={el.y} onChange={(v) => onPatch({ y: v })} />
+            </div>
+            <button type="button" onClick={() => onPatch({ x: artW / 2 })} className="mt-2 w-full rounded-md border border-neutral-300 px-2.5 py-1 text-xs hover:bg-neutral-50">
+              Centrar horizontalmente
+            </button>
+          </div>
+        )}
+      </div>
+
+      <ToolButton label={el.hidden ? "Mostrar" : "Ocultar"} onClick={() => onPatch({ hidden: !el.hidden })}>
+        {el.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+      </ToolButton>
+
+      {small && (
+        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800" title={`Se ve a ${phonePx.toFixed(1)} px`}>
+          Letra chica en {orientation === "portrait" ? "celular" : "celular acostado"}
+        </span>
+      )}
+    </>
+  );
+}
+
+function ToolButton({ label, active, onClick, children }: { label: string; active?: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      onClick={onClick}
+      className={`flex h-8 items-center gap-1 rounded-md px-2 ${active ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-neutral-100"}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function IconButton({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: ReactNode }) {
+  return (
+    <button type="button" title={label} aria-label={label} onClick={onClick} disabled={disabled} className="rounded-md p-1.5 text-neutral-600 hover:bg-neutral-100 disabled:opacity-30">
+      {children}
+    </button>
+  );
+}
+
+function MenuItem({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} className="block w-full rounded px-2.5 py-1.5 text-left text-sm hover:bg-neutral-100">
+      {children}
+    </button>
+  );
+}
+
+function Num({ label, value, step = 1, onChange }: { label: string; value: number; step?: number; onChange: (v: number) => void }) {
+  return (
     <label className="flex flex-col gap-0.5">
-      <span className="text-xs text-neutral-500">{label}</span>
+      <span className="text-[11px] text-neutral-500">{label}</span>
       <input
         type="number"
-        className={field}
-        value={Math.round(value * 100) / 100}
         step={step}
-        min={min}
-        max={max}
+        className="w-full rounded-md border border-neutral-300 px-2 py-1 text-sm"
+        value={Math.round(value * 100) / 100}
         onChange={(e) => {
           const v = parseFloat(e.target.value);
-          if (Number.isFinite(v)) onPatch({ [key]: v } as Partial<TextElement>);
+          if (Number.isFinite(v)) onChange(v);
         }}
       />
     </label>
   );
+}
+
+/* ---------- Ver en pantalla real ---------- */
+
+function RealSizeModal({
+  onClose,
+  layout,
+  tokens,
+  blocks,
+  bgStyle,
+  overlay,
+  section,
+}: {
+  onClose: () => void;
+  layout: TextLayout;
+  tokens: TokenValues;
+  blocks?: Record<string, ReactNode>;
+  bgStyle: CSSProperties;
+  overlay: ReactNode;
+  section: LayoutSection;
+}) {
+  const BOARDS = sectionConfig(section).boards;
+  const [device, setDevice] = useState(0);
+  const [vp, setVp] = useState({ w: 1200, h: 800 });
+  useEffect(() => {
+    const update = () => setVp({ w: window.innerWidth, h: window.innerHeight });
+    update();
+    window.addEventListener("resize", update);
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", esc);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("keydown", esc);
+    };
+  }, [onClose]);
+
+  const D = DEVICES[device];
+  const o = orientationFor(D.w, D.h);
+  const fullScreen = BOARDS === ARTBOARDS;
+  const frameH = fullScreen ? D.h : (D.w * BOARDS[o].h) / BOARDS[o].w;
+  const pk = Math.min(1, (vp.w - 64) / D.w, (vp.h - 150) / frameH);
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-3">
-      <p className="text-sm font-medium text-neutral-800">{el.name}</p>
-
-      {el.kind === "text" && (
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-neutral-500">Texto (Enter para salto de línea)</span>
-          <textarea className={field} rows={2} value={el.text} maxLength={300} onChange={(e) => onPatch({ text: e.target.value })} />
-          <span className="flex flex-wrap gap-1">
-            {tokens.map((t) => (
-              <button
-                key={t}
-                type="button"
-                title={TOKEN_HELP[t]}
-                onClick={() => onPatch({ text: el.text + `{${t}}` })}
-                className="rounded border border-neutral-300 px-1.5 py-0.5 font-mono text-[11px] text-neutral-600 hover:bg-neutral-50"
-              >
-                {`{${t}}`}
-              </button>
-            ))}
-          </span>
-        </label>
-      )}
-
-      <label className="flex flex-col gap-0.5">
-        <span className="text-xs text-neutral-500">Tipografía</span>
-        <select className={field} value={el.font} onChange={(e) => onPatch({ font: e.target.value as FontKey })} style={{ fontFamily: FONTS[el.font].css }}>
-          {(Object.keys(FONTS) as FontKey[]).map((f) => (
-            <option key={f} value={f} style={{ fontFamily: FONTS[f].css }}>{FONTS[f].label}</option>
-          ))}
-        </select>
-      </label>
-
-      {isPanel && (
-        <p className="text-xs text-neutral-500">
-          Contenido que cambia según lo que cargues (tarjetas, fotos, formularios). Si no entra en la caja, se
-          desplaza por dentro.
-        </p>
-      )}
-      <div className="grid grid-cols-2 gap-2">
-        {isPanel
-          ? num("Tamaño del contenido (16 = normal)", el.fontSize, "fontSize", 1, 4, 400)
-          : num("Tamaño (px de la mesa)", el.fontSize, "fontSize", 1, 6, 400)}
-        {isPanel ? (
-          num("Alto de la caja", el.h, "h", 1, 40)
-        ) : (
-          <label className="flex flex-col gap-0.5">
-            <span className="text-xs text-neutral-500">Peso</span>
-            <select className={field} value={el.weight} onChange={(e) => onPatch({ weight: Number(e.target.value) })}>
-              {[300, 400, 500, 600, 700].map((w) => <option key={w} value={w}>{w}</option>)}
-            </select>
-          </label>
-        )}
-      </div>
-      <p className={`text-xs ${phonePx < MIN_READABLE_PX ? "text-amber-700" : "text-neutral-500"}`}>
-        {orientation === "portrait" ? "En un celular de 390 px" : "En un celular acostado (844×390)"} se ve a {phonePx.toFixed(1)} px{phonePx < MIN_READABLE_PX ? `: muy chico, subilo al menos a ${Math.ceil(el.fontSize * (MIN_READABLE_PX / phonePx))}.` : "."}
-      </p>
-
-      <div className="flex flex-col gap-1">
-        <span className="text-xs text-neutral-500">{isPanel ? "Color de los títulos y datos" : "Color"}</span>
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
-            value={isTheme ? el.color : "custom"}
-            onChange={(e) => onPatch({ color: e.target.value === "custom" ? "#5c1f2e" : e.target.value })}
+    <div className="fixed inset-0 z-50 flex flex-col items-center gap-3 bg-neutral-950/85 p-4" role="dialog" aria-modal="true" aria-label="Vista en pantalla real">
+      <div className="flex w-full max-w-5xl flex-wrap items-center gap-2">
+        {DEVICES.map((d, i) => (
+          <button
+            key={d.label}
+            type="button"
+            aria-pressed={i === device}
+            onClick={() => setDevice(i)}
+            className={`rounded-full px-3 py-1 text-xs ${i === device ? "bg-white text-neutral-900" : "bg-white/10 text-white hover:bg-white/20"}`}
           >
-            {Object.entries(THEME_COLORS).map(([v, label]) => <option key={v} value={v}>{label}</option>)}
-            <option value="custom">Color propio…</option>
-          </select>
-          {!isTheme && (
-            <input type="color" value={el.color} onChange={(e) => onPatch({ color: e.target.value })} className="h-8 w-12 cursor-pointer rounded border border-neutral-300" aria-label="Elegir color" />
-          )}
-          <span className="h-6 w-6 rounded-full border border-neutral-300" style={{ background: el.color }} />
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex rounded-md border border-neutral-300 p-0.5" role="group" aria-label="Alineación">
-          {([["left", AlignLeft], ["center", AlignCenter], ["right", AlignRight]] as const).map(([a, Icon]) => (
-            <button key={a} type="button" aria-pressed={el.align === a} onClick={() => onPatch({ align: a })} className={`rounded p-1 ${el.align === a ? "bg-neutral-900 text-white" : "text-neutral-600"}`}>
-              <Icon size={14} />
-            </button>
-          ))}
-        </div>
-        {!isPanel && (
-          <>
-            <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={el.italic} onChange={(e) => onPatch({ italic: e.target.checked })} /> Cursiva</label>
-            <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={el.uppercase} onChange={(e) => onPatch({ uppercase: e.target.checked })} /> Mayúsculas</label>
-          </>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-2">
-        {!isPanel && num("Espaciado de letras (em)", el.letterSpacing, "letterSpacing", 0.01, -0.1, 1)}
-        {!isPanel && num("Interlineado", el.lineHeight, "lineHeight", 0.05, 0.6, 3)}
-        {positioned && num("Ancho de la caja", el.w, "w", 1, 20)}
-        {positioned && num("Rotación (°)", el.rotation, "rotation", 1, -180, 180)}
-        {positioned && num("Posición X (centro)", el.x, "x")}
-        {positioned && num("Posición Y (centro)", el.y, "y")}
-      </div>
-      {positioned && (
-        <button type="button" onClick={() => onPatch({ x: artW / 2 })} className="w-fit rounded-md border border-neutral-300 px-2.5 py-1 text-xs hover:bg-neutral-50">
-          Centrar horizontalmente
+            {d.label}
+          </button>
+        ))}
+        <span className="text-xs text-white/60">{pk < 1 ? `Reducido al ${Math.round(pk * 100)}% para entrar en tu pantalla` : "Tamaño real"}</span>
+        <button type="button" onClick={onClose} aria-label="Cerrar" className="ml-auto rounded-full bg-white/10 p-1.5 text-white hover:bg-white/20">
+          <X size={16} />
         </button>
-      )}
+      </div>
+      <div className="relative overflow-hidden rounded shadow-2xl" style={{ width: D.w * pk, height: frameH * pk }}>
+        <div className="absolute left-0 top-0" style={{ width: D.w, height: frameH, transform: `scale(${pk})`, transformOrigin: "0 0", ...bgStyle }}>
+          {overlay}
+          <TextArtboard layout={layout} tokens={tokens} blocks={blocks} boards={BOARDS} forceOrientation={o} />
+        </div>
+      </div>
     </div>
   );
 }

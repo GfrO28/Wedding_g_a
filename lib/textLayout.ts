@@ -301,6 +301,8 @@ export const SECTIONS = {
 export type LayoutSection = keyof typeof SECTIONS;
 export const LAYOUT_SECTIONS = Object.keys(SECTIONS) as LayoutSection[];
 export const layoutSettingKey = (s: LayoutSection) => `layout_${s}`;
+// Borrador del editor: se guarda solo; los invitados ven layoutSettingKey hasta publicar.
+export const draftLayoutKey = (s: LayoutSection) => `draft_layout_${s}`;
 
 export function sectionConfig(s: LayoutSection): SectionConfig {
   return SECTIONS[s] as SectionConfig;
