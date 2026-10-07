@@ -1,11 +1,32 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pause, Play } from "lucide-react";
+import { PLAY_MUSIC_EVENT } from "./EnvelopeIntro";
 
 export function MusicControl({ music }: { music: { src: string; title: string } | null }) {
   const [playing, setPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+
+  // El sobre avisa cuando el invitado toca el sello: ese clic es el gesto que
+  // permite al navegador reproducir sonido. Entra con un fade-in de 1.5 s.
+  useEffect(() => {
+    function onOpen() {
+      const audio = audioRef.current;
+      if (!audio || !audio.paused) return;
+      audio.volume = 0;
+      audio.play().then(() => setPlaying(true)).catch(() => {});
+      const start = performance.now();
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / 1500);
+        audio.volume = t;
+        if (t < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    }
+    window.addEventListener(PLAY_MUSIC_EVENT, onOpen);
+    return () => window.removeEventListener(PLAY_MUSIC_EVENT, onOpen);
+  }, []);
 
   if (!music) return null;
 
@@ -13,7 +34,10 @@ export function MusicControl({ music }: { music: { src: string; title: string } 
     const audio = audioRef.current;
     if (!audio) return;
     if (playing) audio.pause();
-    else audio.play().catch(() => {});
+    else {
+      audio.volume = 1;
+      audio.play().catch(() => {});
+    }
     setPlaying(!playing);
   }
 

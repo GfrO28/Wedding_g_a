@@ -45,6 +45,7 @@ export type ZoneImageKey = (typeof ZONE_IMAGE_KEYS)[number];
 // Todas las viñetas que el admin puede prender/apagar de cara al invitado
 // (la paleta de colores queda afuera: no es una viñeta, es global).
 export const ZONE_TOGGLE_KEYS = [
+  "intro",
   "hero",
   "blessing",
   "story",

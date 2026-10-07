@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { setSetting } from "@/lib/kv";
 import { getUploadUrl, publicUrlFor } from "@/lib/storage/r2";
 import { ZONE_IMAGE_KEYS, ZONE_TOGGLE_KEYS, type ZoneImageKey, type ZoneToggleKey } from "@/lib/weddingContent";
+import { envelopeAssetUrl, envelopeSettingKey, isEnvelopeSlot } from "@/lib/envelopeAssets";
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const ALLOWED_AUDIO_TYPES = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/ogg"];
@@ -89,5 +90,35 @@ export async function clearMusicAction() {
 
 export async function updateMusicTitleAction(title: string) {
   await setSetting("musicTitle", title || "Nuestra canción");
+  revalidate();
+}
+
+// Las piezas del sobre necesitan transparencia, por eso solo PNG o WebP.
+const ENVELOPE_TYPES = ["image/png", "image/webp"];
+
+export async function requestEnvelopeUploadAction(
+  slot: string,
+  filename: string,
+  contentType: string,
+): Promise<UploadRequest> {
+  if (!isEnvelopeSlot(slot)) return { error: "Pieza inválida.", uploadUrl: null, publicUrl: null };
+  if (!ENVELOPE_TYPES.includes(contentType)) {
+    return { error: "Subí un PNG (o WebP) con fondo transparente.", uploadUrl: null, publicUrl: null };
+  }
+  const key = `envelope/${slot}-${crypto.randomUUID()}-${safeName(filename)}`;
+  const uploadUrl = await getUploadUrl(key, contentType);
+  return { error: null, uploadUrl, publicUrl: publicUrlFor(key) };
+}
+
+export async function saveEnvelopeImageAction(slot: string, url: string) {
+  if (!isEnvelopeSlot(slot)) return { assetUrl: null };
+  await setSetting(envelopeSettingKey(slot), url);
+  revalidate();
+  return { assetUrl: envelopeAssetUrl(slot, url) };
+}
+
+export async function resetEnvelopeImageAction(slot: string) {
+  if (!isEnvelopeSlot(slot)) return;
+  await setSetting(envelopeSettingKey(slot), "");
   revalidate();
 }

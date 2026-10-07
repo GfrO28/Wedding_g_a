@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import { guests, rsvps } from "@/lib/db/schema";
 import { Hero } from "@/app/components/Hero";
 import { MusicControl } from "@/app/components/MusicControl";
+import { EnvelopeIntro } from "@/app/components/EnvelopeIntro";
+import { getEnvelopeSettings } from "@/lib/envelope";
 import { Blessing } from "@/app/components/Blessing";
 import { OurStory } from "@/app/components/OurStory";
 import { Gallery } from "@/app/components/Gallery";
@@ -38,11 +40,12 @@ export default async function GuestInvitationPage({
     .where(eq(rsvps.guestId, guest.id))
     .limit(1);
 
-  const content = await getWeddingContent();
+  const [content, envelope] = await Promise.all([getWeddingContent(), getEnvelopeSettings()]);
 
   return (
     <>
     <MusicControl music={content.zoneEnabled.music ? content.music : null} />
+    {content.zoneEnabled.intro && <EnvelopeIntro assets={envelope.assets} />}
     <main className="h-dvh snap-y snap-mandatory overflow-y-scroll scroll-smooth">
       {content.zoneEnabled.hero && <Hero guestName={guest.fullName} />}
       {content.zoneEnabled.blessing && <Blessing />}
