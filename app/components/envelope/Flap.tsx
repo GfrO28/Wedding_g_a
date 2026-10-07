@@ -17,6 +17,7 @@ export function Flap({
   darkColor,
   creaseGradient,
   brightnessOpen = 1,
+  dropShadow = "0 4px 10px rgba(0,0,0,0.35)",
   floralColor,
   zIndex,
   children,
@@ -33,6 +34,7 @@ export function Flap({
   darkColor: string;
   creaseGradient: string;
   brightnessOpen?: number;
+  dropShadow?: string;
   floralColor: string;
   zIndex: number;
   children?: ReactNode;
@@ -51,7 +53,10 @@ export function Flap({
           backfaceVisibility: "hidden",
           ...fill,
         }}
-        animate={{ [axis]: frontRotate, filter: `brightness(${open ? brightnessOpen : 1})` }}
+        animate={{
+          [axis]: frontRotate,
+          filter: `brightness(${open ? brightnessOpen : 1}) drop-shadow(${dropShadow})`,
+        }}
         transition={transition}
       >
         <div className="pointer-events-none absolute inset-0" style={{ background: creaseGradient }} />

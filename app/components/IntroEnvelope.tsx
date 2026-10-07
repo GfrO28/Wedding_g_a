@@ -6,13 +6,7 @@ import { motion } from "framer-motion";
 import { Pause, Play } from "lucide-react";
 import type { IntroSettings } from "@/lib/intro";
 import { useElementSize } from "./envelope/useElementSize";
-import {
-  flapPolygon,
-  flapStitchPath,
-  pointsToSvgPath,
-  sealBlobPolygon,
-  tornCardPolygon,
-} from "./envelope/shapes";
+import { flapPolygon, flapStitchPath, pointsToSvgPath, sealBlobPolygon } from "./envelope/shapes";
 import { FloralMotif } from "./envelope/FloralMotif";
 import { Flap } from "./envelope/Flap";
 import { EnvelopeText, textRevealDurationMs, type EnvelopeTextLine } from "./envelope/EnvelopeText";
@@ -164,8 +158,6 @@ export function IntroEnvelope({
   const sealSize = 112;
   const shapesReady = width > 0 && height > 0;
 
-  const cardClip = shapesReady ? tornCardPolygon(width * 0.94, height * 0.94) : undefined;
-
   if (!mounted) return null;
 
   const envelopeActive = !done;
@@ -197,7 +189,7 @@ export function IntroEnvelope({
         >
           <motion.div
             ref={sceneRef}
-            className="relative h-full w-full sm:aspect-[9/16] sm:h-dvh sm:max-h-dvh sm:w-auto"
+            className="relative h-full w-full"
             style={{ perspective: 2600, cursor: assetsReady ? "pointer" : "default" }}
             animate={{ scale: tapped ? TIMING.camera.scale : 1 }}
             transition={{ duration: TIMING.camera.duration, delay: tapped ? TIMING.camera.delay : 0, ease: "easeInOut" }}
@@ -207,7 +199,6 @@ export function IntroEnvelope({
             <div
               className="absolute inset-[3%]"
               style={{
-                clipPath: cardClip,
                 background: "var(--color-bg)",
                 boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
               }}
@@ -243,6 +234,7 @@ export function IntroEnvelope({
                   fill={fill(settings.images.introTop)}
                   darkColor="color-mix(in srgb, var(--color-accent) 55%, black)"
                   creaseGradient="linear-gradient(to bottom, transparent 0%, transparent 42%, rgba(0,0,0,0.9) 50%)"
+                  dropShadow="0 10px 16px rgba(0,0,0,0.4)"
                   floralColor="var(--color-bg)"
                   zIndex={10}
                 />
@@ -258,6 +250,7 @@ export function IntroEnvelope({
                   fill={fill(settings.images.introBottom)}
                   darkColor="color-mix(in srgb, var(--color-accent) 55%, black)"
                   creaseGradient="linear-gradient(to top, transparent 0%, transparent 42%, rgba(0,0,0,0.9) 50%)"
+                  dropShadow="0 -10px 16px rgba(0,0,0,0.4)"
                   floralColor="var(--color-bg)"
                   zIndex={11}
                 />
@@ -274,6 +267,7 @@ export function IntroEnvelope({
                   darkColor="color-mix(in srgb, var(--color-accent) 55%, black)"
                   creaseGradient="linear-gradient(to left, transparent 0%, transparent 42%, rgba(0,0,0,0.88) 50%)"
                   brightnessOpen={0.6}
+                  dropShadow="-6px 0 14px rgba(0,0,0,0.35)"
                   floralColor="var(--color-bg)"
                   zIndex={20}
                 >
@@ -301,6 +295,7 @@ export function IntroEnvelope({
                   darkColor="color-mix(in srgb, var(--color-accent) 55%, black)"
                   creaseGradient="linear-gradient(to right, transparent 0%, transparent 42%, rgba(0,0,0,0.88) 50%)"
                   brightnessOpen={1.25}
+                  dropShadow="6px 0 16px rgba(0,0,0,0.4)"
                   floralColor="var(--color-bg)"
                   zIndex={30}
                 >
