@@ -1,4 +1,5 @@
 import { gsap } from "gsap";
+import { artboardFit, elementStyle, fillTokens, type TextLayout, type TokenValues } from "@/lib/textLayout";
 
 export type EnvelopeAssets = {
   flapLeft: string;
@@ -16,7 +17,6 @@ export const ENVELOPE_CONFIG = {
   layout: { reference: { w: 768, h: 1024 }, sideTipTarget: 0.53, maxFlapDepth: 0.5, coverSafety: 1.04 },
   seal: { sizeVmin: 16, minPx: 72, maxPx: 200 },
   hint: "Toca el sello",
-  text: ["ESTÁS", "CORDIALMENTE", "INVITADO"],
   angles: { side: 160, topBottom: 170 },
   timing: {
     hintOut: [0, 0.25], prep: [0, 0.4], right: [0.4, 1.2], left: [0.5, 1.2],
@@ -300,6 +300,8 @@ function flapEl(p: Placed, src: string, axis: "x" | "y", extra?: HTMLElement) {
 export type MountOptions = {
   width: number;
   height: number;
+  textLayout: TextLayout;
+  tokens: TokenValues;
   reducedMotion?: boolean;
   debug?: boolean;
   onOpen?: () => void;
@@ -327,21 +329,44 @@ export function mountEnvelope(container: HTMLElement, G: Geometry, opts: MountOp
   });
   card.innerHTML =
     `<div style="position:absolute;inset:0;opacity:.07;pointer-events:none;background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E&quot;)"></div>`;
-  const small = Math.min(Math.max(13, vmin * 3.4), 34);
+  scene.appendChild(card);
+
+  // Textos de la tarjeta: misma mesa de trabajo que el editor del panel,
+  // escalada entera a la pantalla. Cada letra va en su propio span para la
+  // aparición desenfocada.
+  const fit = artboardFit(W, H);
   const words = document.createElement("div");
   Object.assign(words.style, {
-    position: "relative", textAlign: "center", textTransform: "uppercase", fontWeight: "300", color: C.colors.text,
-    fontFamily: `var(--font-envelope), "Cormorant Garamond", "Times New Roman", serif`,
+    position: "absolute", width: fit.A.w + "px", height: fit.A.h + "px", left: fit.left + "px", top: fit.top + "px",
+    transform: `scale(${fit.k})`, transformOrigin: "0 0", pointerEvents: "none",
   });
-  words.innerHTML = C.text
-    .map((line, i) => {
-      const big = i === 1;
-      const style = `display:block;white-space:nowrap;font-size:${big ? small * 2.2 : small}px;letter-spacing:${big ? ".1em" : ".38em"};margin:${big ? ".05em 0" : "0"}`;
-      return `<span style="${style}">${[...line].map((ch) => `<span data-ch style="display:inline-block">${ch === " " ? "&nbsp;" : ch}</span>`).join("")}</span>`;
-    })
-    .join("");
-  card.appendChild(words);
-  scene.appendChild(card);
+  for (const el of opts.textLayout[fit.orientation]) {
+    if (el.hidden || el.kind !== "text") continue;
+    const box = document.createElement("div");
+    Object.assign(box.style, elementStyle(el));
+    // Las letras se agrupan por palabra para que el texto solo se corte en
+    // los espacios, nunca en medio de una palabra.
+    fillTokens(el.text, opts.tokens).split("\n").forEach((line, li) => {
+      if (li > 0) box.appendChild(document.createElement("br"));
+      for (const part of line.split(/(\s+)/)) {
+        if (!part) continue;
+        if (/^\s+$/.test(part)) { box.appendChild(document.createTextNode(part)); continue; }
+        const word = document.createElement("span");
+        word.style.display = "inline-block";
+        word.style.whiteSpace = "nowrap";
+        for (const ch of part) {
+          const s = document.createElement("span");
+          s.dataset.ch = "";
+          s.style.display = "inline-block";
+          s.textContent = ch;
+          word.appendChild(s);
+        }
+        box.appendChild(word);
+      }
+    });
+    words.appendChild(box);
+  }
+  scene.appendChild(words);
   const letters = words.querySelectorAll<HTMLElement>("[data-ch]");
   gsap.set(letters, { opacity: 0, filter: "blur(8px)", y: 4 });
 

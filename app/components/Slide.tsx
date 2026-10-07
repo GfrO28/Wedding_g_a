@@ -4,10 +4,12 @@ export function Slide({
   children,
   className = "",
   bgImage,
+  fullBleed = false,
 }: {
   children: ReactNode;
   className?: string;
   bgImage?: string | null;
+  fullBleed?: boolean;
 }) {
   return (
     <section
@@ -22,7 +24,11 @@ export function Slide({
           <div className="absolute inset-0 bg-[var(--color-bg)]/40" />
         </>
       )}
-      <div className="relative max-h-[90dvh] w-full overflow-y-auto">{children}</div>
+      {fullBleed ? (
+        <div className="absolute inset-0">{children}</div>
+      ) : (
+        <div className="relative max-h-[90dvh] w-full overflow-y-auto">{children}</div>
+      )}
       <ScrollHint />
     </section>
   );

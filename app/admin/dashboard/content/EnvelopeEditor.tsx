@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DEFAULT_ENVELOPE_ASSETS, ENVELOPE_SLOTS, type EnvelopeSlot } from "@/lib/envelopeAssets";
+import type { TextLayout, TokenValues } from "@/lib/textLayout";
 import { EnvelopePreview } from "./EnvelopePreview";
+import { ArtboardEditor } from "./ArtboardEditor";
 import { requestEnvelopeUploadAction, resetEnvelopeImageAction, saveEnvelopeImageAction } from "./zone-actions";
 
 const LABELS: Record<EnvelopeSlot, { title: string; note: string }> = {
@@ -22,10 +24,22 @@ const CHECKER = {
 export function EnvelopeEditor({
   initialAssets,
   initialCustom,
+  initialTextLayout,
+  tokens,
 }: {
   initialAssets: Record<EnvelopeSlot, string>;
   initialCustom: Record<EnvelopeSlot, boolean>;
+  initialTextLayout: TextLayout;
+  tokens: TokenValues;
 }) {
+  const [textLayout, setTextLayout] = useState(initialTextLayout);
+  const [previewText, setPreviewText] = useState(initialTextLayout);
+  // La vista previa del sobre se rearma completa, así que se actualiza con
+  // una pausa corta mientras se arrastran los textos.
+  useEffect(() => {
+    const t = setTimeout(() => setPreviewText(textLayout), 300);
+    return () => clearTimeout(t);
+  }, [textLayout]);
   const [assets, setAssets] = useState(initialAssets);
   const [custom, setCustom] = useState(initialCustom);
   const [busy, setBusy] = useState<EnvelopeSlot | null>(null);
@@ -65,9 +79,10 @@ export function EnvelopeEditor({
   }
 
   return (
+    <div className="flex flex-col gap-8">
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
       <div className="min-w-0">
-        <EnvelopePreview assets={previewAssets} />
+        <EnvelopePreview assets={previewAssets} textLayout={previewText} tokens={tokens} />
       </div>
 
       <div className="flex min-w-0 flex-col gap-3">
@@ -118,6 +133,22 @@ export function EnvelopeEditor({
         ))}
         {error && <p className="text-sm text-red-600">{error}</p>}
       </div>
+    </div>
+
+    <div className="flex flex-col gap-2 border-t border-neutral-200 pt-6">
+      <h3 className="font-serif text-lg text-neutral-800">Textos de la tarjeta</h3>
+      <p className="text-sm text-neutral-500">
+        Lo que aparece letra por letra al abrir el sobre. La vista previa de arriba se actualiza con cada cambio; para
+        que lo vean los invitados, tocá Guardar diseño.
+      </p>
+      <ArtboardEditor
+        section="envelope"
+        initialLayout={initialTextLayout}
+        tokens={tokens}
+        background={{ color: "#EFE8DD" }}
+        onChange={setTextLayout}
+      />
+    </div>
     </div>
   );
 }

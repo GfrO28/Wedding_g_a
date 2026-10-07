@@ -2,10 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { EnvelopeAssets } from "./envelope/engine";
+import type { TextLayout, TokenValues } from "@/lib/textLayout";
 
 export const PLAY_MUSIC_EVENT = "invitation:play-music";
 
-export function EnvelopeIntro({ assets }: { assets: EnvelopeAssets }) {
+export function EnvelopeIntro({
+  assets,
+  textLayout,
+  tokens,
+}: {
+  assets: EnvelopeAssets;
+  textLayout: TextLayout;
+  tokens: TokenValues;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [done, setDone] = useState(false);
 
@@ -40,6 +49,8 @@ export function EnvelopeIntro({ assets }: { assets: EnvelopeAssets }) {
         mounted = engine.mountEnvelope(el, G, {
           width: W,
           height: H,
+          textLayout,
+          tokens,
           reducedMotion,
           debug,
           onOpen: () => window.dispatchEvent(new Event(PLAY_MUSIC_EVENT)),
@@ -70,7 +81,7 @@ export function EnvelopeIntro({ assets }: { assets: EnvelopeAssets }) {
       mounted?.destroy();
       document.body.style.overflow = prevOverflow;
     };
-  }, [assets]);
+  }, [assets, textLayout, tokens]);
 
   if (done) return null;
 

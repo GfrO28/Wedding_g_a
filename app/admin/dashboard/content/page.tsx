@@ -24,6 +24,9 @@ import { GalleryUploader } from "../GalleryUploader";
 import { ThemeEditor } from "../ThemeEditor";
 import { EnvelopeEditor } from "./EnvelopeEditor";
 import { getEnvelopeSettings } from "@/lib/envelope";
+import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
+import { ArtboardEditor } from "./ArtboardEditor";
+import { Countdown } from "@/app/components/Countdown";
 
 export const dynamic = "force-dynamic";
 
@@ -52,10 +55,15 @@ export default async function ContentEditorPage() {
   const w = await getWeddingContent();
   const theme = await getTheme();
   const envelope = await getEnvelopeSettings();
+  const [envelopeText, heroText, tokens] = await Promise.all([
+    getTextLayout("envelope"),
+    getTextLayout("hero"),
+    getTokenValues("Invitado de ejemplo"),
+  ]);
   const allPhotos = await db.select().from(photos).orderBy(desc(photos.createdAt));
 
   return (
-    <main className="mx-auto max-w-4xl space-y-6 px-4 py-10">
+    <main className="mx-auto max-w-5xl space-y-6 px-4 py-10">
       <div>
         <a href="/admin/dashboard" className="text-xs text-neutral-500 underline">
           ← Volver al panel
@@ -70,10 +78,15 @@ export default async function ContentEditorPage() {
       </div>
 
       <Zone number={1} title="Apertura con sobre" zone="intro" initialEnabled={w.zoneEnabled.intro} showPreview={false}>
-        <EnvelopeEditor initialAssets={envelope.assets} initialCustom={envelope.custom} />
+        <EnvelopeEditor
+          initialAssets={envelope.assets}
+          initialCustom={envelope.custom}
+          initialTextLayout={envelopeText}
+          tokens={tokens}
+        />
       </Zone>
 
-      <Zone number={2} title="Portada" zone="hero" initialEnabled={w.zoneEnabled.hero}>
+      <Zone number={2} title="Portada" zone="hero" initialEnabled={w.zoneEnabled.hero} showPreview={false}>
         <form action={updateCoupleAction} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Nombre 1">
             <input name="partner1" defaultValue={w.partner1} className={inputClass} />
@@ -94,6 +107,20 @@ export default async function ContentEditorPage() {
           <SaveButton />
         </form>
         <ZoneImageUpload zone="hero" url={w.zoneImages.hero} />
+        <div className="flex flex-col gap-2 border-t border-neutral-200 pt-6">
+          <h3 className="font-serif text-lg text-neutral-800">Diseño de los textos</h3>
+          <p className="text-sm text-neutral-500">
+            Los nombres, la fecha y el invitado se completan solos con {"{nombre1}"}, {"{nombre2}"}, {"{fecha}"} e{" "}
+            {"{invitado}"}, así siguen sincronizados con los datos de arriba.
+          </p>
+          <ArtboardEditor
+            section="hero"
+            initialLayout={heroText}
+            tokens={tokens}
+            background={{ color: "var(--color-bg)", image: w.zoneImages.hero, overlay: true }}
+            blocks={{ countdown: <Countdown targetISO={w.weddingDateISO} scaled /> }}
+          />
+        </div>
       </Zone>
 
       <Zone number={3} title="Frase, monograma y padres" zone="blessing" initialEnabled={w.zoneEnabled.blessing}>

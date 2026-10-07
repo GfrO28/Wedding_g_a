@@ -6,6 +6,7 @@ import { Hero } from "@/app/components/Hero";
 import { MusicControl } from "@/app/components/MusicControl";
 import { EnvelopeIntro } from "@/app/components/EnvelopeIntro";
 import { getEnvelopeSettings } from "@/lib/envelope";
+import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
 import { Blessing } from "@/app/components/Blessing";
 import { OurStory } from "@/app/components/OurStory";
 import { Gallery } from "@/app/components/Gallery";
@@ -40,12 +41,17 @@ export default async function GuestInvitationPage({
     .where(eq(rsvps.guestId, guest.id))
     .limit(1);
 
-  const [content, envelope] = await Promise.all([getWeddingContent(), getEnvelopeSettings()]);
+  const [content, envelope, envelopeText, tokens] = await Promise.all([
+    getWeddingContent(),
+    getEnvelopeSettings(),
+    getTextLayout("envelope"),
+    getTokenValues(guest.fullName),
+  ]);
 
   return (
     <>
     <MusicControl music={content.zoneEnabled.music ? content.music : null} />
-    {content.zoneEnabled.intro && <EnvelopeIntro assets={envelope.assets} />}
+    {content.zoneEnabled.intro && <EnvelopeIntro assets={envelope.assets} textLayout={envelopeText} tokens={tokens} />}
     <main className="h-dvh snap-y snap-mandatory overflow-y-scroll scroll-smooth">
       {content.zoneEnabled.hero && <Hero guestName={guest.fullName} />}
       {content.zoneEnabled.blessing && <Blessing />}

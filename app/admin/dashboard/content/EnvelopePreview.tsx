@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import type { EnvelopeAssets } from "@/app/components/envelope/engine";
+import type { TextLayout, TokenValues } from "@/lib/textLayout";
 
 const DEVICES = [
   { w: 360, h: 640, label: "360×640" },
@@ -17,7 +18,15 @@ const DEVICES = [
 
 type Info = { rotated: boolean; k: number; crop: string; ok: boolean; uncovered: number };
 
-export function EnvelopePreview({ assets }: { assets: EnvelopeAssets }) {
+export function EnvelopePreview({
+  assets,
+  textLayout,
+  tokens,
+}: {
+  assets: EnvelopeAssets;
+  textLayout: TextLayout;
+  tokens: TokenValues;
+}) {
   const [device, setDevice] = useState(1);
   const [run, setRun] = useState(0);
   const [debug, setDebug] = useState(false);
@@ -46,7 +55,7 @@ export function EnvelopePreview({ assets }: { assets: EnvelopeAssets }) {
       const engine = await import("@/app/components/envelope/engine");
       const G = await engine.loadGeometry(assets);
       if (cancelled) return;
-      const m = engine.mountEnvelope(stage, G, { width: D.w, height: D.h, debug });
+      const m = engine.mountEnvelope(stage, G, { width: D.w, height: D.h, debug, textLayout, tokens });
       mounted = m;
       const F = m.layout, r = F.layout;
       const sides = F.rotated ? r.cropY : r.cropX, ends = F.rotated ? r.cropX : r.cropY;
@@ -63,7 +72,7 @@ export function EnvelopePreview({ assets }: { assets: EnvelopeAssets }) {
       cancelled = true;
       mounted?.destroy();
     };
-  }, [assets, D.w, D.h, debug, run]);
+  }, [assets, D.w, D.h, debug, run, textLayout, tokens]);
 
   const maxH = 520;
   const k = boxWidth > 0 ? Math.min(boxWidth / D.w, maxH / D.h) : 0;

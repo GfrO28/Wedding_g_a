@@ -18,7 +18,8 @@ export function MusicControl({ music }: { music: { src: string; title: string } 
       audio.play().then(() => setPlaying(true)).catch(() => {});
       const start = performance.now();
       const step = (now: number) => {
-        const t = Math.min(1, (now - start) / 1500);
+        // El primer cuadro puede traer una marca de tiempo anterior a start.
+        const t = Math.min(1, Math.max(0, (now - start) / 1500));
         audio.volume = t;
         if (t < 1) requestAnimationFrame(step);
       };

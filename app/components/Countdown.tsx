@@ -15,7 +15,7 @@ function getRemaining(targetISO: string) {
   };
 }
 
-export function Countdown({ targetISO }: { targetISO: string }) {
+export function Countdown({ targetISO, scaled = false }: { targetISO: string; scaled?: boolean }) {
   const [remaining, setRemaining] = useState<ReturnType<
     typeof getRemaining
   > | null>(null);
@@ -33,7 +33,7 @@ export function Countdown({ targetISO }: { targetISO: string }) {
   if (!remaining) return null;
 
   if (remaining.done) {
-    return <p className="text-lg font-medium">¡Ya nos casamos!</p>;
+    return <p className={scaled ? "" : "text-lg font-medium"}>¡Ya nos casamos!</p>;
   }
 
   const units = [
@@ -42,6 +42,23 @@ export function Countdown({ targetISO }: { targetISO: string }) {
     { label: "min", value: remaining.minutes },
     { label: "seg", value: remaining.seconds },
   ];
+
+  // En la mesa de trabajo todo se mide en em, así hereda el tamaño, la
+  // tipografía y el color que se eligen en el editor.
+  if (scaled) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", gap: "1.2em" }}>
+        {units.map((u) => (
+          <div key={u.label} style={{ textAlign: "center" }}>
+            <div style={{ fontSize: "2em", lineHeight: 1.1, fontWeight: "inherit", fontVariantNumeric: "tabular-nums" }}>{u.value}</div>
+            <div style={{ fontSize: "1em", letterSpacing: "0.12em", textTransform: "uppercase", opacity: 0.7, fontWeight: 400 }}>
+              {u.label}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="flex gap-4 sm:gap-8">
