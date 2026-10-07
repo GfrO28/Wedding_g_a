@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { IntroImageKey, IntroSettings } from "@/lib/intro";
-import { flapPolygon, sealBlobPolygon } from "@/app/components/envelope/shapes";
+import { sealBlobPolygon } from "@/app/components/envelope/shapes";
 import {
   clearIntroImageAction,
   requestIntroImageUploadAction,
@@ -29,6 +29,20 @@ const BOX: Record<Side, { w: number; h: number }> = {
   right: { w: 72, h: 96 },
   seal: { w: 80, h: 80 },
 };
+
+// Triángulo local a su propia caja (igual que en el sobre real): el ápice
+// toca el borde lejano de la caja, no el centro de la pantalla entera.
+function flapThumbPolygon(side: Side, w: number, h: number): string {
+  const pts =
+    side === "top"
+      ? [[0, 0], [w, 0], [w / 2, h]]
+      : side === "bottom"
+        ? [[0, h], [w, h], [w / 2, 0]]
+        : side === "left"
+          ? [[0, 0], [0, h], [w, h / 2]]
+          : [[w, 0], [w, h], [0, h / 2]];
+  return `polygon(${pts.map(([x, y]) => `${x}px ${y}px`).join(", ")})`;
+}
 
 export function IntroEditor({ settings }: { settings: IntroSettings }) {
   const [type, setType] = useState(settings.type);
@@ -117,13 +131,19 @@ function ImageSlot({
   onUpload: (file: File) => void;
 }) {
   const { w, h } = BOX[slot.side];
-  const clipPath = slot.side === "seal" ? sealBlobPolygon(w) : flapPolygon(slot.side, w, h);
+  const clipPath = slot.side === "seal" ? sealBlobPolygon(w) : flapThumbPolygon(slot.side, w, h);
 
   return (
     <div className="flex flex-col items-center gap-2">
       <div
-        className="bg-[var(--color-accent)] bg-cover bg-center"
-        style={{ width: w, height: h, clipPath, ...(url ? { backgroundImage: `url(${url})` } : undefined) }}
+        className="bg-[var(--color-accent)] bg-center bg-no-repeat"
+        style={{
+          width: w,
+          height: h,
+          clipPath,
+          backgroundSize: slot.side === "seal" ? "cover" : "contain",
+          ...(url ? { backgroundImage: `url(${url})` } : undefined),
+        }}
       />
       <p className="text-xs text-neutral-600">{slot.label}</p>
       <div className="flex gap-1">

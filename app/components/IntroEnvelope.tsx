@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import { Pause, Play } from "lucide-react";
 import type { IntroSettings } from "@/lib/intro";
 import { useElementSize } from "./envelope/useElementSize";
-import { flapPolygon, flapStitchPath, pointsToSvgPath, sealBlobPolygon } from "./envelope/shapes";
+import { flapGeometry, flapStitchPath, pointsToSvgPath, sealBlobPolygon } from "./envelope/shapes";
 import { FloralMotif } from "./envelope/FloralMotif";
 import { Flap } from "./envelope/Flap";
 import { EnvelopeText, textRevealDurationMs, type EnvelopeTextLine } from "./envelope/EnvelopeText";
@@ -149,13 +149,19 @@ export function IntroEnvelope({
     setPlaying(!playing);
   }
 
-  const fill = (url: string | null): CSSProperties =>
-    url && assetsReady
-      ? { backgroundImage: `url(${url})`, backgroundSize: "cover", backgroundPosition: "center" }
-      : { background: "color-mix(in srgb, var(--color-accent) 75%, white)" };
+  const fill = (url: string | null): CSSProperties => ({
+    background: "color-mix(in srgb, var(--color-accent) 75%, white)",
+    ...(url && assetsReady
+      ? { backgroundImage: `url(${url})`, backgroundSize: "contain", backgroundPosition: "center", backgroundRepeat: "no-repeat" as const }
+      : null),
+  });
 
   const sealSize = 112;
   const shapesReady = width > 0 && height > 0;
+  const geoTop = shapesReady ? flapGeometry("top", width, height) : null;
+  const geoBottom = shapesReady ? flapGeometry("bottom", width, height) : null;
+  const geoLeft = shapesReady ? flapGeometry("left", width, height) : null;
+  const geoRight = shapesReady ? flapGeometry("right", width, height) : null;
 
   if (!mounted) return null;
 
@@ -219,11 +225,12 @@ export function IntroEnvelope({
               </div>
             </div>
 
-            {!flapsHidden && shapesReady && (
+            {!flapsHidden && geoTop && geoBottom && geoLeft && geoRight && (
               <>
                 <Flap
                   axis="rotateX"
-                  clipPath={flapPolygon("top", width, height)}
+                  box={geoTop.box}
+                  clipPath={geoTop.polygon}
                   transformOrigin="top center"
                   closedFront={0}
                   openFront={-FLAP_ANGLE}
@@ -231,15 +238,17 @@ export function IntroEnvelope({
                   delay={TIMING.topBottomFlap.delay}
                   duration={TIMING.topBottomFlap.duration}
                   fill={fill(settings.images.introTop)}
+                  hasImage={!!settings.images.introTop}
                   darkColor="color-mix(in srgb, var(--color-accent) 55%, black)"
-                  creaseGradient="linear-gradient(to bottom, transparent 0%, transparent 42%, rgba(0,0,0,0.9) 50%)"
+                  creaseGradient="linear-gradient(to bottom, transparent 0%, transparent 72%, rgba(0,0,0,0.9) 96%)"
                   dropShadow="0 10px 16px rgba(0,0,0,0.4)"
                   floralColor="var(--color-bg)"
                   zIndex={10}
                 />
                 <Flap
                   axis="rotateX"
-                  clipPath={flapPolygon("bottom", width, height)}
+                  box={geoBottom.box}
+                  clipPath={geoBottom.polygon}
                   transformOrigin="bottom center"
                   closedFront={0}
                   openFront={FLAP_ANGLE}
@@ -247,15 +256,17 @@ export function IntroEnvelope({
                   delay={TIMING.topBottomFlap.delay + 0.05}
                   duration={TIMING.topBottomFlap.duration}
                   fill={fill(settings.images.introBottom)}
+                  hasImage={!!settings.images.introBottom}
                   darkColor="color-mix(in srgb, var(--color-accent) 55%, black)"
-                  creaseGradient="linear-gradient(to top, transparent 0%, transparent 42%, rgba(0,0,0,0.9) 50%)"
+                  creaseGradient="linear-gradient(to top, transparent 0%, transparent 72%, rgba(0,0,0,0.9) 96%)"
                   dropShadow="0 -10px 16px rgba(0,0,0,0.4)"
                   floralColor="var(--color-bg)"
                   zIndex={11}
                 />
                 <Flap
                   axis="rotateY"
-                  clipPath={flapPolygon("right", width, height)}
+                  box={geoRight.box}
+                  clipPath={geoRight.polygon}
                   transformOrigin="right center"
                   closedFront={0}
                   openFront={FLAP_ANGLE}
@@ -263,8 +274,9 @@ export function IntroEnvelope({
                   delay={TIMING.rightFlap.delay}
                   duration={TIMING.rightFlap.duration}
                   fill={fill(settings.images.introRight)}
+                  hasImage={!!settings.images.introRight}
                   darkColor="color-mix(in srgb, var(--color-accent) 55%, black)"
-                  creaseGradient="linear-gradient(to left, transparent 0%, transparent 42%, rgba(0,0,0,0.88) 50%)"
+                  creaseGradient="linear-gradient(to left, transparent 0%, transparent 72%, rgba(0,0,0,0.88) 96%)"
                   brightnessOpen={0.6}
                   dropShadow="-6px 0 14px rgba(0,0,0,0.35)"
                   floralColor="var(--color-bg)"
@@ -272,7 +284,7 @@ export function IntroEnvelope({
                 >
                   <svg className="pointer-events-none absolute inset-0 h-full w-full" style={{ overflow: "visible" }}>
                     <path
-                      d={pointsToSvgPath(flapStitchPath("right", width, height))}
+                      d={pointsToSvgPath(flapStitchPath("right", geoRight.box))}
                       fill="none"
                       stroke="var(--color-bg)"
                       strokeOpacity={0.5}
@@ -283,7 +295,8 @@ export function IntroEnvelope({
                 </Flap>
                 <Flap
                   axis="rotateY"
-                  clipPath={flapPolygon("left", width, height)}
+                  box={geoLeft.box}
+                  clipPath={geoLeft.polygon}
                   transformOrigin="left center"
                   closedFront={0}
                   openFront={-FLAP_ANGLE}
@@ -291,8 +304,9 @@ export function IntroEnvelope({
                   delay={TIMING.leftFlap.delay}
                   duration={TIMING.leftFlap.duration}
                   fill={fill(settings.images.introLeft)}
+                  hasImage={!!settings.images.introLeft}
                   darkColor="color-mix(in srgb, var(--color-accent) 55%, black)"
-                  creaseGradient="linear-gradient(to right, transparent 0%, transparent 42%, rgba(0,0,0,0.88) 50%)"
+                  creaseGradient="linear-gradient(to right, transparent 0%, transparent 72%, rgba(0,0,0,0.88) 96%)"
                   brightnessOpen={1.25}
                   dropShadow="6px 0 16px rgba(0,0,0,0.4)"
                   floralColor="var(--color-bg)"
@@ -300,7 +314,7 @@ export function IntroEnvelope({
                 >
                   <svg className="pointer-events-none absolute inset-0 h-full w-full" style={{ overflow: "visible" }}>
                     <path
-                      d={pointsToSvgPath(flapStitchPath("left", width, height))}
+                      d={pointsToSvgPath(flapStitchPath("left", geoLeft.box))}
                       fill="none"
                       stroke="var(--color-bg)"
                       strokeOpacity={0.5}

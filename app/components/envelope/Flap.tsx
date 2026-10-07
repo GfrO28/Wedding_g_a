@@ -1,11 +1,13 @@
 import type { CSSProperties, ReactNode } from "react";
 import { motion } from "framer-motion";
 import { FloralMotif } from "./FloralMotif";
+import type { Box } from "./shapes";
 
 type Axis = "rotateX" | "rotateY";
 
 export function Flap({
   axis,
+  box,
   clipPath,
   transformOrigin,
   closedFront,
@@ -14,6 +16,7 @@ export function Flap({
   delay,
   duration,
   fill,
+  hasImage,
   darkColor,
   creaseGradient,
   brightnessOpen = 1,
@@ -23,6 +26,7 @@ export function Flap({
   children,
 }: {
   axis: Axis;
+  box: Box;
   clipPath: string;
   transformOrigin: string;
   closedFront: number;
@@ -31,6 +35,7 @@ export function Flap({
   delay: number;
   duration: number;
   fill: CSSProperties;
+  hasImage: boolean;
   darkColor: string;
   creaseGradient: string;
   brightnessOpen?: number;
@@ -42,9 +47,10 @@ export function Flap({
   const frontRotate = open ? openFront : closedFront;
   const backRotate = frontRotate - 180;
   const transition = { duration, delay, ease: "easeInOut" as const };
+  const boxStyle: CSSProperties = { left: box.x, top: box.y, width: box.width, height: box.height };
 
   return (
-    <div className="absolute inset-0" style={{ zIndex, transformStyle: "preserve-3d" }}>
+    <div className="absolute" style={{ ...boxStyle, zIndex, transformStyle: "preserve-3d" }}>
       <motion.div
         className="absolute inset-0"
         style={{
@@ -60,7 +66,9 @@ export function Flap({
         transition={transition}
       >
         <div className="pointer-events-none absolute inset-0" style={{ background: creaseGradient }} />
-        <FloralMotif className="pointer-events-none absolute inset-0 h-full w-full" color={floralColor} />
+        {!hasImage && (
+          <FloralMotif className="pointer-events-none absolute inset-0 h-full w-full" color={floralColor} />
+        )}
         {children}
       </motion.div>
 
