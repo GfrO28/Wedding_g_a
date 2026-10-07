@@ -16,9 +16,14 @@ const r2 = new S3Client({
 
 const BUCKET = process.env.R2_BUCKET_NAME!;
 
-// URL pública del bucket (dominio propio o el *.r2.dev que te da Cloudflare)
+// URL pública del bucket (dominio propio o el *.r2.dev que te da Cloudflare).
+// Tolera que la variable venga con barra final.
+export function r2PublicBase() {
+  return (process.env.R2_PUBLIC_URL ?? "").replace(/\/+$/, "");
+}
+
 export function publicUrlFor(key: string) {
-  return `${process.env.R2_PUBLIC_URL}/${key}`;
+  return `${r2PublicBase()}/${key}`;
 }
 
 // Genera una URL firmada para que el admin suba un archivo directo desde el navegador
