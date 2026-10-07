@@ -2,6 +2,8 @@ import { db } from "@/lib/db";
 import { guestMessages } from "@/lib/db/schema";
 import { desc, eq } from "drizzle-orm";
 import { FadeIn } from "./FadeIn";
+import { FlowText } from "./FlowText";
+import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
 import { Slide } from "./Slide";
 import { submitMessageAction } from "@/app/i/[slug]/actions";
 
@@ -12,14 +14,13 @@ export async function GuestMessages({ slug }: { slug: string }) {
     .where(eq(guestMessages.approved, true))
     .orderBy(desc(guestMessages.createdAt))
     .limit(20);
+  const [layout, tokens] = await Promise.all([getTextLayout("messages"), getTokenValues("")]);
 
   return (
     <Slide>
     <section className="mx-auto max-w-2xl px-6">
       <FadeIn>
-        <h2 className="mb-8 text-center font-serif text-3xl text-[var(--color-fg)]">
-          Dejanos un mensaje
-        </h2>
+        <FlowText as="h2" className="mb-8" layout={layout} id="title" tokens={tokens} />
       </FadeIn>
 
       <FadeIn delay={0.1}>

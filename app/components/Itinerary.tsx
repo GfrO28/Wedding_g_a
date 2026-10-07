@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { getWeddingContent } from "@/lib/weddingContent";
 import { FadeIn } from "./FadeIn";
+import { FlowText } from "./FlowText";
+import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
 import { Slide } from "./Slide";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -19,16 +21,14 @@ const ICONS: Record<string, LucideIcon> = {
 };
 
 export async function Itinerary() {
-  const WEDDING = await getWeddingContent();
+  const [WEDDING, layout, tokens] = await Promise.all([getWeddingContent(), getTextLayout("itinerary"), getTokenValues("")]);
   if (WEDDING.itinerary.length < 1) return null;
 
   return (
     <Slide bgImage={WEDDING.zoneImages.itinerary}>
     <section className="mx-auto max-w-2xl px-6">
       <FadeIn>
-        <h2 className="mb-10 text-center font-serif text-3xl text-[var(--color-fg)]">
-          Itinerario
-        </h2>
+        <FlowText as="h2" className="mb-10" layout={layout} id="title" tokens={tokens} />
       </FadeIn>
       <div className="flex flex-wrap justify-center gap-8">
         {WEDDING.itinerary.map((step, i) => {

@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import { photos } from "@/lib/db/schema";
 import { WEDDING } from "@/lib/content";
 import { FadeIn } from "./FadeIn";
+import { FlowText } from "./FlowText";
+import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
 import { Slide } from "./Slide";
 
 export async function Gallery() {
@@ -18,14 +20,13 @@ export async function Gallery() {
       : WEDDING.gallery;
 
   if (images.length < 1) return null;
+  const [layout, tokens] = await Promise.all([getTextLayout("gallery"), getTokenValues("")]);
 
   return (
     <Slide>
     <section className="mx-auto max-w-5xl px-6">
       <FadeIn>
-        <h2 className="mb-12 text-center font-serif text-3xl text-[var(--color-fg)]">
-          Galería
-        </h2>
+        <FlowText as="h2" className="mb-12" layout={layout} id="title" tokens={tokens} />
       </FadeIn>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {images.map((photo, i) => (

@@ -1,5 +1,7 @@
 import { getWeddingContent } from "@/lib/weddingContent";
 import { FadeIn } from "./FadeIn";
+import { FlowText } from "./FlowText";
+import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
 import { Slide } from "./Slide";
 
 function EventCard({
@@ -24,14 +26,12 @@ function EventCard({
 }
 
 export async function EventDetails() {
-  const WEDDING = await getWeddingContent();
+  const [WEDDING, layout, tokens] = await Promise.all([getWeddingContent(), getTextLayout("event"), getTokenValues("")]);
   return (
     <Slide bgImage={WEDDING.zoneImages.event}>
     <section className="mx-auto max-w-4xl px-6">
       <FadeIn>
-        <h2 className="mb-12 text-center font-serif text-3xl text-[var(--color-fg)]">
-          El evento
-        </h2>
+        <FlowText as="h2" className="mb-12" layout={layout} id="title" tokens={tokens} />
       </FadeIn>
       <FadeIn delay={0.1}>
         <div className="flex flex-col gap-4 sm:flex-row">
@@ -50,9 +50,7 @@ export async function EventDetails() {
         </div>
       </FadeIn>
       <FadeIn delay={0.2}>
-        <p className="mt-8 text-center text-sm text-[var(--color-muted)]">
-          Código de vestimenta: {WEDDING.dressCode}
-        </p>
+        <FlowText className="mt-8" layout={layout} id="dressCode" tokens={tokens} />
       </FadeIn>
     </section>
     </Slide>

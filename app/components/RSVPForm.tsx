@@ -3,13 +3,19 @@
 import { useState } from "react";
 import { FadeIn } from "./FadeIn";
 import { Slide } from "./Slide";
+import { FlowText } from "./FlowText";
+import type { TextLayout, TokenValues } from "@/lib/textLayout";
 import { submitRsvpAction } from "@/app/i/[slug]/actions";
 
 export function RSVPForm({
   slug,
   maxAttendees,
   existing,
+  layout,
+  tokens,
 }: {
+  layout: TextLayout;
+  tokens: TokenValues;
   slug: string;
   maxAttendees: number;
   existing: {
@@ -27,9 +33,7 @@ export function RSVPForm({
     return (
       <Slide>
       <section className="mx-auto max-w-lg px-6 text-center">
-        <h2 className="font-serif text-2xl text-[var(--color-fg)]">
-          ¡Gracias por responder!
-        </h2>
+        <FlowText as="h2" layout={layout} id="thanks" tokens={tokens} />
         <p className="mt-2 text-[var(--color-muted)]">
           Ya registramos tu confirmación. Podés volver a esta página para
           actualizarla cuando quieras.
@@ -49,9 +53,7 @@ export function RSVPForm({
     <Slide>
     <section className="mx-auto max-w-lg px-6">
       <FadeIn>
-        <h2 className="mb-8 text-center font-serif text-3xl text-[var(--color-fg)]">
-          Confirmá tu asistencia
-        </h2>
+        <FlowText as="h2" className="mb-8" layout={layout} id="title" tokens={tokens} />
       </FadeIn>
       <FadeIn delay={0.1}>
         <form

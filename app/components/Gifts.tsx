@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { giftContributions, giftItems } from "@/lib/db/schema";
 import { getWeddingContent } from "@/lib/weddingContent";
 import { FadeIn } from "./FadeIn";
+import { FlowText } from "./FlowText";
+import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
 import { CopyButton } from "./CopyButton";
 import { GiftClaimForm } from "./GiftClaimForm";
 import { GiftContributionForm } from "./GiftContributionForm";
@@ -27,17 +29,15 @@ export async function Gifts({ slug }: { slug: string }) {
     raisedByItem.set(c.giftItemId, (raisedByItem.get(c.giftItemId) ?? 0) + c.amount);
   }
 
-  const WEDDING = await getWeddingContent();
-  const { payment, message } = WEDDING.gifts;
+  const [WEDDING, layout, tokens] = await Promise.all([getWeddingContent(), getTextLayout("gifts"), getTokenValues("")]);
+  const { payment } = WEDDING.gifts;
 
   return (
     <Slide bgImage={WEDDING.zoneImages.gifts}>
     <section className="mx-auto max-w-2xl px-6">
       <FadeIn>
-        <h2 className="mb-4 text-center font-serif text-3xl text-[var(--color-fg)]">
-          Regalos
-        </h2>
-        <p className="mb-8 text-center text-[var(--color-muted)]">{message}</p>
+        <FlowText as="h2" className="mb-4" layout={layout} id="title" tokens={tokens} />
+        <FlowText className="mb-8" layout={layout} id="message" tokens={tokens} />
       </FadeIn>
 
       {items.length > 0 && (

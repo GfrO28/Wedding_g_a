@@ -1,13 +1,15 @@
-import { getWeddingContent } from "@/lib/weddingContent";
+import { FOOTER_BOARDS } from "@/lib/textLayout";
+import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
+import { TextArtboard } from "./TextArtboard";
 
 export async function Footer() {
-  const WEDDING = await getWeddingContent();
+  const [layout, tokens] = await Promise.all([getTextLayout("footer"), getTokenValues("")]);
   return (
-    <footer className="border-t border-[var(--color-border)] py-10 text-center">
-      <p className="font-script text-4xl text-[var(--color-accent)]">
-        {WEDDING.partner1} &amp; {WEDDING.partner2}
-      </p>
-      <p className="mt-1 text-sm text-[var(--color-muted)]">{WEDDING.hashtag}</p>
+    <footer className="border-t border-[var(--color-border)]">
+      {/* La franja tiene la misma proporción que su mesa, según la orientación de la pantalla. */}
+      <div className="footer-board relative w-full">
+        <TextArtboard layout={layout} tokens={tokens} boards={FOOTER_BOARDS} orientationFrom="viewport" />
+      </div>
     </footer>
   );
 }

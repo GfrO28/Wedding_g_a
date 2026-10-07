@@ -8,9 +8,11 @@ import {
   elementStyle,
   FONTS,
   MIN_READABLE_PX,
+  orientationFor,
+  sectionConfig,
   SMALLEST_SCALE,
   THEME_COLORS,
-  TOKENS,
+  TOKEN_HELP,
   type FontKey,
   type LayoutSection,
   type Orientation,
@@ -42,7 +44,11 @@ const PREVIEW_DEVICES = [
 
 const clone = (l: TextLayout): TextLayout => JSON.parse(JSON.stringify(l));
 
-function smallestPx(el: TextElement) {
+export function smallLabel(o: Orientation) {
+  return o === "portrait" ? "letra chica en celular" : "letra chica en celular acostado";
+}
+
+export function smallestPx(el: TextElement) {
   // En la cuenta regresiva lo más chico son las etiquetas, que van al tamaño base.
   return el.fontSize * SMALLEST_SCALE;
 }
@@ -80,7 +86,9 @@ export function ArtboardEditor({
   const elRefs = useRef(new Map<string, HTMLDivElement>());
   const [, force] = useState(0);
 
-  const A = ARTBOARDS[orientation];
+  const cfg = sectionConfig(section);
+  const BOARDS = cfg.boards;
+  const A = BOARDS[orientation];
   const k = canvasW > 0 ? Math.min((canvasW - 64) / A.w, 640 / A.h) : 0;
   const elements = layout[orientation];
   const selected = elements.find((e) => e.id === selectedId) ?? null;
@@ -233,7 +241,7 @@ export function ArtboardEditor({
 
   function copyFromOther() {
     const from: Orientation = orientation === "portrait" ? "landscape" : "portrait";
-    const S = ARTBOARDS[from], D = ARTBOARDS[orientation];
+    const S = BOARDS[from], D = BOARDS[orientation];
     const fx = D.w / S.w, fy = D.h / S.h;
     const next = clone(layout);
     next[orientation] = layout[from].map((e) => ({ ...e, x: Math.round(e.x * fx), y: Math.round(e.y * fy), w: Math.round(Math.min(e.w * fx, D.w * 1.2)) }));
@@ -270,13 +278,18 @@ export function ArtboardEditor({
   ) : null;
   const handle = 10 / (k || 1);
   const PD = PREVIEW_DEVICES[previewDevice];
-  const pk = canvasW > 0 ? Math.min(canvasW / PD.w, 360 / PD.h) : 0;
+  const pdOrientation = orientationFor(PD.w, PD.h);
+  // Secciones a pantalla completa: se ve el dispositivo entero. Franjas (pie):
+  // se ve la franja al ancho del dispositivo, con la proporción de su mesa.
+  const fullScreen = BOARDS === ARTBOARDS;
+  const frameH = fullScreen ? PD.h : (PD.w * BOARDS[pdOrientation].h) / BOARDS[pdOrientation].w;
+  const pk = canvasW > 0 ? Math.min(1, canvasW / PD.w, 360 / frameH) : 0;
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex rounded-md border border-neutral-300 p-0.5" role="tablist" aria-label="Mesa de trabajo">
-          {(Object.keys(ARTBOARDS) as Orientation[]).map((o) => (
+          {(Object.keys(BOARDS) as Orientation[]).map((o) => (
             <button
               key={o}
               type="button"
@@ -285,7 +298,7 @@ export function ArtboardEditor({
               onClick={() => { setOrientation(o); setSelectedId(null); }}
               className={`rounded px-3 py-1 text-xs ${o === orientation ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-100"}`}
             >
-              {ARTBOARDS[o].label} · {ARTBOARDS[o].w}×{ARTBOARDS[o].h}
+              {BOARDS[o].label} · {BOARDS[o].w}×{BOARDS[o].h}
             </button>
           ))}
         </div>
@@ -409,10 +422,10 @@ export function ArtboardEditor({
               ))}
             </div>
             <div className="flex justify-center rounded bg-neutral-900 p-2">
-              <div className="relative overflow-hidden" style={{ width: PD.w * pk, height: PD.h * pk }}>
-                <div className="absolute left-0 top-0" style={{ width: PD.w, height: PD.h, transform: `scale(${pk})`, transformOrigin: "0 0", ...bgStyle }}>
+              <div className="relative overflow-hidden" style={{ width: PD.w * pk, height: frameH * pk }}>
+                <div className="absolute left-0 top-0" style={{ width: PD.w, height: frameH, transform: `scale(${pk})`, transformOrigin: "0 0", ...bgStyle }}>
                   {overlay}
-                  <TextArtboard layout={layout} tokens={tokens} blocks={blocks} />
+                  <TextArtboard layout={layout} tokens={tokens} blocks={blocks} boards={BOARDS} forceOrientation={pdOrientation} />
                 </div>
               </div>
             </div>
@@ -428,7 +441,7 @@ export function ArtboardEditor({
                 <div key={el.id} className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-sm ${el.id === selectedId ? "border-blue-600 bg-blue-50" : "border-neutral-200"}`}>
                   <button type="button" className="min-w-0 flex-1 truncate text-left" onClick={() => setSelectedId(el.id)}>
                     {el.name}
-                    {small && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800">letra chica en celular</span>}
+                    {small && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800">{smallLabel(orientation)}</span>}
                     {overflow.has(el.id) && <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-[11px] text-red-700">se sale</span>}
                   </button>
                   <button
@@ -445,7 +458,7 @@ export function ArtboardEditor({
           </div>
 
           {selected ? (
-            <ElementPanel el={selected} onPatch={(c) => patch(selected.id, c)} artW={A.w} />
+            <ElementPanel el={selected} onPatch={(c) => patch(selected.id, c)} artW={A.w} tokens={cfg.tokens} orientation={orientation} />
           ) : (
             <p className="rounded-md bg-neutral-50 p-3 text-sm text-neutral-500">Elegí un texto en la mesa o en la lista para editarlo.</p>
           )}
@@ -455,7 +468,21 @@ export function ArtboardEditor({
   );
 }
 
-function ElementPanel({ el, onPatch, artW }: { el: TextElement; onPatch: (c: Partial<TextElement>) => void; artW: number }) {
+export function ElementPanel({
+  el,
+  onPatch,
+  artW,
+  tokens,
+  orientation,
+  positioned = true,
+}: {
+  el: TextElement;
+  onPatch: (c: Partial<TextElement>) => void;
+  artW: number;
+  tokens: string[];
+  orientation: Orientation;
+  positioned?: boolean;
+}) {
   const isTheme = el.color in THEME_COLORS;
   const phonePx = smallestPx(el);
   const field = "w-full rounded-md border border-neutral-300 px-2 py-1 text-sm";
@@ -486,9 +513,15 @@ function ElementPanel({ el, onPatch, artW }: { el: TextElement; onPatch: (c: Par
           <span className="text-xs text-neutral-500">Texto (Enter para salto de línea)</span>
           <textarea className={field} rows={2} value={el.text} maxLength={300} onChange={(e) => onPatch({ text: e.target.value })} />
           <span className="flex flex-wrap gap-1">
-            {TOKENS.map((t) => (
-              <button key={t} type="button" onClick={() => onPatch({ text: el.text + t })} className="rounded border border-neutral-300 px-1.5 py-0.5 font-mono text-[11px] text-neutral-600 hover:bg-neutral-50">
-                {t}
+            {tokens.map((t) => (
+              <button
+                key={t}
+                type="button"
+                title={TOKEN_HELP[t]}
+                onClick={() => onPatch({ text: el.text + `{${t}}` })}
+                className="rounded border border-neutral-300 px-1.5 py-0.5 font-mono text-[11px] text-neutral-600 hover:bg-neutral-50"
+              >
+                {`{${t}}`}
               </button>
             ))}
           </span>
@@ -514,7 +547,7 @@ function ElementPanel({ el, onPatch, artW }: { el: TextElement; onPatch: (c: Par
         </label>
       </div>
       <p className={`text-xs ${phonePx < MIN_READABLE_PX ? "text-amber-700" : "text-neutral-500"}`}>
-        En un celular de 390 px se ve a {phonePx.toFixed(1)} px{phonePx < MIN_READABLE_PX ? `: muy chico, subilo al menos a ${Math.ceil(el.fontSize * (MIN_READABLE_PX / phonePx))}.` : "."}
+        {orientation === "portrait" ? "En un celular de 390 px" : "En un celular acostado (844×390)"} se ve a {phonePx.toFixed(1)} px{phonePx < MIN_READABLE_PX ? `: muy chico, subilo al menos a ${Math.ceil(el.fontSize * (MIN_READABLE_PX / phonePx))}.` : "."}
       </p>
 
       <div className="flex flex-col gap-1">
@@ -550,14 +583,16 @@ function ElementPanel({ el, onPatch, artW }: { el: TextElement; onPatch: (c: Par
       <div className="grid grid-cols-2 gap-2">
         {num("Espaciado de letras (em)", el.letterSpacing, "letterSpacing", 0.01, -0.1, 1)}
         {num("Interlineado", el.lineHeight, "lineHeight", 0.05, 0.6, 3)}
-        {num("Ancho de la caja", el.w, "w", 1, 20)}
-        {num("Rotación (°)", el.rotation, "rotation", 1, -180, 180)}
-        {num("Posición X (centro)", el.x, "x")}
-        {num("Posición Y (centro)", el.y, "y")}
+        {positioned && num("Ancho de la caja", el.w, "w", 1, 20)}
+        {positioned && num("Rotación (°)", el.rotation, "rotation", 1, -180, 180)}
+        {positioned && num("Posición X (centro)", el.x, "x")}
+        {positioned && num("Posición Y (centro)", el.y, "y")}
       </div>
-      <button type="button" onClick={() => onPatch({ x: artW / 2 })} className="w-fit rounded-md border border-neutral-300 px-2.5 py-1 text-xs hover:bg-neutral-50">
-        Centrar horizontalmente
-      </button>
+      {positioned && (
+        <button type="button" onClick={() => onPatch({ x: artW / 2 })} className="w-fit rounded-md border border-neutral-300 px-2.5 py-1 text-xs hover:bg-neutral-50">
+          Centrar horizontalmente
+        </button>
+      )}
     </div>
   );
 }

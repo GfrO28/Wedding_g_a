@@ -41,10 +41,11 @@ export default async function GuestInvitationPage({
     .where(eq(rsvps.guestId, guest.id))
     .limit(1);
 
-  const [content, envelope, envelopeText, tokens] = await Promise.all([
+  const [content, envelope, envelopeText, rsvpText, tokens] = await Promise.all([
     getWeddingContent(),
     getEnvelopeSettings(),
     getTextLayout("envelope"),
+    getTextLayout("rsvp"),
     getTokenValues(guest.fullName),
   ]);
 
@@ -66,6 +67,8 @@ export default async function GuestInvitationPage({
         slug={guest.slug}
         maxAttendees={guest.maxAttendees}
         existing={existingRsvp ?? null}
+        layout={rsvpText}
+        tokens={tokens}
       />
       <GuestMessages slug={guest.slug} />
       <Footer />

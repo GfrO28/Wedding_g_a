@@ -1,6 +1,8 @@
 import Image from "next/image";
 import { getWeddingContent, type StoryChapter } from "@/lib/weddingContent";
 import { FadeIn } from "./FadeIn";
+import { FlowText } from "./FlowText";
+import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
 import { Slide } from "./Slide";
 
 const OBJECT_POSITION: Record<StoryChapter["imageFocus"], string> = {
@@ -10,16 +12,14 @@ const OBJECT_POSITION: Record<StoryChapter["imageFocus"], string> = {
 };
 
 export async function OurStory() {
-  const WEDDING = await getWeddingContent();
+  const [WEDDING, layout, tokens] = await Promise.all([getWeddingContent(), getTextLayout("story"), getTokenValues("")]);
   if (WEDDING.story.length < 1) return null;
 
   return (
     <Slide>
     <section className="mx-auto max-w-3xl px-6">
       <FadeIn>
-        <h2 className="mb-12 text-center font-serif text-3xl text-[var(--color-fg)]">
-          Nuestra historia
-        </h2>
+        <FlowText as="h2" className="mb-12" layout={layout} id="title" tokens={tokens} />
       </FadeIn>
       <div className="space-y-16">
         {WEDDING.story.map((chapter, i) => (

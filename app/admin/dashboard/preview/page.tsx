@@ -12,6 +12,7 @@ import { GuestMessages } from "@/app/components/GuestMessages";
 import { Footer } from "@/app/components/Footer";
 
 import { getWeddingContent } from "@/lib/weddingContent";
+import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,11 @@ export const dynamic = "force-dynamic";
 // invitado real, con datos de ejemplo en vez de buscar un invitado en la DB.
 // Protegida por el mismo middleware que el resto de /admin/dashboard.
 export default async function PreviewPage() {
-  const content = await getWeddingContent();
+  const [content, rsvpText, tokens] = await Promise.all([
+    getWeddingContent(),
+    getTextLayout("rsvp"),
+    getTokenValues("Invitado de ejemplo"),
+  ]);
 
   return (
     <main className="h-dvh snap-y snap-mandatory overflow-y-scroll scroll-smooth">
@@ -32,7 +37,7 @@ export default async function PreviewPage() {
       {content.zoneEnabled.gallery && <Gallery />}
       {content.zoneEnabled.accommodation && <Accommodation />}
       {content.zoneEnabled.gifts && <Gifts slug="preview" />}
-      <RSVPForm slug="preview" maxAttendees={2} existing={null} />
+      <RSVPForm slug="preview" maxAttendees={2} existing={null} layout={rsvpText} tokens={tokens} />
       <GuestMessages slug="preview" />
       <Footer />
     </main>

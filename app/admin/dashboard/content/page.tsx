@@ -27,6 +27,11 @@ import { getEnvelopeSettings } from "@/lib/envelope";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
 import { ArtboardEditor } from "./ArtboardEditor";
 import { Countdown } from "@/app/components/Countdown";
+import { Divider } from "@/app/components/Divider";
+import { FlowTextEditor } from "./FlowTextEditor";
+import type { LayoutSection, TextLayout, TokenValues } from "@/lib/textLayout";
+
+const FLOW = ["story", "event", "itinerary", "location", "accommodation", "gallery", "gifts", "rsvp", "messages"] as const;
 
 export const dynamic = "force-dynamic";
 
@@ -55,9 +60,12 @@ export default async function ContentEditorPage() {
   const w = await getWeddingContent();
   const theme = await getTheme();
   const envelope = await getEnvelopeSettings();
-  const [envelopeText, heroText, tokens] = await Promise.all([
+  const [envelopeText, heroText, blessingText, footerText, flowTexts, tokens] = await Promise.all([
     getTextLayout("envelope"),
     getTextLayout("hero"),
+    getTextLayout("blessing"),
+    getTextLayout("footer"),
+    Promise.all(FLOW.map((s) => getTextLayout(s))).then((ls) => Object.fromEntries(FLOW.map((s, i) => [s, ls[i]]))),
     getTokenValues("Invitado de ejemplo"),
   ]);
   const allPhotos = await db.select().from(photos).orderBy(desc(photos.createdAt));
@@ -123,7 +131,7 @@ export default async function ContentEditorPage() {
         </div>
       </Zone>
 
-      <Zone number={3} title="Frase, monograma y padres" zone="blessing" initialEnabled={w.zoneEnabled.blessing}>
+      <Zone number={3} title="Frase, monograma y padres" zone="blessing" initialEnabled={w.zoneEnabled.blessing} showPreview={false}>
         <form action={updateBlessingAction} className="flex flex-col gap-3">
           <Field label="Frase o versículo">
             <textarea name="quoteText" defaultValue={w.quote.text} rows={2} className={inputClass} />
@@ -144,6 +152,19 @@ export default async function ContentEditorPage() {
           <SaveButton />
         </form>
         <ZoneImageUpload zone="blessing" url={w.zoneImages.blessing} />
+        <div className="flex flex-col gap-2 border-t border-neutral-200 pt-6">
+          <h3 className="font-serif text-lg text-neutral-800">Diseño de los textos</h3>
+          <p className="text-sm text-neutral-500">
+            La frase, la fuente y los padres se completan solos con {"{frase}"}, {"{fuente}"}, {"{padres1}"} y {"{padres2}"}.
+          </p>
+          <ArtboardEditor
+            section="blessing"
+            initialLayout={blessingText}
+            tokens={tokens}
+            background={{ color: "var(--color-bg)", image: w.zoneImages.blessing, overlay: true }}
+            blocks={{ divider: <Divider scaled /> }}
+          />
+        </div>
       </Zone>
 
       <Zone number={4} title="Nuestra historia" zone="story" initialEnabled={w.zoneEnabled.story}>
@@ -184,6 +205,7 @@ export default async function ContentEditorPage() {
           </div>
           <AddButton label="Agregar capítulo" />
         </form>
+        <SectionTexts section="story" layout={flowTexts["story"]} tokens={tokens} />
       </Zone>
 
       <Zone number={5} title="El evento" zone="event" initialEnabled={w.zoneEnabled.event}>
@@ -217,6 +239,7 @@ export default async function ContentEditorPage() {
             <SaveButton />
           </form>
         </div>
+        <SectionTexts section="event" layout={flowTexts["event"]} tokens={tokens} />
       </Zone>
 
       <Zone number={6} title="Itinerario del día" zone="itinerary" initialEnabled={w.zoneEnabled.itinerary}>
@@ -235,6 +258,7 @@ export default async function ContentEditorPage() {
           <AddButton label="Agregar paso" />
         </form>
         <ZoneImageUpload zone="itinerary" url={w.zoneImages.itinerary} />
+        <SectionTexts section="itinerary" layout={flowTexts["itinerary"]} tokens={tokens} />
       </Zone>
 
       <Zone number={7} title="Cómo llegar" zone="location" initialEnabled={w.zoneEnabled.location}>
@@ -243,6 +267,7 @@ export default async function ContentEditorPage() {
           "El evento" — no hace falta repetirlos.
         </p>
         <ZoneImageUpload zone="location" url={w.zoneImages.location} />
+        <SectionTexts section="location" layout={flowTexts["location"]} tokens={tokens} />
       </Zone>
 
       <Zone number={8} title="Alojamiento" zone="accommodation" initialEnabled={w.zoneEnabled.accommodation}>
@@ -268,10 +293,12 @@ export default async function ContentEditorPage() {
           </form>
         </div>
         <ZoneImageUpload zone="accommodation" url={w.zoneImages.accommodation} />
+        <SectionTexts section="accommodation" layout={flowTexts["accommodation"]} tokens={tokens} />
       </Zone>
 
       <Zone number={9} title="Galería" zone="gallery" initialEnabled={w.zoneEnabled.gallery}>
         <GalleryUploader photos={allPhotos} />
+        <SectionTexts section="gallery" layout={flowTexts["gallery"]} tokens={tokens} />
       </Zone>
 
       <Zone number={10} title="Música" zone="music" initialEnabled={w.zoneEnabled.music} showPreview={false}>
@@ -299,9 +326,20 @@ export default async function ContentEditorPage() {
           La lista de regalos en sí (reserva / fondo común) se administra desde el panel principal.
         </p>
         <ZoneImageUpload zone="gifts" url={w.zoneImages.gifts} />
+        <SectionTexts section="gifts" layout={flowTexts["gifts"]} tokens={tokens} />
       </Zone>
 
-      <Zone number={12} title="Paleta de colores" >
+      <Zone number={12} title="Confirmación y mensajes">
+        <p className="text-sm text-neutral-500">Los títulos del formulario de confirmación y de la sección de mensajes.</p>
+        <SectionTexts section="rsvp" layout={flowTexts["rsvp"]} tokens={tokens} heading="Confirmación" />
+        <SectionTexts section="messages" layout={flowTexts["messages"]} tokens={tokens} heading="Mensajes" />
+      </Zone>
+
+      <Zone number={13} title="Pie de página">
+        <ArtboardEditor section="footer" initialLayout={footerText} tokens={tokens} background={{ color: "var(--color-bg)" }} />
+      </Zone>
+
+      <Zone number={14} title="Paleta de colores" >
         <p className="mb-3 text-sm text-neutral-500">
           Se aplica a todo el sitio, no a una sola viñeta — por eso no tiene
           vista previa chica acá al lado.
@@ -373,6 +411,25 @@ function ListItems({
           </form>
         </div>
       ))}
+    </div>
+  );
+}
+
+function SectionTexts({
+  section,
+  layout,
+  tokens,
+  heading = "Textos de la sección",
+}: {
+  section: LayoutSection;
+  layout: TextLayout;
+  tokens: TokenValues;
+  heading?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-2 border-t border-neutral-200 pt-5">
+      <h3 className="font-serif text-lg text-neutral-800">{heading}</h3>
+      <FlowTextEditor section={section} initialLayout={layout} tokens={tokens} />
     </div>
   );
 }

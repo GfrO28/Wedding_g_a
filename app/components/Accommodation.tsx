@@ -1,23 +1,21 @@
 import { getWeddingContent } from "@/lib/weddingContent";
 import { FadeIn } from "./FadeIn";
+import { FlowText } from "./FlowText";
+import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
 import { Slide } from "./Slide";
 
 export async function Accommodation() {
-  const WEDDING = await getWeddingContent();
+  const [WEDDING, layout, tokens] = await Promise.all([getWeddingContent(), getTextLayout("accommodation"), getTokenValues("")]);
   if (WEDDING.accommodation.length < 1) return null;
 
   return (
     <Slide bgImage={WEDDING.zoneImages.accommodation}>
     <section className="mx-auto max-w-3xl px-6">
       <FadeIn>
-        <h2 className="mb-4 text-center font-serif text-3xl text-[var(--color-fg)]">
-          Alojamiento
-        </h2>
+        <FlowText as="h2" className="mb-4" layout={layout} id="title" tokens={tokens} />
       </FadeIn>
       <FadeIn delay={0.1}>
-        <p className="mb-8 text-center text-[var(--color-muted)]">
-          {WEDDING.transportation}
-        </p>
+        <FlowText className="mb-8" layout={layout} id="transport" tokens={tokens} />
       </FadeIn>
       <div className="space-y-4">
         {WEDDING.accommodation.map((hotel, i) => (
