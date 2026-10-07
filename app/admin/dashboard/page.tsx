@@ -17,8 +17,6 @@ import {
   deleteGiftItemAction,
   unclaimGiftItemAction,
 } from "./gift-actions";
-import { IntroEditor } from "./IntroEditor";
-import { getIntroSettings } from "@/lib/intro";
 
 export const dynamic = "force-dynamic";
 
@@ -58,8 +56,6 @@ export default async function AdminDashboardPage() {
     raisedByItem.set(c.giftItemId, (raisedByItem.get(c.giftItemId) ?? 0) + c.amount);
   }
 
-  const introSettings = await getIntroSettings();
-
   return (
     <main className="mx-auto max-w-4xl space-y-8 px-4 py-10">
       <h1 className="font-serif text-3xl text-neutral-800">
@@ -74,18 +70,11 @@ export default async function AdminDashboardPage() {
           Editar contenido de la invitación →
         </span>
         <p className="mt-0.5 text-neutral-500">
-          Todas las viñetas con su vista previa: pareja, historia, evento,
-          itinerario, alojamiento, galería, música, regalos y la paleta de
-          colores.
+          Todas las viñetas con su vista previa: animación de apertura,
+          pareja, historia, evento, itinerario, alojamiento, galería,
+          música, regalos y la paleta de colores.
         </p>
       </a>
-
-      <div>
-        <h2 className="mb-3 font-serif text-xl text-neutral-800">
-          Animación de apertura
-        </h2>
-        <IntroEditor settings={introSettings} />
-      </div>
 
       <div className="grid grid-cols-3 gap-4 text-center">
         <Stat label="Confirmados" value={confirmed.length} />

@@ -8,6 +8,7 @@ export function Zone({
   number,
   title,
   zone,
+  previewZone,
   initialEnabled = true,
   showPreview = true,
   children,
@@ -15,11 +16,13 @@ export function Zone({
   number: number;
   title: string;
   zone?: string;
+  previewZone?: string;
   initialEnabled?: boolean;
   showPreview?: boolean;
   children: ReactNode;
 }) {
   const [enabled, setEnabled] = useState(initialEnabled);
+  const pz = previewZone ?? zone;
 
   async function handleToggle() {
     const next = !enabled;
@@ -55,10 +58,10 @@ export function Zone({
           </label>
         )}
       </div>
-      <div className={`grid grid-cols-1 ${zone && showPreview ? "sm:grid-cols-[270px_1fr]" : ""}`}>
-        {zone && showPreview && (
+      <div className={`grid grid-cols-1 ${pz && showPreview ? "sm:grid-cols-[270px_1fr]" : ""}`}>
+        {pz && showPreview && (
           <div className="flex flex-col items-center gap-4 border-b border-neutral-200 bg-neutral-50 p-4 sm:border-b-0 sm:border-r">
-            <ZonePreview zone={zone} />
+            <ZonePreview zone={pz} />
           </div>
         )}
         <div className="flex flex-col gap-4 p-5">{children}</div>

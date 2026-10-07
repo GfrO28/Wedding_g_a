@@ -50,7 +50,7 @@ export async function saveIntroImageAction(key: string, url: string) {
     .onConflictDoUpdate({ target: siteSettings.key, set: { value: url } });
 
   revalidatePath("/", "layout");
-  revalidatePath("/admin/dashboard");
+  revalidatePath("/admin/dashboard/content");
 }
 
 export async function clearIntroImageAction(formData: FormData) {
@@ -59,7 +59,7 @@ export async function clearIntroImageAction(formData: FormData) {
 
   await db.delete(siteSettings).where(eq(siteSettings.key, key));
   revalidatePath("/", "layout");
-  revalidatePath("/admin/dashboard");
+  revalidatePath("/admin/dashboard/content");
 }
 
 export async function updateIntroTypeAction(type: string) {
@@ -71,5 +71,5 @@ export async function updateIntroTypeAction(type: string) {
     .onConflictDoUpdate({ target: siteSettings.key, set: { value } });
 
   revalidatePath("/", "layout");
-  revalidatePath("/admin/dashboard");
+  revalidatePath("/admin/dashboard/content");
 }

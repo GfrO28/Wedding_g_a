@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { IntroImageKey, IntroSettings } from "@/lib/intro";
+import { flapPolygon, sealBlobPolygon } from "@/app/components/envelope/shapes";
 import {
   clearIntroImageAction,
   requestIntroImageUploadAction,
@@ -9,13 +10,25 @@ import {
   updateIntroTypeAction,
 } from "./intro-actions";
 
-const SLOTS: { key: IntroImageKey; label: string; shape: "rect-wide" | "rect-tall" | "circle" }[] = [
-  { key: "introTop", label: "Solapa superior", shape: "rect-wide" },
-  { key: "introLeft", label: "Solapa izquierda", shape: "rect-tall" },
-  { key: "introSeal", label: "Sello", shape: "circle" },
-  { key: "introRight", label: "Solapa derecha", shape: "rect-tall" },
-  { key: "introBottom", label: "Solapa inferior", shape: "rect-wide" },
+type Side = "top" | "bottom" | "left" | "right" | "seal";
+
+const SLOTS: { key: IntroImageKey; label: string; side: Side }[] = [
+  { key: "introTop", label: "Solapa superior", side: "top" },
+  { key: "introLeft", label: "Solapa izquierda", side: "left" },
+  { key: "introSeal", label: "Sello", side: "seal" },
+  { key: "introRight", label: "Solapa derecha", side: "right" },
+  { key: "introBottom", label: "Solapa inferior", side: "bottom" },
 ];
+
+// Tamaños fijos de cada miniatura, en px — con eso alcanza para calcular el
+// clip-path real (no hace falta medir el DOM).
+const BOX: Record<Side, { w: number; h: number }> = {
+  top: { w: 96, h: 72 },
+  bottom: { w: 96, h: 72 },
+  left: { w: 72, h: 96 },
+  right: { w: 72, h: 96 },
+  seal: { w: 80, h: 80 },
+};
 
 export function IntroEditor({ settings }: { settings: IntroSettings }) {
   const [type, setType] = useState(settings.type);
@@ -98,23 +111,19 @@ function ImageSlot({
   busy,
   onUpload,
 }: {
-  slot: { key: IntroImageKey; label: string; shape: "rect-wide" | "rect-tall" | "circle" };
+  slot: { key: IntroImageKey; label: string; side: Side };
   url: string | null;
   busy: boolean;
   onUpload: (file: File) => void;
 }) {
-  const sizeClass =
-    slot.shape === "circle"
-      ? "h-20 w-20 rounded-full"
-      : slot.shape === "rect-tall"
-        ? "h-24 w-18"
-        : "h-18 w-24";
+  const { w, h } = BOX[slot.side];
+  const clipPath = slot.side === "seal" ? sealBlobPolygon(w) : flapPolygon(slot.side, w, h);
 
   return (
     <div className="flex flex-col items-center gap-2">
       <div
-        className={`${sizeClass} rounded-md border-2 border-dashed border-neutral-300 bg-[var(--color-accent)] bg-cover bg-center`}
-        style={url ? { backgroundImage: `url(${url})`, borderStyle: "solid" } : undefined}
+        className="bg-[var(--color-accent)] bg-cover bg-center"
+        style={{ width: w, height: h, clipPath, ...(url ? { backgroundImage: `url(${url})` } : undefined) }}
       />
       <p className="text-xs text-neutral-600">{slot.label}</p>
       <div className="flex gap-1">

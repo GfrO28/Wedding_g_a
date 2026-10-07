@@ -9,10 +9,13 @@ import { Location } from "@/app/components/Location";
 import { Accommodation } from "@/app/components/Accommodation";
 import { Gifts } from "@/app/components/Gifts";
 import { getWeddingContent } from "@/lib/weddingContent";
+import { getIntroSettings } from "@/lib/intro";
+import { EnvelopeStaticPreview } from "@/app/components/envelope/EnvelopeStaticPreview";
 
 export const dynamic = "force-dynamic";
 
 const ZONES = [
+  "intro",
   "hero",
   "blessing",
   "story",
@@ -35,9 +38,11 @@ export default async function ZonePreviewPage({
   if (!ZONES.includes(zone as (typeof ZONES)[number])) notFound();
 
   const content = await getWeddingContent();
+  const introSettings = zone === "intro" ? await getIntroSettings() : null;
 
   return (
     <main className="h-dvh overflow-hidden">
+      {zone === "intro" && introSettings && <EnvelopeStaticPreview images={introSettings.images} />}
       {zone === "hero" && <Hero guestName="Invitado de ejemplo" />}
       {zone === "blessing" && <Blessing />}
       {zone === "story" && (content.story.length > 0 ? <OurStory /> : <Empty text="Todavía no hay capítulos." />)}
