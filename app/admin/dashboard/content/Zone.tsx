@@ -49,9 +49,10 @@ export function Zone({
                 enabled ? "bg-neutral-900" : "bg-neutral-300"
               }`}
             >
+              {/* Anclado a la izquierda: 2 px de margen + 16 px de recorrido = cabe justo en los 36 px. */}
               <span
-                className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
-                  enabled ? "translate-x-[18px]" : "translate-x-0.5"
+                className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                  enabled ? "translate-x-4" : "translate-x-0"
                 }`}
               />
             </button>

@@ -1,9 +1,9 @@
 import Image from "next/image";
 import { getWeddingContent, type StoryChapter } from "@/lib/weddingContent";
-import { FadeIn } from "./FadeIn";
-import { FlowText } from "./FlowText";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
+import { FadeIn } from "./FadeIn";
 import { Slide } from "./Slide";
+import { TextArtboard } from "./TextArtboard";
 
 const OBJECT_POSITION: Record<StoryChapter["imageFocus"], string> = {
   top: "object-top",
@@ -16,20 +16,21 @@ export async function OurStory() {
   if (WEDDING.story.length < 1) return null;
 
   return (
-    <Slide>
-    <section className="mx-auto max-w-3xl px-6">
-      <FadeIn>
-        <FlowText as="h2" className="mb-12" layout={layout} id="title" tokens={tokens} />
-      </FadeIn>
-      <div className="space-y-16">
-        {WEDDING.story.map((chapter, i) => (
-          <FadeIn key={chapter.id} delay={i * 0.1}>
-            <Chapter chapter={chapter} />
-          </FadeIn>
-        ))}
-      </div>
-    </section>
+    <Slide fullBleed>
+      <TextArtboard layout={layout} tokens={tokens} animate blocks={{ body: <StoryBody chapters={WEDDING.story} /> }} />
     </Slide>
+  );
+}
+
+export function StoryBody({ chapters }: { chapters: StoryChapter[] }) {
+  return (
+    <div className="space-y-16 px-1 py-2">
+      {chapters.map((chapter, i) => (
+        <FadeIn key={chapter.id} delay={i * 0.1}>
+          <Chapter chapter={chapter} />
+        </FadeIn>
+      ))}
+    </div>
   );
 }
 
@@ -71,11 +72,11 @@ function Chapter({ chapter }: { chapter: StoryChapter }) {
   }
 
   return (
-    <div className="grid grid-cols-1 items-center gap-6 sm:grid-cols-2">
+    <div className="grid grid-cols-1 items-center gap-6 @lg:grid-cols-2">
       {chapter.layout === "image-right" ? (
         <>
-          <div className="sm:order-2">{image}</div>
-          <div className="sm:order-1">{text}</div>
+          <div className="@lg:order-2">{image}</div>
+          <div className="@lg:order-1">{text}</div>
         </>
       ) : (
         <>

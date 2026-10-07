@@ -1,28 +1,40 @@
 import { db } from "@/lib/db";
 import { guestMessages } from "@/lib/db/schema";
 import { desc, eq } from "drizzle-orm";
-import { FadeIn } from "./FadeIn";
-import { FlowText } from "./FlowText";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
+import { FadeIn } from "./FadeIn";
 import { Slide } from "./Slide";
+import { TextArtboard } from "./TextArtboard";
 import { submitMessageAction } from "@/app/i/[slug]/actions";
 
-export async function GuestMessages({ slug }: { slug: string }) {
-  const messages = await db
+export async function getApprovedMessages() {
+  return db
     .select()
     .from(guestMessages)
     .where(eq(guestMessages.approved, true))
     .orderBy(desc(guestMessages.createdAt))
     .limit(20);
-  const [layout, tokens] = await Promise.all([getTextLayout("messages"), getTokenValues("")]);
+}
+
+export async function GuestMessages({ slug }: { slug: string }) {
+  const [messages, layout, tokens] = await Promise.all([getApprovedMessages(), getTextLayout("messages"), getTokenValues("")]);
 
   return (
-    <Slide>
-    <section className="mx-auto max-w-2xl px-6">
-      <FadeIn>
-        <FlowText as="h2" className="mb-8" layout={layout} id="title" tokens={tokens} />
-      </FadeIn>
+    <Slide fullBleed>
+      <TextArtboard layout={layout} tokens={tokens} animate blocks={{ body: <MessagesBody messages={messages} slug={slug} /> }} />
+    </Slide>
+  );
+}
 
+export function MessagesBody({
+  messages,
+  slug,
+}: {
+  messages: { id: string; name: string; message: string }[];
+  slug: string;
+}) {
+  return (
+    <div className="px-1 py-2">
       <FadeIn delay={0.1}>
         <form action={submitMessageAction} className="mb-10 space-y-3">
           <input type="hidden" name="slug" value={slug} />
@@ -58,7 +70,6 @@ export async function GuestMessages({ slug }: { slug: string }) {
           ))}
         </div>
       )}
-    </section>
-    </Slide>
+    </div>
   );
 }

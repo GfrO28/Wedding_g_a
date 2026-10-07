@@ -28,8 +28,17 @@ import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
 import { ArtboardEditor } from "./ArtboardEditor";
 import { Countdown } from "@/app/components/Countdown";
 import { Divider } from "@/app/components/Divider";
-import { FlowTextEditor } from "./FlowTextEditor";
+import type { ReactNode } from "react";
 import type { LayoutSection, TextLayout, TokenValues } from "@/lib/textLayout";
+import { StoryBody } from "@/app/components/OurStory";
+import { EventBody } from "@/app/components/EventDetails";
+import { ItineraryBody } from "@/app/components/Itinerary";
+import { LocationBody } from "@/app/components/Location";
+import { GalleryBody, getGalleryImages } from "@/app/components/Gallery";
+import { AccommodationBody } from "@/app/components/Accommodation";
+import { GiftsBody, getGiftsData } from "@/app/components/Gifts";
+import { RSVPPreviewBody } from "@/app/components/RSVPForm";
+import { MessagesBody, getApprovedMessages } from "@/app/components/GuestMessages";
 
 const FLOW = ["story", "event", "itinerary", "location", "accommodation", "gallery", "gifts", "rsvp", "messages"] as const;
 
@@ -69,6 +78,8 @@ export default async function ContentEditorPage() {
     getTokenValues("Invitado de ejemplo"),
   ]);
   const allPhotos = await db.select().from(photos).orderBy(desc(photos.createdAt));
+  const [galleryImages, gifts, approvedMessages] = await Promise.all([getGalleryImages(), getGiftsData(), getApprovedMessages()]);
+  const bg = (image?: string | null) => ({ color: "var(--color-bg)", image: image ?? null, overlay: Boolean(image) });
 
   return (
     <main className="mx-auto max-w-5xl space-y-6 px-4 py-10">
@@ -167,7 +178,7 @@ export default async function ContentEditorPage() {
         </div>
       </Zone>
 
-      <Zone number={4} title="Nuestra historia" zone="story" initialEnabled={w.zoneEnabled.story}>
+      <Zone number={4} title="Nuestra historia" zone="story" initialEnabled={w.zoneEnabled.story} showPreview={false}>
         <ListItems
           items={w.story.map((c) => ({ id: c.id, label: `${c.year} — ${c.title}` }))}
           deleteAction={deleteStoryChapterAction}
@@ -205,10 +216,10 @@ export default async function ContentEditorPage() {
           </div>
           <AddButton label="Agregar capítulo" />
         </form>
-        <SectionTexts section="story" layout={flowTexts["story"]} tokens={tokens} />
+        <SectionDesign section="story" layout={flowTexts["story"]} tokens={tokens} background={bg()} body={<StoryBody chapters={w.story} />} />
       </Zone>
 
-      <Zone number={5} title="El evento" zone="event" initialEnabled={w.zoneEnabled.event}>
+      <Zone number={5} title="El evento" zone="event" initialEnabled={w.zoneEnabled.event} showPreview={false}>
         <form action={updatePlacesAction} className="flex flex-col gap-6">
           <div>
             <p className="mb-2 text-sm font-medium text-neutral-700">Ceremonia</p>
@@ -239,10 +250,10 @@ export default async function ContentEditorPage() {
             <SaveButton />
           </form>
         </div>
-        <SectionTexts section="event" layout={flowTexts["event"]} tokens={tokens} />
+        <SectionDesign section="event" layout={flowTexts["event"]} tokens={tokens} background={bg(w.zoneImages.event)} body={<EventBody ceremony={w.ceremony} reception={w.reception} />} />
       </Zone>
 
-      <Zone number={6} title="Itinerario del día" zone="itinerary" initialEnabled={w.zoneEnabled.itinerary}>
+      <Zone number={6} title="Itinerario del día" zone="itinerary" initialEnabled={w.zoneEnabled.itinerary} showPreview={false}>
         <ListItems
           items={w.itinerary.map((s) => ({ id: s.id, label: `${s.time} — ${s.label} (${s.icon})` }))}
           deleteAction={deleteItineraryStepAction}
@@ -258,19 +269,19 @@ export default async function ContentEditorPage() {
           <AddButton label="Agregar paso" />
         </form>
         <ZoneImageUpload zone="itinerary" url={w.zoneImages.itinerary} />
-        <SectionTexts section="itinerary" layout={flowTexts["itinerary"]} tokens={tokens} />
+        <SectionDesign section="itinerary" layout={flowTexts["itinerary"]} tokens={tokens} background={bg(w.zoneImages.itinerary)} body={<ItineraryBody steps={w.itinerary} />} />
       </Zone>
 
-      <Zone number={7} title="Cómo llegar" zone="location" initialEnabled={w.zoneEnabled.location}>
+      <Zone number={7} title="Cómo llegar" zone="location" initialEnabled={w.zoneEnabled.location} showPreview={false}>
         <p className="text-sm text-neutral-500">
           Usa las mismas direcciones y links de Google Maps que cargaste en
           "El evento" — no hace falta repetirlos.
         </p>
         <ZoneImageUpload zone="location" url={w.zoneImages.location} />
-        <SectionTexts section="location" layout={flowTexts["location"]} tokens={tokens} />
+        <SectionDesign section="location" layout={flowTexts["location"]} tokens={tokens} background={bg(w.zoneImages.location)} body={<LocationBody places={[w.ceremony, w.reception]} mapsLive={false} />} />
       </Zone>
 
-      <Zone number={8} title="Alojamiento" zone="accommodation" initialEnabled={w.zoneEnabled.accommodation}>
+      <Zone number={8} title="Alojamiento" zone="accommodation" initialEnabled={w.zoneEnabled.accommodation} showPreview={false}>
         <ListItems
           items={w.accommodation.map((h) => ({ id: h.id, label: h.name }))}
           deleteAction={deleteHotelAction}
@@ -293,19 +304,19 @@ export default async function ContentEditorPage() {
           </form>
         </div>
         <ZoneImageUpload zone="accommodation" url={w.zoneImages.accommodation} />
-        <SectionTexts section="accommodation" layout={flowTexts["accommodation"]} tokens={tokens} />
+        <SectionDesign section="accommodation" layout={flowTexts["accommodation"]} tokens={tokens} background={bg(w.zoneImages.accommodation)} body={<AccommodationBody hotels={w.accommodation} />} />
       </Zone>
 
-      <Zone number={9} title="Galería" zone="gallery" initialEnabled={w.zoneEnabled.gallery}>
+      <Zone number={9} title="Galería" zone="gallery" initialEnabled={w.zoneEnabled.gallery} showPreview={false}>
         <GalleryUploader photos={allPhotos} />
-        <SectionTexts section="gallery" layout={flowTexts["gallery"]} tokens={tokens} />
+        <SectionDesign section="gallery" layout={flowTexts["gallery"]} tokens={tokens} background={bg()} body={<GalleryBody images={galleryImages} />} />
       </Zone>
 
       <Zone number={10} title="Música" zone="music" initialEnabled={w.zoneEnabled.music} showPreview={false}>
         <MusicUploader music={w.music} />
       </Zone>
 
-      <Zone number={11} title="Regalos" zone="gifts" initialEnabled={w.zoneEnabled.gifts}>
+      <Zone number={11} title="Regalos" zone="gifts" initialEnabled={w.zoneEnabled.gifts} showPreview={false}>
         <form action={updateGiftsAction} className="flex flex-col gap-4">
           <Field label="Mensaje">
             <textarea name="message" defaultValue={w.gifts.message} rows={2} className={inputClass} />
@@ -326,13 +337,13 @@ export default async function ContentEditorPage() {
           La lista de regalos en sí (reserva / fondo común) se administra desde el panel principal.
         </p>
         <ZoneImageUpload zone="gifts" url={w.zoneImages.gifts} />
-        <SectionTexts section="gifts" layout={flowTexts["gifts"]} tokens={tokens} />
+        <SectionDesign section="gifts" layout={flowTexts["gifts"]} tokens={tokens} background={bg(w.zoneImages.gifts)} body={<GiftsBody items={gifts.items} raised={gifts.raised} payment={w.gifts.payment} slug="preview" />} />
       </Zone>
 
       <Zone number={12} title="Confirmación y mensajes">
-        <p className="text-sm text-neutral-500">Los títulos del formulario de confirmación y de la sección de mensajes.</p>
-        <SectionTexts section="rsvp" layout={flowTexts["rsvp"]} tokens={tokens} heading="Confirmación" />
-        <SectionTexts section="messages" layout={flowTexts["messages"]} tokens={tokens} heading="Mensajes" />
+        <p className="text-sm text-neutral-500">El formulario de confirmación y la sección de mensajes de los invitados.</p>
+        <SectionDesign section="rsvp" layout={flowTexts["rsvp"]} tokens={tokens} heading="Confirmación" background={bg()} body={<RSVPPreviewBody maxAttendees={2} />} />
+        <SectionDesign section="messages" layout={flowTexts["messages"]} tokens={tokens} heading="Mensajes" background={bg()} body={<MessagesBody messages={approvedMessages} slug="preview" />} />
       </Zone>
 
       <Zone number={13} title="Pie de página">
@@ -415,21 +426,29 @@ function ListItems({
   );
 }
 
-function SectionTexts({
+function SectionDesign({
   section,
   layout,
   tokens,
-  heading = "Textos de la sección",
+  background,
+  body,
+  heading = "Diseño de la sección",
 }: {
   section: LayoutSection;
   layout: TextLayout;
   tokens: TokenValues;
+  background: { color: string; image: string | null; overlay: boolean };
+  body: ReactNode;
   heading?: string;
 }) {
   return (
     <div className="flex flex-col gap-2 border-t border-neutral-200 pt-5">
       <h3 className="font-serif text-lg text-neutral-800">{heading}</h3>
-      <FlowTextEditor section={section} initialLayout={layout} tokens={tokens} />
+      <p className="text-sm text-neutral-500">
+        El recuadro azul «Contenido» es lo que cargás arriba (tarjetas, fotos, formularios): movelo y cambiale el
+        tamaño como a un texto. Si lo que hay adentro no entra, el invitado lo desplaza dentro de la caja.
+      </p>
+      <ArtboardEditor section={section} initialLayout={layout} tokens={tokens} background={background} blocks={{ body }} />
     </div>
   );
 }

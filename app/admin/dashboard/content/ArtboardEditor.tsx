@@ -25,7 +25,7 @@ import { resetTextLayoutAction, saveTextLayoutAction } from "./layout-actions";
 type Background = { color: string; image?: string | null; overlay?: boolean };
 type Drag = {
   id: string;
-  mode: "move" | "corner" | "side";
+  mode: "move" | "corner" | "side" | "vside";
   sign: number;
   startX: number;
   startY: number;
@@ -49,7 +49,9 @@ export function smallLabel(o: Orientation) {
 }
 
 export function smallestPx(el: TextElement) {
-  // En la cuenta regresiva lo más chico son las etiquetas, que van al tamaño base.
+  // Panel: lo más chico de adentro son textos de 12 px, escalados por el panel.
+  // Cuenta regresiva: las etiquetas van al tamaño base.
+  if (el.kind === "panel") return 12 * (el.fontSize / 16) * SMALLEST_SCALE;
   return el.fontSize * SMALLEST_SCALE;
 }
 
@@ -193,6 +195,9 @@ export function ArtboardEditor({
     } else if (d.mode === "corner") {
       const f = Math.max(0.1, (d.el.w + 2 * dx * d.sign) / d.el.w);
       changes = { w: Math.round(d.el.w * f), fontSize: Math.round(d.el.fontSize * f * 10) / 10 };
+      if (d.el.kind === "panel") changes.h = Math.round(d.el.h * f);
+    } else if (d.mode === "vside") {
+      changes = { h: Math.max(40, Math.round(d.el.h + 2 * dy * d.sign)) };
     } else {
       changes = { w: Math.max(40, Math.round(d.el.w + 2 * dx * d.sign)) };
     }
@@ -363,6 +368,7 @@ export function ArtboardEditor({
                         ...(elementStyle(el) as CSSProperties),
                         cursor: "move",
                         opacity: el.hidden ? 0.25 : 1,
+                        ...(el.kind === "panel" ? { background: "rgba(37,99,235,.04)" } : null),
                         outline: isSel ? `${2 / (k || 1)}px solid #2563eb` : overflow.has(el.id) ? `${1.5 / (k || 1)}px dashed #dc2626` : `${1 / (k || 1)}px dashed transparent`,
                         touchAction: "none",
                         userSelect: "none",
@@ -382,13 +388,19 @@ export function ArtboardEditor({
                           ["corner", 1, "nwse-resize", { right: -handle / 2, bottom: -handle / 2 }],
                           ["side", -1, "ew-resize", { left: -handle / 2, top: `calc(50% - ${handle / 2}px)` }],
                           ["side", 1, "ew-resize", { right: -handle / 2, top: `calc(50% - ${handle / 2}px)` }],
+                          ...(el.kind === "panel"
+                            ? ([
+                                ["vside", -1, "ns-resize", { top: -handle / 2, left: `calc(50% - ${handle / 2}px)` }],
+                                ["vside", 1, "ns-resize", { bottom: -handle / 2, left: `calc(50% - ${handle / 2}px)` }],
+                              ] as const)
+                            : []),
                         ] as const).map(([mode, sign, cursor, pos], i) => (
                           <span
                             key={i}
                             onPointerDown={(e) => startDrag(e, el, mode, sign)}
                             style={{
                               position: "absolute", width: handle, height: handle, background: "#fff",
-                              border: `${1.5 / (k || 1)}px solid #2563eb`, borderRadius: mode === "side" ? handle : 2 / (k || 1),
+                              border: `${1.5 / (k || 1)}px solid #2563eb`, borderRadius: mode === "side" || mode === "vside" ? handle : 2 / (k || 1),
                               cursor, touchAction: "none", ...pos,
                             }}
                           />
@@ -484,6 +496,7 @@ export function ElementPanel({
   positioned?: boolean;
 }) {
   const isTheme = el.color in THEME_COLORS;
+  const isPanel = el.kind === "panel";
   const phonePx = smallestPx(el);
   const field = "w-full rounded-md border border-neutral-300 px-2 py-1 text-sm";
   const num = (label: string, value: number, key: keyof TextElement, step = 1, min?: number, max?: number) => (
@@ -537,21 +550,33 @@ export function ElementPanel({
         </select>
       </label>
 
+      {isPanel && (
+        <p className="text-xs text-neutral-500">
+          Contenido que cambia según lo que cargues (tarjetas, fotos, formularios). Si no entra en la caja, se
+          desplaza por dentro.
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-2">
-        {num("Tamaño (px de la mesa)", el.fontSize, "fontSize", 1, 6, 400)}
-        <label className="flex flex-col gap-0.5">
-          <span className="text-xs text-neutral-500">Peso</span>
-          <select className={field} value={el.weight} onChange={(e) => onPatch({ weight: Number(e.target.value) })}>
-            {[300, 400, 500, 600, 700].map((w) => <option key={w} value={w}>{w}</option>)}
-          </select>
-        </label>
+        {isPanel
+          ? num("Tamaño del contenido (16 = normal)", el.fontSize, "fontSize", 1, 4, 400)
+          : num("Tamaño (px de la mesa)", el.fontSize, "fontSize", 1, 6, 400)}
+        {isPanel ? (
+          num("Alto de la caja", el.h, "h", 1, 40)
+        ) : (
+          <label className="flex flex-col gap-0.5">
+            <span className="text-xs text-neutral-500">Peso</span>
+            <select className={field} value={el.weight} onChange={(e) => onPatch({ weight: Number(e.target.value) })}>
+              {[300, 400, 500, 600, 700].map((w) => <option key={w} value={w}>{w}</option>)}
+            </select>
+          </label>
+        )}
       </div>
       <p className={`text-xs ${phonePx < MIN_READABLE_PX ? "text-amber-700" : "text-neutral-500"}`}>
         {orientation === "portrait" ? "En un celular de 390 px" : "En un celular acostado (844×390)"} se ve a {phonePx.toFixed(1)} px{phonePx < MIN_READABLE_PX ? `: muy chico, subilo al menos a ${Math.ceil(el.fontSize * (MIN_READABLE_PX / phonePx))}.` : "."}
       </p>
 
       <div className="flex flex-col gap-1">
-        <span className="text-xs text-neutral-500">Color</span>
+        <span className="text-xs text-neutral-500">{isPanel ? "Color de los títulos y datos" : "Color"}</span>
         <div className="flex flex-wrap items-center gap-2">
           <select
             className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
@@ -576,13 +601,17 @@ export function ElementPanel({
             </button>
           ))}
         </div>
-        <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={el.italic} onChange={(e) => onPatch({ italic: e.target.checked })} /> Cursiva</label>
-        <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={el.uppercase} onChange={(e) => onPatch({ uppercase: e.target.checked })} /> Mayúsculas</label>
+        {!isPanel && (
+          <>
+            <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={el.italic} onChange={(e) => onPatch({ italic: e.target.checked })} /> Cursiva</label>
+            <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={el.uppercase} onChange={(e) => onPatch({ uppercase: e.target.checked })} /> Mayúsculas</label>
+          </>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        {num("Espaciado de letras (em)", el.letterSpacing, "letterSpacing", 0.01, -0.1, 1)}
-        {num("Interlineado", el.lineHeight, "lineHeight", 0.05, 0.6, 3)}
+        {!isPanel && num("Espaciado de letras (em)", el.letterSpacing, "letterSpacing", 0.01, -0.1, 1)}
+        {!isPanel && num("Interlineado", el.lineHeight, "lineHeight", 0.05, 0.6, 3)}
         {positioned && num("Ancho de la caja", el.w, "w", 1, 20)}
         {positioned && num("Rotación (°)", el.rotation, "rotation", 1, -180, 180)}
         {positioned && num("Posición X (centro)", el.x, "x")}

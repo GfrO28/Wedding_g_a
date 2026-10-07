@@ -1,20 +1,10 @@
-import { getWeddingContent } from "@/lib/weddingContent";
-import { FadeIn } from "./FadeIn";
-import { FlowText } from "./FlowText";
+import { getWeddingContent, type Place } from "@/lib/weddingContent";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
+import { FadeIn } from "./FadeIn";
 import { Slide } from "./Slide";
+import { TextArtboard } from "./TextArtboard";
 
-function EventCard({
-  name,
-  time,
-  venue,
-  address,
-}: {
-  name: string;
-  time: string;
-  venue: string;
-  address: string;
-}) {
+function EventCard({ name, time, venue, address }: Pick<Place, "name" | "time" | "venue" | "address">) {
   return (
     <div className="flex-1 rounded-xl border border-[var(--color-border)] p-6 text-center">
       <h3 className="font-serif text-xl text-[var(--color-fg)]">{name}</h3>
@@ -28,31 +18,24 @@ function EventCard({
 export async function EventDetails() {
   const [WEDDING, layout, tokens] = await Promise.all([getWeddingContent(), getTextLayout("event"), getTokenValues("")]);
   return (
-    <Slide bgImage={WEDDING.zoneImages.event}>
-    <section className="mx-auto max-w-4xl px-6">
-      <FadeIn>
-        <FlowText as="h2" className="mb-12" layout={layout} id="title" tokens={tokens} />
-      </FadeIn>
-      <FadeIn delay={0.1}>
-        <div className="flex flex-col gap-4 sm:flex-row">
-          <EventCard
-            name={WEDDING.ceremony.name}
-            time={WEDDING.ceremony.time}
-            venue={WEDDING.ceremony.venue}
-            address={WEDDING.ceremony.address}
-          />
-          <EventCard
-            name={WEDDING.reception.name}
-            time={WEDDING.reception.time}
-            venue={WEDDING.reception.venue}
-            address={WEDDING.reception.address}
-          />
-        </div>
-      </FadeIn>
-      <FadeIn delay={0.2}>
-        <FlowText className="mt-8" layout={layout} id="dressCode" tokens={tokens} />
-      </FadeIn>
-    </section>
+    <Slide bgImage={WEDDING.zoneImages.event} fullBleed>
+      <TextArtboard
+        layout={layout}
+        tokens={tokens}
+        animate
+        blocks={{ body: <EventBody ceremony={WEDDING.ceremony} reception={WEDDING.reception} /> }}
+      />
     </Slide>
+  );
+}
+
+export function EventBody({ ceremony, reception }: { ceremony: Place; reception: Place }) {
+  return (
+    <FadeIn className="px-1 py-2">
+      <div className="flex flex-col gap-4 @lg:flex-row">
+        <EventCard {...ceremony} />
+        <EventCard {...reception} />
+      </div>
+    </FadeIn>
   );
 }

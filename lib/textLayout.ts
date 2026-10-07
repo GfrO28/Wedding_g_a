@@ -60,11 +60,15 @@ export const THEME_COLORS = {
 export type TextElement = {
   id: string;
   name: string; // cómo se llama en el editor
-  kind: "text" | "block";
+  // text: texto libre · block: pieza chica que se mide en em (cuenta regresiva,
+  // separador) · panel: contenido variable (tarjetas, fotos, formularios) en una
+  // caja con alto propio que se desplaza por dentro si no entra.
+  kind: "text" | "block" | "panel";
   text: string;
   x: number; // centro, en px de la mesa
   y: number;
   w: number; // ancho de la caja (el texto se ajusta adentro)
+  h: number; // alto de la caja (solo panel)
   fontSize: number;
   font: FontKey;
   color: string;
@@ -108,17 +112,28 @@ export function fillTokens(text: string, t: TokenValues) {
 // Estilo de un elemento dentro de la mesa. Devuelve strings con unidades para
 // que sirva igual en React y en el DOM armado a mano (sobre).
 export function elementStyle(el: TextElement): Record<string, string> {
-  return {
+  const box = {
     position: "absolute",
     left: `${el.x}px`,
     top: `${el.y}px`,
     width: `${el.w}px`,
     transform: `translate(-50%, -50%) rotate(${el.rotation}deg)`,
-    ...typeStyle(el),
-    fontSize: `${el.fontSize}px`,
-    whiteSpace: "pre-wrap",
-    overflowWrap: "break-word",
   };
+  if (el.kind === "panel") {
+    // El contenido usa sus propios tamaños; la caja solo aporta tipografía de
+    // base y alto. El "tamaño" del panel escala todo lo de adentro (panelZoom).
+    return { ...box, height: `${el.h}px`, fontFamily: FONTS[el.font]?.css ?? FONTS.inter.css, textAlign: el.align };
+  }
+  return { ...box, ...typeStyle(el), fontSize: `${el.fontSize}px`, whiteSpace: "pre-wrap", overflowWrap: "break-word" };
+}
+
+// Escala del contenido de un panel: 16 = tamaño normal de la página.
+export const panelZoom = (el: TextElement) => el.fontSize / 16;
+
+// El color de un panel reemplaza el color de texto de la paleta solo adentro
+// de la caja (el contenido usa --color-fg en sus títulos y datos).
+export function panelColorVars(el: TextElement): Record<string, string> {
+  return el.color === "var(--color-fg)" ? {} : { "--color-fg": el.color };
 }
 
 // Solo tipografía y color (para los textos que siguen el flujo de la página).
@@ -142,7 +157,7 @@ const base = {
   weight: 400, italic: false, uppercase: false, rotation: 0, hidden: false,
 };
 type Spec = Partial<TextElement> & Pick<TextElement, "id" | "name" | "text" | "fontSize" | "font" | "color">;
-const el = (s: Spec & { x?: number; y?: number; w?: number }): TextElement => ({ ...base, x: 0, y: 0, w: 600, ...s });
+const el = (s: Spec & { x?: number; y?: number; w?: number; h?: number }): TextElement => ({ ...base, x: 0, y: 0, w: 600, h: 0, ...s });
 
 function envelopeLines(cx: number, cy: number): TextElement[] {
   const c = { font: "cormorant" as FontKey, color: "#8A3A47", weight: 300, uppercase: true, w: 720 };
@@ -153,26 +168,33 @@ function envelopeLines(cx: number, cy: number): TextElement[] {
   ];
 }
 
-// Títulos y párrafos que siguen el flujo de la sección: solo se editan
-// contenido, tipografía, color y tamaño. La mesa vertical se ve al ~51% en
-// un celular, por eso sus tamaños son el doble de los de la horizontal.
-const title = (text: string) => ({
-  portrait: el({ id: "title", name: "Título", text, fontSize: 59, font: "playfair", color: "var(--color-fg)" }),
-  landscape: el({ id: "title", name: "Título", text, fontSize: 30, font: "playfair", color: "var(--color-fg)" }),
-});
-const para = (id: string, name: string, text: string, p: number, l: number) => ({
-  portrait: el({ id, name, text, fontSize: p, font: "inter", color: "var(--color-muted)", lineHeight: 1.45 }),
-  landscape: el({ id, name, text, fontSize: l, font: "inter", color: "var(--color-muted)", lineHeight: 1.45 }),
-});
-function flow(...items: { portrait: TextElement; landscape: TextElement }[]): TextLayout {
-  return { portrait: items.map((i) => i.portrait), landscape: items.map((i) => i.landscape) };
-}
+type Pair = { portrait: TextElement; landscape: TextElement };
+const pair = (portrait: TextElement, landscape: TextElement): Pair => ({ portrait, landscape });
+const layoutOf = (...items: Pair[]): TextLayout => ({ portrait: items.map((i) => i.portrait), landscape: items.map((i) => i.landscape) });
+
+// Piezas de las secciones con contenido variable. La mesa vertical se ve al
+// ~51% en un celular, por eso sus tamaños son el doble que en la horizontal.
+const T = (text: string, py: number, ly: number, id = "title", name = "Título") =>
+  pair(
+    el({ id, name, text, x: 384, y: py, w: 700, fontSize: 59, font: "playfair", color: "var(--color-fg)" }),
+    el({ id, name, text, x: 512, y: ly, w: 900, fontSize: 30, font: "playfair", color: "var(--color-fg)" }),
+  );
+const P = (id: string, name: string, text: string, p: { y: number; fs: number }, l: { y: number; fs: number }) =>
+  pair(
+    el({ id, name, text, x: 384, y: p.y, w: 680, fontSize: p.fs, font: "inter", color: "var(--color-muted)", lineHeight: 1.45 }),
+    el({ id, name, text, x: 512, y: l.y, w: 720, fontSize: l.fs, font: "inter", color: "var(--color-muted)", lineHeight: 1.45 }),
+  );
+const B = (p: { y: number; h: number }, l: { y: number; h: number; w: number }) =>
+  pair(
+    el({ kind: "panel", id: "body", name: "Contenido", text: "", x: 384, y: p.y, w: 720, h: p.h, fontSize: 32, font: "inter", color: "var(--color-fg)" }),
+    el({ kind: "panel", id: "body", name: "Contenido", text: "", x: 512, y: l.y, w: l.w, h: l.h, fontSize: 16, font: "inter", color: "var(--color-fg)" }),
+  );
 
 const COMMON_TOKENS = ["nombre1", "nombre2", "fecha", "hashtag"];
 
 export type SectionConfig = {
   label: string;
-  mode: "artboard" | "flow";
+  mode: "artboard";
   boards: Boards;
   tokens: string[];
   defaults: TextLayout;
@@ -254,37 +276,29 @@ export const SECTIONS = {
       ],
     },
   },
-  story: { label: "Nuestra historia", mode: "flow", boards: ARTBOARDS, tokens: COMMON_TOKENS, defaults: flow(title("Nuestra historia")) },
-  event: {
-    label: "El evento", mode: "flow", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "vestimenta"],
-    defaults: flow(title("El evento"), para("dressCode", "Código de vestimenta", "Código de vestimenta: {vestimenta}", 28, 14)),
-  },
-  itinerary: { label: "Itinerario", mode: "flow", boards: ARTBOARDS, tokens: COMMON_TOKENS, defaults: flow(title("Itinerario")) },
-  location: { label: "Cómo llegar", mode: "flow", boards: ARTBOARDS, tokens: COMMON_TOKENS, defaults: flow(title("Cómo llegar")) },
-  gallery: { label: "Galería", mode: "flow", boards: ARTBOARDS, tokens: COMMON_TOKENS, defaults: flow(title("Galería")) },
-  accommodation: {
-    label: "Alojamiento", mode: "flow", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "transporte"],
-    defaults: flow(title("Alojamiento"), para("transport", "Transporte", "{transporte}", 31, 16)),
-  },
-  gifts: {
-    label: "Regalos", mode: "flow", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "mensajeRegalos"],
-    defaults: flow(title("Regalos"), para("message", "Mensaje", "{mensajeRegalos}", 31, 16)),
-  },
+  story: { label: "Nuestra historia", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, defaults: layoutOf(T("Nuestra historia", 110, 70), B({ y: 580, h: 860 }, { y: 425, h: 640, w: 768 })) },
+  event: { label: "El evento", mode: "artboard", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "vestimenta"], defaults: layoutOf(T("El evento", 120, 80), B({ y: 540, h: 700 }, { y: 370, h: 440, w: 896 }), P("dressCode", "Código de vestimenta", "Código de vestimenta: {vestimenta}", { y: 960, fs: 28 }, { y: 660, fs: 14 })) },
+  itinerary: { label: "Itinerario", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, defaults: layoutOf(T("Itinerario", 260, 200), B({ y: 560, h: 460 }, { y: 420, h: 320, w: 672 })) },
+  location: { label: "Cómo llegar", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, defaults: layoutOf(T("Cómo llegar", 110, 70), B({ y: 580, h: 860 }, { y: 425, h: 640, w: 896 })) },
+  gallery: { label: "Galería", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, defaults: layoutOf(T("Galería", 110, 70), B({ y: 580, h: 860 }, { y: 425, h: 640, w: 960 })) },
+  accommodation: { label: "Alojamiento", mode: "artboard", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "transporte"], defaults: layoutOf(T("Alojamiento", 110, 70), P("transport", "Transporte", "{transporte}", { y: 210, fs: 31 }, { y: 125, fs: 16 }), B({ y: 620, h: 760 }, { y: 440, h: 560, w: 768 })) },
+  gifts: { label: "Regalos", mode: "artboard", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "mensajeRegalos"], defaults: layoutOf(T("Regalos", 100, 60), P("message", "Mensaje", "{mensajeRegalos}", { y: 205, fs: 31 }, { y: 115, fs: 16 }), B({ y: 640, h: 740 }, { y: 450, h: 570, w: 672 })) },
   rsvp: {
-    label: "Confirmación", mode: "flow", boards: ARTBOARDS, tokens: COMMON_TOKENS,
-    defaults: flow(
-      title("Confirmá tu asistencia"),
-      {
-        portrait: el({ id: "thanks", name: "Título al confirmar", text: "¡Gracias por responder!", fontSize: 47, font: "playfair", color: "var(--color-fg)" }),
-        landscape: el({ id: "thanks", name: "Título al confirmar", text: "¡Gracias por responder!", fontSize: 24, font: "playfair", color: "var(--color-fg)" }),
-      },
+    label: "Confirmación", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS,
+    defaults: layoutOf(
+      T("Confirmá tu asistencia", 160, 110),
+      // Reemplaza al título una vez que el invitado confirmó.
+      pair(
+        el({ id: "thanks", name: "Título al confirmar", text: "¡Gracias por responder!", x: 384, y: 160, w: 700, fontSize: 47, font: "playfair", color: "var(--color-fg)" }),
+        el({ id: "thanks", name: "Título al confirmar", text: "¡Gracias por responder!", x: 512, y: 110, w: 900, fontSize: 24, font: "playfair", color: "var(--color-fg)" }),
+      ),
+      B({ y: 600, h: 760 }, { y: 440, h: 560, w: 512 }),
     ),
   },
-  messages: { label: "Mensajes", mode: "flow", boards: ARTBOARDS, tokens: COMMON_TOKENS, defaults: flow(title("Dejanos un mensaje")) },
+  messages: { label: "Mensajes", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, defaults: layoutOf(T("Dejanos un mensaje", 110, 70), B({ y: 580, h: 860 }, { y: 425, h: 640, w: 672 })) },
 } satisfies Record<string, SectionConfig>;
 
 export type LayoutSection = keyof typeof SECTIONS;
-export type FlowSection = { [K in LayoutSection]: (typeof SECTIONS)[K]["mode"] extends "flow" ? K : never }[LayoutSection];
 export const LAYOUT_SECTIONS = Object.keys(SECTIONS) as LayoutSection[];
 export const layoutSettingKey = (s: LayoutSection) => `layout_${s}`;
 
@@ -325,7 +339,8 @@ export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayo
         x: clamp(s.x, -A.w, 2 * A.w, d.x),
         y: clamp(s.y, -A.h, 2 * A.h, d.y),
         w: clamp(s.w, 20, 2 * A.w, d.w),
-        fontSize: clamp(s.fontSize, 6, 400, d.fontSize),
+        h: d.kind === "panel" ? clamp(s.h, 40, 2 * A.h, d.h) : d.h,
+        fontSize: clamp(s.fontSize, d.kind === "panel" ? 4 : 6, 400, d.fontSize),
         font: typeof s.font === "string" && s.font in FONTS ? (s.font as FontKey) : d.font,
         color: validColor(s.color, d.color),
         align: s.align === "left" || s.align === "right" || s.align === "center" ? s.align : d.align,

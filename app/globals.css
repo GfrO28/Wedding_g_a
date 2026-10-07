@@ -12,29 +12,13 @@
   font-family: var(--font-script), cursive;
 }
 
-/* Escala de la mesa de trabajo (768×1024 vertical, 1024×768 horizontal) en
-   la pantalla actual: la usan los textos que siguen el flujo de la página. */
-:root {
-  --ab-k: min(100vw / 768, 100dvh / 1024);
-}
-.ab-only-landscape {
-  display: none;
-}
+/* El pie es una franja con la proporción de su mesa (768×360 o 1024×130). */
 .footer-board {
   aspect-ratio: 768 / 360;
 }
 @media (orientation: landscape) {
   .footer-board {
     aspect-ratio: 1024 / 130;
-  }
-  :root {
-    --ab-k: min(100vw / 1024, 100dvh / 768);
-  }
-  .ab-only-portrait {
-    display: none;
-  }
-  .ab-only-landscape {
-    display: revert;
   }
 }
 
