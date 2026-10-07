@@ -222,8 +222,21 @@ export function IntroEnvelope({
             style={{ perspective: 2600, cursor: assetsReady ? "pointer" : "default" }}
             animate={{ scale: tapped ? TIMING.camera.scale : 1 }}
             transition={{ duration: TIMING.camera.duration, delay: tapped ? TIMING.camera.delay : 0, ease: "easeInOut" }}
-            onClick={startOpening}
+            onClick={assetsReady ? startOpening : undefined}
           >
+            {!assetsReady && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <motion.span
+                  className="h-2 w-2 rounded-full"
+                  style={{ background: "var(--color-bg)" }}
+                  animate={{ opacity: [0.25, 1, 0.25] }}
+                  transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
+                />
+              </div>
+            )}
+
+            {assetsReady && (
+              <>
             {/* Tarjeta interior */}
             <div
               className="absolute inset-[3%]"
@@ -410,8 +423,10 @@ export function IntroEnvelope({
                 animate={{ opacity: [0.4, 0.85, 0.4] }}
                 transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
               >
-                {assetsReady ? "Toca el sello para abrir" : "Cargando…"}
+                Toca el sello para abrir
               </motion.p>
+            )}
+              </>
             )}
           </motion.div>
         </motion.div>
