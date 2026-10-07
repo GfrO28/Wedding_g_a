@@ -152,7 +152,7 @@ export function IntroEnvelope({
   const fill = (url: string | null): CSSProperties => ({
     background: "color-mix(in srgb, var(--color-accent) 75%, white)",
     ...(url && assetsReady
-      ? { backgroundImage: `url(${url})`, backgroundSize: "contain", backgroundPosition: "center", backgroundRepeat: "no-repeat" as const }
+      ? { backgroundImage: `url(${url})`, backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat" as const }
       : null),
   });
 
