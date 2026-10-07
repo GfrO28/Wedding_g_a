@@ -19,7 +19,7 @@ export async function EventDetails() {
   const [WEDDING, layout, tokens] = await Promise.all([getWeddingContent(), getTextLayout("event"), getTokenValues("")]);
   return (
     <Slide bgImage={WEDDING.zoneImages.event} fullBleed>
-      <TextArtboard
+      <TextArtboard page
         layout={layout}
         tokens={tokens}
         animate

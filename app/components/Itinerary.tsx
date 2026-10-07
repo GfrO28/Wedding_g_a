@@ -26,7 +26,7 @@ export async function Itinerary() {
 
   return (
     <Slide bgImage={WEDDING.zoneImages.itinerary} fullBleed>
-      <TextArtboard layout={layout} tokens={tokens} animate blocks={{ body: <ItineraryBody steps={WEDDING.itinerary} /> }} />
+      <TextArtboard page layout={layout} tokens={tokens} animate blocks={{ body: <ItineraryBody steps={WEDDING.itinerary} /> }} />
     </Slide>
   );
 }

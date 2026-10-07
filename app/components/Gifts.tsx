@@ -31,7 +31,7 @@ export async function Gifts({ slug }: { slug: string }) {
 
   return (
     <Slide bgImage={WEDDING.zoneImages.gifts} fullBleed>
-      <TextArtboard
+      <TextArtboard page
         layout={layout}
         tokens={tokens}
         animate

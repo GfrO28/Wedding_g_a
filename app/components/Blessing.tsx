@@ -13,7 +13,7 @@ export async function Blessing() {
 
   return (
     <Slide bgImage={zoneImages.blessing} fullBleed>
-      <TextArtboard layout={layout} tokens={tokens} animate blocks={{ divider: <Divider scaled /> }} />
+      <TextArtboard page layout={layout} tokens={tokens} animate blocks={{ divider: <Divider scaled /> }} />
     </Slide>
   );
 }

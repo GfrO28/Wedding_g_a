@@ -10,7 +10,7 @@ export async function Accommodation() {
 
   return (
     <Slide bgImage={WEDDING.zoneImages.accommodation} fullBleed>
-      <TextArtboard layout={layout} tokens={tokens} animate blocks={{ body: <AccommodationBody hotels={WEDDING.accommodation} /> }} />
+      <TextArtboard page layout={layout} tokens={tokens} animate blocks={{ body: <AccommodationBody hotels={WEDDING.accommodation} /> }} />
     </Slide>
   );
 }

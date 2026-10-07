@@ -34,10 +34,16 @@ import {
   Unlink,
   X,
 } from "lucide-react";
-import { ElementContent, TextArtboard } from "@/app/components/TextArtboard";
+import { ElementContent, isSized, TextArtboard } from "@/app/components/TextArtboard";
 import {
   applyStyles,
   ARTBOARDS,
+  boardsFor,
+  EXTENTS,
+  extentOf,
+  FRAMES,
+  withDynamic,
+  type FrameKey,
   elementStyle,
   pickStyle,
   STYLE_PROPS,
@@ -83,7 +89,10 @@ const ORIENTATION_LABEL: Record<Orientation, string> = { portrait: "Celular", la
 
 const clone = (l: TextLayout): TextLayout => JSON.parse(JSON.stringify(l));
 
+const extentLabel = (x: number) => (x === 1 ? "1 pantalla" : `${String(x).replace(".5", "½")} pantallas`);
+
 function smallestPx(el: TextElement) {
+  if (isSized(el)) return Infinity;
   // Panel: lo más chico de adentro son textos de 12 px, escalados por el panel.
   if (el.kind === "panel") return 12 * (el.fontSize / 16) * SMALLEST_SCALE;
   return el.fontSize * SMALLEST_SCALE;
@@ -144,7 +153,8 @@ export function ArtboardEditor({
   const [hist, setHist] = useState({ undo: 0, redo: 0 });
   const syncHist = () => setHist({ undo: past.current.length, redo: future.current.length });
 
-  const A = BOARDS[orientation];
+  const ext = extentOf(layout, orientation);
+  const A = { ...BOARDS[orientation], h: BOARDS[orientation].h * ext };
   const k = area.w > 0 ? Math.max(0.05, Math.min((area.w - 48) / A.w, (area.h - 32) / A.h)) : 0;
   // Lo que se ve: los textos vinculados toman tipografía y color de su estilo.
   const resolved = useMemo(() => applyStyles(layout, styles), [layout, styles]);
@@ -224,6 +234,11 @@ export function ArtboardEditor({
     if (Object.keys(elChanges).length) {
       const next = clone(layout);
       next[orientation] = next[orientation].map((e) => (e.id === id ? { ...e, ...elChanges } : e));
+      // El borde es de la foto: vale para celular y PC.
+      if ("frame" in elChanges) {
+        const other: Orientation = orientation === "portrait" ? "landscape" : "portrait";
+        next[other] = next[other].map((e) => (e.id === id ? { ...e, frame: elChanges.frame! } : e));
+      }
       setLayout(next);
     }
     if (linked && Object.keys(styleChanges).length) {
@@ -370,8 +385,9 @@ export function ArtboardEditor({
       changes = { x: Math.round(s.x), y: Math.round(s.y) };
     } else if (d.mode === "corner") {
       const f = Math.max(0.1, (d.el.w + 2 * dx * d.sign) / d.el.w);
-      changes = { w: Math.round(d.el.w * f), fontSize: Math.round(d.el.fontSize * f * 10) / 10 };
-      if (d.el.kind === "panel") changes.h = Math.round(d.el.h * f);
+      changes = isSized(d.el)
+        ? { w: Math.round(d.el.w * f), h: Math.round(d.el.h * f) }
+        : { w: Math.round(d.el.w * f), fontSize: Math.round(d.el.fontSize * f * 10) / 10 };
     } else if (d.mode === "vside") {
       changes = { h: Math.max(40, Math.round(d.el.h + 2 * dy * d.sign)) };
     } else {
@@ -413,7 +429,7 @@ export function ArtboardEditor({
       setPopover(null);
     }
     if (!selected) return;
-    if (e.key === "Enter" && selected.kind === "text") {
+    if (e.key === "Enter" && (selected.kind === "text" || selected.kind === "link")) {
       e.preventDefault();
       startEdit(selected.id);
       return;
@@ -436,15 +452,23 @@ export function ArtboardEditor({
       ...e,
       x: Math.round(e.x * fx),
       y: Math.round(e.y * fy),
-      w: Math.round(Math.min(e.w * fx, D.w * 1.2)),
-      h: Math.round(e.h * fy),
+      w: Math.round(Math.min(e.w * (isSized(e) ? Math.min(fx, fy) : fx), D.w * 1.2)),
+      // Fotos y mapas mantienen su proporción.
+      h: Math.round(e.h * (isSized(e) ? Math.min(fx, fy) : fy)),
     }));
     commit(next, layout);
     setPopover(null);
   }
 
+  function setExtent(x: number) {
+    const next = clone(layout);
+    next.extent = { portrait: extentOf(layout, "portrait"), landscape: extentOf(layout, "landscape"), [orientation]: x };
+    commit(next, layout);
+  }
+
   function restoreOriginal() {
-    commit(sanitizeLayout(section, null), layout);
+    const photos = layout.portrait.filter((e) => e.kind === "photo").map((e) => ({ key: e.ref, src: e.src, alt: e.text }));
+    commit(withDynamic(section, sanitizeLayout(section, null), photos), layout);
     setSelectedId(null);
     setPopover(null);
   }
@@ -480,6 +504,29 @@ export function ArtboardEditor({
           <IconButton label="Deshacer (Ctrl+Z)" onClick={undo} disabled={!hist.undo}><Undo2 size={15} /></IconButton>
           <IconButton label="Rehacer (Ctrl+Y)" onClick={redo} disabled={!hist.redo}><Redo2 size={15} /></IconButton>
         </div>
+        {cfg.extendable && (
+          <select
+            aria-label="Alto de la sección"
+            title="Alto de la sección en este formato"
+            value={ext}
+            onChange={(e) => setExtent(Number(e.target.value))}
+            className="h-7 rounded-md border border-neutral-300 px-1.5 text-xs"
+          >
+            {EXTENTS.map((x) => (
+              <option key={x} value={x}>Alto: {extentLabel(x)}</option>
+            ))}
+          </select>
+        )}
+        {cfg.extendable && overflow.size > 0 && ext < EXTENTS[EXTENTS.length - 1] && (
+          <button
+            type="button"
+            onClick={() => setExtent(EXTENTS.find((x) => x > ext) ?? ext)}
+            className="rounded-md bg-amber-100 px-2 py-1 text-xs text-amber-900 hover:bg-amber-200"
+            title="Hay objetos fuera del lienzo"
+          >
+            Algo no entra · Alargar sección
+          </button>
+        )}
         {cover && (
           <div className="flex items-center gap-1">
             <div className="flex rounded-md bg-neutral-100 p-0.5" role="tablist" aria-label="Vista del sobre">
@@ -599,7 +646,7 @@ export function ArtboardEditor({
                     userSelect: "none",
                   }}
                   onPointerDown={(e) => startDrag(e, el, "move")}
-                  onDoubleClick={(e) => { if (el.kind === "text" && !isEditing) startEdit(el.id, { x: e.clientX, y: e.clientY }); }}
+                  onDoubleClick={(e) => { if ((el.kind === "text" || el.kind === "link") && !isEditing) startEdit(el.id, { x: e.clientX, y: e.clientY }); }}
                   onMouseEnter={(e) => { if (!isSel && !overflow.has(el.id) && el.kind !== "panel") e.currentTarget.style.outlineColor = "rgba(37,99,235,.5)"; }}
                   onMouseLeave={(e) => { if (!isSel && !overflow.has(el.id) && el.kind !== "panel") e.currentTarget.style.outlineColor = "transparent"; }}
                 >
@@ -613,7 +660,7 @@ export function ArtboardEditor({
                       onDone={() => { finishEdit(); areaRef.current?.focus({ preventScroll: true }); }}
                     />
                   ) : (
-                    <div style={{ pointerEvents: "none", minHeight: "0.5em" }}>
+                    <div style={{ pointerEvents: "none", minHeight: "0.5em", ...(isSized(el) ? { height: "100%" } : null) }}>
                       <ElementContent el={el} tokens={tokens} blocks={blocks} />
                     </div>
                   )}
@@ -625,7 +672,7 @@ export function ArtboardEditor({
                       ["corner", 1, "nwse-resize", { right: -handle / 2, bottom: -handle / 2 }],
                       ["side", -1, "ew-resize", { left: -handle / 2, top: `calc(50% - ${handle / 2}px)` }],
                       ["side", 1, "ew-resize", { right: -handle / 2, top: `calc(50% - ${handle / 2}px)` }],
-                      ...(el.kind === "panel"
+                      ...(isSized(el)
                         ? ([
                             ["vside", -1, "ns-resize", { top: -handle / 2, left: `calc(50% - ${handle / 2}px)` }],
                             ["vside", 1, "ns-resize", { bottom: -handle / 2, left: `calc(50% - ${handle / 2}px)` }],
@@ -734,6 +781,8 @@ function ContextToolbar({
 }) {
   const isText = el.kind === "text";
   const isPanel = el.kind === "panel";
+  const isMedia = isSized(el);
+  const canWrite = isText || el.kind === "link";
   const phonePx = smallestPx(el);
   const small = phonePx < MIN_READABLE_PX;
   const toggle = (p: Popover) => setPopover(popover === p ? null : p);
@@ -810,7 +859,7 @@ function ContextToolbar({
         </div>
       )}
 
-      {isText && (
+      {canWrite && (
         <ToolButton label={editing ? "Terminar de escribir (Esc)" : "Escribir en el lienzo (doble clic o Enter)"} active={editing} onClick={onEdit}>
           <Pencil size={14} /> <span className="text-xs">{editing ? "Listo" : "Editar texto"}</span>
         </ToolButton>
@@ -850,6 +899,8 @@ function ContextToolbar({
         </span>
       )}
 
+      {!isMedia && (
+        <>
       <select
         aria-label="Tipografía"
         className="h-8 max-w-[11rem] rounded-md border border-neutral-300 px-2 text-sm"
@@ -922,14 +973,30 @@ function ContextToolbar({
         {el.align === "left" ? <AlignLeft size={14} /> : el.align === "right" ? <AlignRight size={14} /> : <AlignCenter size={14} />}
       </ToolButton>
 
+        </>
+      )}
+
+      {el.kind === "photo" && (
+        <select
+          aria-label="Borde de la foto"
+          className="h-8 rounded-md border border-neutral-300 px-2 text-sm"
+          value={el.frame}
+          onChange={(e) => onPatch({ frame: e.target.value as FrameKey })}
+        >
+          {(Object.keys(FRAMES) as FrameKey[]).map((f) => (
+            <option key={f} value={f}>Borde: {FRAMES[f]}</option>
+          ))}
+        </select>
+      )}
+
       <div className="relative" data-popover>
         <ToolButton label="Avanzado" active={popover === "advanced"} onClick={() => toggle("advanced")}><SlidersHorizontal size={14} /></ToolButton>
         {popover === "advanced" && (
           <div className="absolute right-0 top-full z-30 mt-1 w-72 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg sm:left-0 sm:right-auto">
             <div className="grid grid-cols-2 gap-2">
-              {!isPanel && <Num label="Espaciado (em)" value={el.letterSpacing} step={0.01} onChange={(v) => onPatch({ letterSpacing: v })} />}
-              {!isPanel && <Num label="Interlineado" value={el.lineHeight} step={0.05} onChange={(v) => onPatch({ lineHeight: v })} />}
-              {isPanel && <Num label="Alto de la caja" value={el.h} onChange={(v) => onPatch({ h: v })} />}
+              {!isPanel && !isMedia && <Num label="Espaciado (em)" value={el.letterSpacing} step={0.01} onChange={(v) => onPatch({ letterSpacing: v })} />}
+              {!isPanel && !isMedia && <Num label="Interlineado" value={el.lineHeight} step={0.05} onChange={(v) => onPatch({ lineHeight: v })} />}
+              {isMedia && <Num label="Alto" value={el.h} onChange={(v) => onPatch({ h: v })} />}
               <Num label="Ancho de la caja" value={el.w} onChange={(v) => onPatch({ w: v })} />
               <Num label="Rotación (°)" value={el.rotation} onChange={(v) => onPatch({ rotation: v })} />
               <Num label="Posición X" value={el.x} onChange={(v) => onPatch({ x: v })} />
@@ -1150,7 +1217,7 @@ function RealSizeModal({
   overlay: ReactNode;
   section: LayoutSection;
 }) {
-  const BOARDS = sectionConfig(section).boards;
+  const BOARDS = boardsFor(sectionConfig(section).boards, layout);
   const [device, setDevice] = useState(0);
   const [vp, setVp] = useState({ w: 1200, h: 800 });
   useEffect(() => {
@@ -1167,8 +1234,8 @@ function RealSizeModal({
 
   const D = DEVICES[device];
   const o = orientationFor(D.w, D.h);
-  const fullScreen = BOARDS === ARTBOARDS;
-  const frameH = fullScreen ? D.h : (D.w * BOARDS[o].h) / BOARDS[o].w;
+  const fullScreen = sectionConfig(section).boards === ARTBOARDS;
+  const frameH = fullScreen ? D.h * extentOf(layout, o) : (D.w * BOARDS[o].h) / BOARDS[o].w;
   const pk = Math.min(1, (vp.w - 64) / D.w, (vp.h - 150) / frameH);
 
   return (

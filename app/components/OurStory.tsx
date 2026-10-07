@@ -17,7 +17,7 @@ export async function OurStory() {
 
   return (
     <Slide fullBleed>
-      <TextArtboard layout={layout} tokens={tokens} animate blocks={{ body: <StoryBody chapters={WEDDING.story} /> }} />
+      <TextArtboard page layout={layout} tokens={tokens} animate blocks={{ body: <StoryBody chapters={WEDDING.story} /> }} />
     </Slide>
   );
 }

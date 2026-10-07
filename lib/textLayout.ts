@@ -61,14 +61,18 @@ export type TextElement = {
   id: string;
   name: string; // cómo se llama en el editor
   // text: texto libre · block: pieza chica que se mide en em (cuenta regresiva,
-  // separador) · panel: contenido variable (tarjetas, fotos, formularios) en una
-  // caja con alto propio que se desplaza por dentro si no entra.
-  kind: "text" | "block" | "panel";
-  text: string;
+  // separador) · panel: contenido variable (tarjetas, formularios) que crece
+  // con lo que tiene adentro · photo: foto con borde · map: mapa del lugar
+  // `ref` · link: texto que abre el mapa del lugar `ref`.
+  kind: "text" | "block" | "panel" | "photo" | "map" | "link";
+  text: string; // en photo: texto alternativo
   x: number; // centro, en px de la mesa
   y: number;
   w: number; // ancho de la caja (el texto se ajusta adentro)
-  h: number; // alto de la caja (solo panel)
+  h: number; // alto de la caja (photo y map)
+  ref: string; // a qué dato apunta (foto de la galería, número de lugar)
+  src: string; // photo: lo completa withDynamic con la foto actual, no se guarda
+  frame: FrameKey; // borde de las fotos
   fontSize: number;
   font: FontKey;
   color: string;
@@ -85,7 +89,29 @@ export type TextElement = {
   style: string | null;
 };
 
-export type TextLayout = Record<Orientation, TextElement[]>;
+// extent: alto de la sección en pantallas (1, 1½, 2…), por formato.
+export type TextLayout = Record<Orientation, TextElement[]> & { extent?: Record<Orientation, number> };
+
+export const FRAMES = {
+  none: "Sin borde",
+  rounded: "Redondeado",
+  polaroid: "Polaroid",
+  vintage: "Vintage",
+} as const;
+export type FrameKey = keyof typeof FRAMES;
+
+export const EXTENTS = [1, 1.5, 2, 2.5, 3, 4] as const;
+export const extentOf = (l: TextLayout, o: Orientation) => l.extent?.[o] ?? 1;
+
+// La mesa de una sección con su alto (las secciones pueden medir más de una pantalla).
+export function boardsFor(boards: Boards, layout: TextLayout): Boards {
+  const e = layout.extent;
+  if (!e || (e.portrait === 1 && e.landscape === 1)) return boards;
+  return {
+    portrait: { ...boards.portrait, h: boards.portrait.h * e.portrait },
+    landscape: { ...boards.landscape, h: boards.landscape.h * e.landscape },
+  };
+}
 
 /* ---------- Estilos de texto compartidos ---------- */
 
@@ -122,7 +148,7 @@ export function applyStyles(layout: TextLayout, styles: TextStyle[]): TextLayout
       const s = e.kind === "text" && e.style ? byId.get(e.style) : undefined;
       return s ? { ...e, ...pickStyle(s) } : e;
     });
-  return { portrait: map(layout.portrait), landscape: map(layout.landscape) };
+  return { ...layout, portrait: map(layout.portrait), landscape: map(layout.landscape) };
 }
 
 export function sanitizeStyles(input: unknown): TextStyle[] {
@@ -165,7 +191,13 @@ export const TOKEN_HELP: Record<string, string> = {
   vestimenta: "Código de vestimenta",
   transporte: "Texto de transporte",
   mensajeRegalos: "Mensaje de regalos",
+  lugar1: "Ceremonia (nombre y salón)",
+  lugar2: "Recepción (nombre y salón)",
+  direccion1: "Dirección de la ceremonia",
+  direccion2: "Dirección de la recepción",
 };
+
+export const mapEmbedUrl = (address: string) => `https://maps.google.com/maps?q=${encodeURIComponent(address)}&output=embed`;
 
 export function fillTokens(text: string, t: TokenValues) {
   return text.replace(/\{(\w+)\}/g, (m, key: string) => (key in t ? t[key] : m));
@@ -182,11 +214,34 @@ export function elementStyle(el: TextElement): Record<string, string> {
     transform: `translate(-50%, -50%) rotate(${el.rotation}deg)`,
   };
   if (el.kind === "panel") {
-    // El contenido usa sus propios tamaños; la caja solo aporta tipografía de
-    // base y alto. El "tamaño" del panel escala todo lo de adentro (panelZoom).
-    return { ...box, height: `${el.h}px`, fontFamily: FONTS[el.font]?.css ?? FONTS.inter.css, textAlign: el.align };
+    // El contenido usa sus propios tamaños y define el alto (sin desplazarse
+    // por dentro). El "tamaño" del panel escala todo lo de adentro (panelZoom).
+    return { ...box, fontFamily: FONTS[el.font]?.css ?? FONTS.inter.css, textAlign: el.align };
   }
-  return { ...box, ...typeStyle(el), fontSize: `${el.fontSize}px`, whiteSpace: "pre-wrap", overflowWrap: "break-word" };
+  if (el.kind === "photo" || el.kind === "map") return { ...box, height: `${el.h}px` };
+  const text = { ...box, ...typeStyle(el), fontSize: `${el.fontSize}px`, whiteSpace: "pre-wrap", overflowWrap: "break-word" };
+  return el.kind === "link" ? { ...text, textDecoration: "underline", textUnderlineOffset: "0.2em" } : text;
+}
+
+// Cómo se dibuja el borde de una foto: el marco y el filtro de la imagen.
+export function frameStyle(frame: FrameKey): { box: Record<string, string>; img: Record<string, string> } {
+  switch (frame) {
+    case "rounded":
+      return { box: { borderRadius: "18px", overflow: "hidden" }, img: {} };
+    case "polaroid":
+      // El padding en % se mide sobre el ancho: el borde de abajo es más grueso.
+      return {
+        box: { background: "#fdfcf8", padding: "4.5% 4.5% 16%", boxShadow: "0 8px 22px rgba(0,0,0,.28)", boxSizing: "border-box" },
+        img: {},
+      };
+    case "vintage":
+      return {
+        box: { background: "#efe4cc", padding: "3.5%", boxShadow: "0 6px 16px rgba(60,40,20,.35), inset 0 0 0 1px rgba(90,60,30,.25)", boxSizing: "border-box" },
+        img: { filter: "sepia(.45) contrast(.92) saturate(.8)" },
+      };
+    default:
+      return { box: { overflow: "hidden" }, img: {} };
+  }
 }
 
 // Escala del contenido de un panel: 16 = tamaño normal de la página.
@@ -217,6 +272,7 @@ export function typeStyle(el: TextElement): Record<string, string> {
 const base = {
   kind: "text" as const, align: "center" as const, letterSpacing: 0, lineHeight: 1.15,
   weight: 400, italic: false, uppercase: false, rotation: 0, hidden: false, style: null,
+  ref: "", src: "", frame: "none" as FrameKey,
 };
 type Spec = Partial<TextElement> & Pick<TextElement, "id" | "name" | "text" | "fontSize" | "font" | "color">;
 const el = (s: Spec & { x?: number; y?: number; w?: number; h?: number }): TextElement => ({ ...base, x: 0, y: 0, w: 600, h: 0, ...s });
@@ -260,7 +316,31 @@ export type SectionConfig = {
   boards: Boards;
   tokens: string[];
   defaults: TextLayout;
+  extendable?: boolean; // puede medir más de una pantalla
+  photos?: boolean; // tiene una foto por cada imagen de la galería (withDynamic)
 };
+
+// Cada lugar de "Cómo llegar": nombre, mapa y enlace, sueltos.
+function placeItems(i: 1 | 2): Pair[] {
+  const p = { y: 190 + (i - 1) * 410 };
+  const lx = i === 1 ? 280 : 744;
+  const txt = { font: "inter" as FontKey, color: "var(--color-fg)", weight: 500, lineHeight: 1.3 };
+  const lnk = { kind: "link" as const, font: "inter" as FontKey, color: "var(--color-muted)", ref: String(i) };
+  return [
+    pair(
+      el({ ...txt, id: `place${i}-title`, name: `Lugar ${i}`, text: `{lugar${i}}`, x: 384, y: p.y, w: 680, fontSize: 32 }),
+      el({ ...txt, id: `place${i}-title`, name: `Lugar ${i}`, text: `{lugar${i}}`, x: lx, y: 140, w: 420, fontSize: 18 }),
+    ),
+    pair(
+      el({ kind: "map", id: `place${i}-map`, name: `Mapa ${i}`, text: "", ref: String(i), x: 384, y: p.y + 190, w: 680, h: 300, fontSize: 16, font: "inter", color: "var(--color-fg)" }),
+      el({ kind: "map", id: `place${i}-map`, name: `Mapa ${i}`, text: "", ref: String(i), x: lx, y: 300, w: 420, h: 236, fontSize: 16, font: "inter", color: "var(--color-fg)" }),
+    ),
+    pair(
+      el({ ...lnk, id: `place${i}-link`, name: `Enlace al mapa ${i}`, text: "Abrir en Google Maps", x: 384, y: p.y + 375, w: 500, fontSize: 26 }),
+      el({ ...lnk, id: `place${i}-link`, name: `Enlace al mapa ${i}`, text: "Abrir en Google Maps", x: lx, y: 445, w: 420, fontSize: 14 }),
+    ),
+  ];
+}
 
 export const SECTIONS = {
   envelope: {
@@ -338,15 +418,15 @@ export const SECTIONS = {
       ],
     },
   },
-  story: { label: "Nuestra historia", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, defaults: layoutOf(T("Nuestra historia", 110, 70), B({ y: 580, h: 860 }, { y: 425, h: 640, w: 768 })) },
-  event: { label: "El evento", mode: "artboard", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "vestimenta"], defaults: layoutOf(T("El evento", 120, 80), B({ y: 540, h: 700 }, { y: 370, h: 440, w: 896 }), P("dressCode", "Código de vestimenta", "Código de vestimenta: {vestimenta}", { y: 960, fs: 28 }, { y: 660, fs: 14 })) },
-  itinerary: { label: "Itinerario", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, defaults: layoutOf(T("Itinerario", 260, 200), B({ y: 560, h: 460 }, { y: 420, h: 320, w: 672 })) },
-  location: { label: "Cómo llegar", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, defaults: layoutOf(T("Cómo llegar", 110, 70), B({ y: 580, h: 860 }, { y: 425, h: 640, w: 896 })) },
-  gallery: { label: "Galería", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, defaults: layoutOf(T("Galería", 110, 70), B({ y: 580, h: 860 }, { y: 425, h: 640, w: 960 })) },
-  accommodation: { label: "Alojamiento", mode: "artboard", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "transporte"], defaults: layoutOf(T("Alojamiento", 110, 70), P("transport", "Transporte", "{transporte}", { y: 210, fs: 31 }, { y: 125, fs: 16 }), B({ y: 620, h: 760 }, { y: 440, h: 560, w: 768 })) },
-  gifts: { label: "Regalos", mode: "artboard", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "mensajeRegalos"], defaults: layoutOf(T("Regalos", 100, 60), P("message", "Mensaje", "{mensajeRegalos}", { y: 205, fs: 31 }, { y: 115, fs: 16 }), B({ y: 640, h: 740 }, { y: 450, h: 570, w: 672 })) },
+  story: { label: "Nuestra historia", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, extendable: true, defaults: layoutOf(T("Nuestra historia", 110, 70), B({ y: 580, h: 860 }, { y: 425, h: 640, w: 768 })) },
+  event: { label: "El evento", mode: "artboard", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "vestimenta"], extendable: true, defaults: layoutOf(T("El evento", 120, 80), B({ y: 540, h: 700 }, { y: 370, h: 440, w: 896 }), P("dressCode", "Código de vestimenta", "Código de vestimenta: {vestimenta}", { y: 960, fs: 28 }, { y: 660, fs: 14 })) },
+  itinerary: { label: "Itinerario", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, extendable: true, defaults: layoutOf(T("Itinerario", 260, 200), B({ y: 560, h: 460 }, { y: 420, h: 320, w: 672 })) },
+  location: { label: "Cómo llegar", mode: "artboard", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "lugar1", "lugar2", "direccion1", "direccion2"], extendable: true, defaults: layoutOf(T("Cómo llegar", 110, 70), ...placeItems(1), ...placeItems(2)) },
+  gallery: { label: "Galería", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, extendable: true, photos: true, defaults: layoutOf(T("Galería", 110, 70)) },
+  accommodation: { label: "Alojamiento", mode: "artboard", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "transporte"], extendable: true, defaults: layoutOf(T("Alojamiento", 110, 70), P("transport", "Transporte", "{transporte}", { y: 210, fs: 31 }, { y: 125, fs: 16 }), B({ y: 620, h: 760 }, { y: 440, h: 560, w: 768 })) },
+  gifts: { label: "Regalos", mode: "artboard", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "mensajeRegalos"], extendable: true, defaults: layoutOf(T("Regalos", 100, 60), P("message", "Mensaje", "{mensajeRegalos}", { y: 205, fs: 31 }, { y: 115, fs: 16 }), B({ y: 640, h: 740 }, { y: 450, h: 570, w: 672 })) },
   rsvp: {
-    label: "Confirmación", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS,
+    label: "Confirmación", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, extendable: true,
     defaults: layoutOf(
       T("Confirmá tu asistencia", 160, 110),
       // Reemplaza al título una vez que el invitado confirmó.
@@ -357,7 +437,7 @@ export const SECTIONS = {
       B({ y: 600, h: 760 }, { y: 440, h: 560, w: 512 }),
     ),
   },
-  messages: { label: "Mensajes", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, defaults: layoutOf(T("Dejanos un mensaje", 110, 70), B({ y: 580, h: 860 }, { y: 425, h: 640, w: 672 })) },
+  messages: { label: "Mensajes", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, extendable: true, defaults: layoutOf(T("Dejanos un mensaje", 110, 70), B({ y: 580, h: 860 }, { y: 425, h: 640, w: 672 })) },
 } satisfies Record<string, SectionConfig>;
 
 export type LayoutSection = keyof typeof SECTIONS;
@@ -386,48 +466,123 @@ function validColor(v: unknown, d: string) {
   return d;
 }
 
+const PHOTO_ID = /^photo-[A-Za-z0-9_-]{1,60}$/;
+const photoId = (key: string) => `photo-${key.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 60)}`;
+
+// Plantilla de una foto de la galería (su lugar inicial lo pone withDynamic).
+const photoTemplate = (id: string): TextElement =>
+  el({ kind: "photo", id, name: "Foto", text: "", x: 0, y: 0, w: 320, h: 320, fontSize: 16, font: "inter", color: "var(--color-fg)", frame: "rounded", ref: id.slice(6) });
+
+function cleanElement(d: TextElement, s: Record<string, unknown>, A: Board): TextElement {
+  const sized = d.kind === "photo" || d.kind === "map";
+  const clean: TextElement = {
+    ...d,
+    text: typeof s.text === "string" ? s.text.slice(0, 300) : d.text,
+    x: clamp(s.x, -A.w, 2 * A.w, d.x),
+    y: clamp(s.y, -A.h, 5 * A.h, d.y),
+    w: clamp(s.w, 20, 2 * A.w, d.w),
+    h: sized ? clamp(s.h, 20, 5 * A.h, d.h) : d.h,
+    fontSize: clamp(s.fontSize, d.kind === "panel" ? 4 : 6, 400, d.fontSize),
+    font: typeof s.font === "string" && s.font in FONTS ? (s.font as FontKey) : d.font,
+    color: validColor(s.color, d.color),
+    align: s.align === "left" || s.align === "right" || s.align === "center" ? s.align : d.align,
+    letterSpacing: clamp(s.letterSpacing, -0.1, 1, d.letterSpacing),
+    lineHeight: clamp(s.lineHeight, 0.6, 3, d.lineHeight),
+    weight: [300, 400, 500, 600, 700].includes(s.weight as number) ? (s.weight as number) : d.weight,
+    italic: typeof s.italic === "boolean" ? s.italic : d.italic,
+    uppercase: typeof s.uppercase === "boolean" ? s.uppercase : d.uppercase,
+    rotation: clamp(s.rotation, -180, 180, d.rotation),
+    hidden: typeof s.hidden === "boolean" ? s.hidden : d.hidden,
+    frame: typeof s.frame === "string" && s.frame in FRAMES ? (s.frame as FrameKey) : d.frame,
+    src: "",
+    style: null,
+  };
+  if (d.kind !== "text") return clean;
+  if ("style" in s) {
+    clean.style = typeof s.style === "string" && STYLE_ID.test(s.style) ? s.style : null;
+  } else if (d.style) {
+    // Diseños guardados antes de los estilos: se vinculan solo si se ven
+    // igual que el estilo, para no cambiar nada que ya se haya ajustado.
+    const def = DEFAULT_TEXT_STYLES.find((x) => x.id === d.style);
+    if (def && STYLE_PROPS.every((p) => clean[p] === def[p])) clean.style = d.style;
+  }
+  return clean;
+}
+
 // Mezcla lo guardado con los valores por defecto: solo se aceptan los ids que
-// existen en el diseño por defecto, y cada campo se acota a un rango válido.
+// existen en el diseño por defecto (y las fotos de la galería), y cada campo
+// se acota a un rango válido.
 export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayout {
   const cfg = sectionConfig(section);
-  const src = (input && typeof input === "object" ? input : {}) as Partial<Record<Orientation, unknown>>;
+  const src = (input && typeof input === "object" ? input : {}) as Partial<Record<Orientation, unknown>> & { extent?: unknown };
   const out = {} as TextLayout;
   for (const o of ["portrait", "landscape"] as Orientation[]) {
     const A = cfg.boards[o];
     const list = Array.isArray(src[o]) ? (src[o] as Record<string, unknown>[]) : [];
-    out[o] = cfg.defaults[o].map((d) => {
-      const s = list.find((e) => e && e.id === d.id) ?? {};
-      const clean: TextElement = {
-        ...d,
-        text: typeof s.text === "string" ? s.text.slice(0, 300) : d.text,
-        x: clamp(s.x, -A.w, 2 * A.w, d.x),
-        y: clamp(s.y, -A.h, 2 * A.h, d.y),
-        w: clamp(s.w, 20, 2 * A.w, d.w),
-        h: d.kind === "panel" ? clamp(s.h, 40, 2 * A.h, d.h) : d.h,
-        fontSize: clamp(s.fontSize, d.kind === "panel" ? 4 : 6, 400, d.fontSize),
-        font: typeof s.font === "string" && s.font in FONTS ? (s.font as FontKey) : d.font,
-        color: validColor(s.color, d.color),
-        align: s.align === "left" || s.align === "right" || s.align === "center" ? s.align : d.align,
-        letterSpacing: clamp(s.letterSpacing, -0.1, 1, d.letterSpacing),
-        lineHeight: clamp(s.lineHeight, 0.6, 3, d.lineHeight),
-        weight: [300, 400, 500, 600, 700].includes(s.weight as number) ? (s.weight as number) : d.weight,
-        italic: typeof s.italic === "boolean" ? s.italic : d.italic,
-        uppercase: typeof s.uppercase === "boolean" ? s.uppercase : d.uppercase,
-        rotation: clamp(s.rotation, -180, 180, d.rotation),
-        hidden: typeof s.hidden === "boolean" ? s.hidden : d.hidden,
-        style: null,
-      };
-      if (d.kind !== "text") return clean;
-      if ("style" in s) {
-        clean.style = typeof s.style === "string" && STYLE_ID.test(s.style) ? s.style : null;
-      } else if (d.style) {
-        // Diseños guardados antes de los estilos: se vinculan solo si se ven
-        // igual que el estilo, para no cambiar nada que ya se haya ajustado.
-        const def = DEFAULT_TEXT_STYLES.find((x) => x.id === d.style);
-        if (def && STYLE_PROPS.every((p) => clean[p] === def[p])) clean.style = d.style;
+    out[o] = cfg.defaults[o].map((d) => cleanElement(d, list.find((e) => e && e.id === d.id) ?? {}, A));
+    if (cfg.photos) {
+      for (const s of list) {
+        if (!s || typeof s.id !== "string" || !PHOTO_ID.test(s.id) || out[o].some((e) => e.id === s.id)) continue;
+        out[o].push(cleanElement(photoTemplate(s.id), s, A));
       }
-      return clean;
-    });
+    }
   }
+  if (cfg.extendable && src.extent && typeof src.extent === "object") {
+    const e = src.extent as Record<string, unknown>;
+    const pick = (v: unknown) => (EXTENTS as readonly number[]).includes(v as number) ? (v as number) : 1;
+    out.extent = { portrait: pick(e.portrait), landscape: pick(e.landscape) };
+  }
+  return out;
+}
+
+export type GalleryItem = { key: string; src: string; alt: string };
+
+// Lugar inicial de la foto número i: una grilla de 2 columnas en celular y 4 en PC.
+function photoSlot(o: Orientation, i: number) {
+  if (o === "portrait") {
+    const c = i % 2, r = Math.floor(i / 2);
+    return { x: 384 + (c === 0 ? -176 : 176), y: 380 + r * 352, w: 320, h: 320 };
+  }
+  const c = i % 4, r = Math.floor(i / 4);
+  return { x: 512 + (c - 1.5) * 224, y: 250 + r * 224, w: 200, h: 200 };
+}
+
+// Las fotos de la galería son objetos del diseño: una por imagen subida. Las
+// nuevas aparecen al final (y la sección se alarga si hace falta); las que se
+// borraron desaparecen.
+export function withDynamic(section: LayoutSection, layout: TextLayout, photos: GalleryItem[]): TextLayout {
+  const cfg = sectionConfig(section);
+  if (!cfg.photos) return layout;
+  const out: TextLayout = { ...layout };
+  const extent = { portrait: extentOf(layout, "portrait"), landscape: extentOf(layout, "landscape") };
+  for (const o of ["portrait", "landscape"] as Orientation[]) {
+    const byId = new Map(photos.map((p) => [photoId(p.key), p]));
+    let added = false;
+    const kept = layout[o]
+      .filter((e) => e.kind !== "photo" || byId.has(e.id))
+      .map((e) => {
+        const p = e.kind === "photo" ? byId.get(e.id) : undefined;
+        return p ? { ...e, src: p.src, text: e.text || p.alt, ref: p.key } : e;
+      });
+    photos.forEach((p, i) => {
+      const id = photoId(p.key);
+      if (kept.some((e) => e.id === id)) return;
+      kept.push({ ...photoTemplate(id), ...photoSlot(o, i), src: p.src, text: p.alt, ref: p.key, name: `Foto ${i + 1}` });
+      added = true;
+    });
+    // Numera las fotos en el orden de la galería para la lista de capas.
+    photos.forEach((p, i) => {
+      const e = kept.find((x) => x.id === photoId(p.key));
+      if (e) e.name = `Foto ${i + 1}`;
+    });
+    out[o] = kept;
+    if (added || !layout.extent) {
+      const H = cfg.boards[o].h;
+      const bottom = Math.max(...kept.map((e) => (e.kind === "photo" ? e.y + e.h / 2 + 40 : 0)));
+      const need = EXTENTS.find((x) => x * H >= bottom) ?? EXTENTS[EXTENTS.length - 1];
+      extent[o] = Math.max(extent[o], need);
+    }
+  }
+  out.extent = extent;
   return out;
 }

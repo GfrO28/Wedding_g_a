@@ -35,7 +35,7 @@ export function RSVPForm({
 
   return (
     <Slide fullBleed>
-      <TextArtboard
+      <TextArtboard page
         layout={shown}
         tokens={tokens}
         animate

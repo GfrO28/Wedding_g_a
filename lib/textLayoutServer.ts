@@ -1,3 +1,4 @@
+import { getGalleryImages } from "@/lib/gallery";
 import { getSettingsMap } from "@/lib/settings";
 import { getWeddingContent } from "@/lib/weddingContent";
 import {
@@ -10,6 +11,8 @@ import {
   LAYOUT_SECTIONS,
   layoutSettingKey,
   sanitizeLayout,
+  sectionConfig,
+  withDynamic,
   type LayoutSection,
   type TextLayout,
   type TokenValues,
@@ -24,10 +27,13 @@ function parse(raw: string | undefined): unknown {
   }
 }
 
-// Lo que ven los invitados: siempre la versión publicada, con los estilos aplicados.
+// Lo que ven los invitados: siempre la versión publicada, con los estilos
+// aplicados y las fotos de la galería al día.
 export async function getTextLayout(section: LayoutSection): Promise<TextLayout> {
   const map = await getSettingsMap();
-  return applyStyles(sanitizeLayout(section, parse(map[layoutSettingKey(section)])), sanitizeStyles(parse(map[STYLES_KEY])));
+  const photos = sectionConfig(section).photos ? await getGalleryImages() : [];
+  const layout = withDynamic(section, sanitizeLayout(section, parse(map[layoutSettingKey(section)])), photos);
+  return applyStyles(layout, sanitizeStyles(parse(map[STYLES_KEY])));
 }
 
 // Para el editor: la versión publicada y, si hay, el borrador de cada sección
@@ -37,13 +43,13 @@ export async function getEditorLayouts(): Promise<{
   drafts: Record<LayoutSection, TextLayout>;
   styles: { published: TextStyle[]; draft: TextStyle[] };
 }> {
-  const map = await getSettingsMap();
+  const [map, photos] = await Promise.all([getSettingsMap(), getGalleryImages()]);
   const published = {} as Record<LayoutSection, TextLayout>;
   const drafts = {} as Record<LayoutSection, TextLayout>;
   for (const s of LAYOUT_SECTIONS) {
-    published[s] = sanitizeLayout(s, parse(map[layoutSettingKey(s)]));
+    published[s] = withDynamic(s, sanitizeLayout(s, parse(map[layoutSettingKey(s)])), photos);
     const draft = parse(map[draftLayoutKey(s)]);
-    drafts[s] = draft ? sanitizeLayout(s, draft) : published[s];
+    drafts[s] = draft ? withDynamic(s, sanitizeLayout(s, draft), photos) : published[s];
   }
   const publishedStyles = sanitizeStyles(parse(map[STYLES_KEY]));
   const draftStyles = parse(map[DRAFT_STYLES_KEY]);
@@ -72,5 +78,11 @@ export async function getTokenValues(guestName: string): Promise<TokenValues> {
     vestimenta: w.dressCode,
     transporte: w.transportation,
     mensajeRegalos: w.gifts.message,
+    lugar1: `${w.ceremony.name}: ${w.ceremony.venue}`,
+    lugar2: `${w.reception.name}: ${w.reception.venue}`,
+    direccion1: w.ceremony.address,
+    direccion2: w.reception.address,
+    mapa1: w.ceremony.mapUrl,
+    mapa2: w.reception.mapUrl,
   };
 }

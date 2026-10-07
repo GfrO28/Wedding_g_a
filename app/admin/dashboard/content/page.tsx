@@ -30,8 +30,6 @@ import { Divider } from "@/app/components/Divider";
 import { StoryBody } from "@/app/components/OurStory";
 import { EventBody } from "@/app/components/EventDetails";
 import { ItineraryBody } from "@/app/components/Itinerary";
-import { LocationBody } from "@/app/components/Location";
-import { GalleryBody, getGalleryImages } from "@/app/components/Gallery";
 import { AccommodationBody } from "@/app/components/Accommodation";
 import { GiftsBody, getGiftsData } from "@/app/components/Gifts";
 import { RSVPPreviewBody } from "@/app/components/RSVPForm";
@@ -61,14 +59,13 @@ const IMAGE_FOCUS = [
 ];
 
 export default async function ContentEditorPage() {
-  const [w, theme, envelope, { published, drafts, styles }, tokens, allPhotos, galleryImages, gifts, approvedMessages] = await Promise.all([
+  const [w, theme, envelope, { published, drafts, styles }, tokens, allPhotos, gifts, approvedMessages] = await Promise.all([
     getWeddingContent(),
     getTheme(),
     getEnvelopeSettings(),
     getEditorLayouts(),
     getTokenValues("Invitado de ejemplo"),
     db.select().from(photos).orderBy(desc(photos.createdAt)),
-    getGalleryImages(),
     getGiftsData(),
     getApprovedMessages(),
   ]);
@@ -100,8 +97,6 @@ export default async function ContentEditorPage() {
     story: { body: <StoryBody chapters={w.story} /> },
     event: { body: <EventBody ceremony={w.ceremony} reception={w.reception} /> },
     itinerary: { body: <ItineraryBody steps={w.itinerary} /> },
-    location: { body: <LocationBody places={[w.ceremony, w.reception]} mapsLive={false} /> },
-    gallery: { body: <GalleryBody images={galleryImages} /> },
     accommodation: { body: <AccommodationBody hotels={w.accommodation} /> },
     gifts: { body: <GiftsBody items={gifts.items} raised={gifts.raised} payment={w.gifts.payment} slug="preview" /> },
     rsvp: { body: <RSVPPreviewBody maxAttendees={2} /> },

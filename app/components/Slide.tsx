@@ -25,7 +25,8 @@ export function Slide({
         </>
       )}
       {fullBleed ? (
-        <div className="absolute inset-0">{children}</div>
+        // La mesa de la sección define el alto (puede medir más de una pantalla).
+        <div className="relative w-full">{children}</div>
       ) : (
         <div className="relative max-h-[90dvh] w-full overflow-y-auto">{children}</div>
       )}

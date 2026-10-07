@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   ARTBOARDS,
   artboardFit,
+  boardsFor,
   elementStyle,
+  EXTENTS,
+  extentOf,
   fillTokens,
+  frameStyle,
+  mapEmbedUrl,
   orientationFor,
   panelColorVars,
   panelZoom,
@@ -15,6 +20,9 @@ import {
   type TextLayout,
   type TokenValues,
 } from "@/lib/textLayout";
+
+// Las fotos y los mapas ocupan toda su caja; el resto mide lo que su contenido.
+export const isSized = (el: TextElement) => el.kind === "photo" || el.kind === "map";
 
 export function ElementContent({
   el,
@@ -27,35 +35,71 @@ export function ElementContent({
 }) {
   if (el.kind === "panel") return <PanelBox el={el}>{blocks?.[el.id] ?? null}</PanelBox>;
   if (el.kind === "block") return <>{blocks?.[el.id] ?? null}</>;
+  if (el.kind === "photo") return <FramedPhoto el={el} />;
+  if (el.kind === "map") {
+    const address = tokens[`direccion${el.ref}`];
+    return address ? (
+      <iframe
+        title={tokens[`lugar${el.ref}`] || "Mapa"}
+        src={mapEmbedUrl(address)}
+        loading="lazy"
+        style={{ width: "100%", height: "100%", border: 0, borderRadius: 10, display: "block" }}
+      />
+    ) : (
+      <div className="flex h-full items-center justify-center rounded-[10px] bg-[var(--color-border)] text-sm text-[var(--color-muted)]">
+        Falta la dirección
+      </div>
+    );
+  }
+  if (el.kind === "link") {
+    return (
+      <a href={tokens[`mapa${el.ref}`] || "#"} target="_blank" rel="noopener noreferrer" style={{ color: "inherit" }}>
+        {fillTokens(el.text, tokens)}
+      </a>
+    );
+  }
   return <>{fillTokens(el.text, tokens)}</>;
+}
+
+function FramedPhoto({ el }: { el: TextElement }) {
+  const f = frameStyle(el.frame);
+  return (
+    <div style={{ width: "100%", height: "100%", ...(f.box as CSSProperties) }}>
+      <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", background: "var(--color-border)" }}>
+        {el.src && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={el.src}
+            alt={el.text}
+            loading="lazy"
+            draggable={false}
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", ...(f.img as CSSProperties) }}
+          />
+        )}
+      </div>
+    </div>
+  );
 }
 
 // Caja de contenido variable: el contenido se dibuja a su tamaño normal y se
 // escala parejo con zoom (así el ancho que ocupa sigue siendo el de la caja).
-// Si no entra en el alto, se desplaza por dentro.
-export function PanelBox({ el, scroll = true, children }: { el: TextElement; scroll?: boolean; children: ReactNode }) {
+// El alto lo define el contenido: nunca se desplaza por dentro.
+export function PanelBox({ el, children }: { el: TextElement; children: ReactNode }) {
   const z = panelZoom(el);
   return (
-    <div
-      className="@container"
-      style={{
-        width: el.w / z,
-        height: el.h / z,
-        zoom: z,
-        overflowY: scroll ? "auto" : "hidden",
-        overflowX: "hidden",
-        ...(panelColorVars(el) as CSSProperties),
-      }}
-    >
+    <div className="@container" style={{ width: el.w / z, zoom: z, ...(panelColorVars(el) as CSSProperties) }}>
       {children}
     </div>
   );
 }
 
-// Capa de textos de una sección: ocupa todo el contenedor, elige la mesa
-// vertical u horizontal y la escala entera. Por defecto la orientación sale
-// de la forma del contenedor; con orientationFrom="viewport" sale de la
-// pantalla (el pie es una franja: siempre más ancho que alto).
+// Capa de textos de una sección: elige la mesa vertical u horizontal y la
+// escala entera.
+// - Modo contenedor (por defecto): ocupa todo el contenedor; la orientación
+//   sale de su forma (o de la pantalla con orientationFrom="viewport").
+// - Modo página (`page`): la orientación sale de la pantalla y el alto es el
+//   de la sección (1, 1½, 2… pantallas). Si algo no entra, la sección se
+//   alarga sola en vez de recortarlo.
 export function TextArtboard({
   layout,
   tokens,
@@ -64,6 +108,7 @@ export function TextArtboard({
   boards = ARTBOARDS,
   orientationFrom = "container",
   forceOrientation,
+  page = false,
 }: {
   layout: TextLayout;
   tokens: TokenValues;
@@ -72,10 +117,13 @@ export function TextArtboard({
   boards?: Boards;
   orientationFrom?: "container" | "viewport";
   forceOrientation?: Orientation;
+  page?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const boardRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number; vw: number; vh: number } | null>(null);
   const [inView, setInView] = useState(!animate);
+  const [grow, setGrow] = useState(1);
 
   // La aparición se dispara cuando la sección entra en pantalla.
   useEffect(() => {
@@ -105,28 +153,51 @@ export function TextArtboard({
   }, []);
 
   let content: ReactNode = null;
-  if (size && size.w > 0 && size.h > 0) {
+  let pageHeight: number | undefined;
+  let fitK = 1;
+  let baseH = 0;
+  if (size && size.w > 0 && (page || size.h > 0)) {
     const orientation =
-      forceOrientation ?? (orientationFrom === "viewport" ? orientationFor(size.vw, size.vh) : orientationFor(size.w, size.h));
-    const fit = artboardFit(size.w, size.h, boards, orientation);
+      forceOrientation ??
+      (page || orientationFrom === "viewport" ? orientationFor(size.vw, size.vh) : orientationFor(size.w, size.h));
+    const ext = Math.max(extentOf(layout, orientation), page ? grow : 1);
+    const base = boards[orientation];
+    baseH = base.h;
+    const A = { ...base, h: base.h * ext };
+    let left: number, top: number;
+    if (page) {
+      // Misma escala que una pantalla; la sección mide `ext` pantallas.
+      pageHeight = size.vh * ext;
+      fitK = Math.min(size.w / base.w, size.vh / base.h);
+      left = (size.w - A.w * fitK) / 2;
+      top = (pageHeight - A.h * fitK) / 2;
+    } else {
+      const fit = artboardFit(size.w, size.h, boardsFor(boards, layout), orientation);
+      fitK = fit.k;
+      left = fit.left;
+      top = fit.top;
+    }
     const boardStyle: CSSProperties = {
       position: "absolute",
-      width: fit.A.w,
-      height: fit.A.h,
-      left: fit.left,
-      top: fit.top,
-      transform: `scale(${fit.k})`,
+      width: A.w,
+      height: A.h,
+      left,
+      top,
+      transform: `scale(${fitK})`,
       transformOrigin: "0 0",
     };
     content = (
-      <div style={boardStyle}>
+      <div ref={boardRef} style={boardStyle}>
         {layout[orientation]
           .filter((el) => !el.hidden)
           .map((el, i) => (
-            <div key={el.id} style={elementStyle(el) as CSSProperties}>
+            <div key={el.id} data-el style={elementStyle(el) as CSSProperties}>
               <div
                 className={animate && inView ? "artboard-in" : undefined}
-                style={animate ? (inView ? { animationDelay: `${i * 0.1}s` } : { opacity: 0 }) : undefined}
+                style={{
+                  ...(isSized(el) ? { height: "100%" } : null),
+                  ...(animate ? (inView ? { animationDelay: `${Math.min(i, 12) * 0.1}s` } : { opacity: 0 }) : null),
+                }}
               >
                 <ElementContent el={el} tokens={tokens} blocks={blocks} />
               </div>
@@ -136,8 +207,32 @@ export function TextArtboard({
     );
   }
 
+  // Si algo pasa el borde de abajo (un formulario largo, muchos regalos), la
+  // sección se alarga en medias pantallas.
+  useLayoutEffect(() => {
+    const board = boardRef.current;
+    if (!page || !board || !baseH) return;
+    const measure = () => {
+      const b = board.getBoundingClientRect();
+      let bottom = 0;
+      board.querySelectorAll<HTMLElement>(":scope > [data-el]").forEach((n) => {
+        bottom = Math.max(bottom, (n.getBoundingClientRect().bottom - b.top) / fitK);
+      });
+      const need = EXTENTS.find((x) => x * baseH >= bottom + 24) ?? EXTENTS[EXTENTS.length - 1];
+      setGrow((g) => (need > g ? need : g));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    board.querySelectorAll(":scope > [data-el]").forEach((n) => ro.observe(n));
+    return () => ro.disconnect();
+  });
+
   return (
-    <div ref={ref} className="absolute inset-0">
+    <div
+      ref={ref}
+      className={page ? "relative w-full" : "absolute inset-0"}
+      style={page ? { height: pageHeight ?? "100dvh" } : undefined}
+    >
       {content}
     </div>
   );

@@ -21,7 +21,7 @@ export async function GuestMessages({ slug }: { slug: string }) {
 
   return (
     <Slide fullBleed>
-      <TextArtboard layout={layout} tokens={tokens} animate blocks={{ body: <MessagesBody messages={messages} slug={slug} /> }} />
+      <TextArtboard page layout={layout} tokens={tokens} animate blocks={{ body: <MessagesBody messages={messages} slug={slug} /> }} />
     </Slide>
   );
 }

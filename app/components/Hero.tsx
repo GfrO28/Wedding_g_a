@@ -13,7 +13,7 @@ export async function Hero({ guestName }: { guestName: string }) {
 
   return (
     <Slide className="bg-[var(--color-bg)]" bgImage={WEDDING.zoneImages.hero} fullBleed>
-      <TextArtboard
+      <TextArtboard page
         layout={layout}
         tokens={tokens}
         animate
