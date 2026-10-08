@@ -46,3 +46,13 @@
   to { opacity: 1; transform: scale(1); }
 }
 .lightbox-in { animation: lightbox-in 0.28s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+
+/* Sobre con video: el sello late suave para invitar a tocarlo. */
+@keyframes fenv-pulse {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -50%) scale(1.07); }
+}
+.fenv:not(.is-open) .fenv-seal { animation: fenv-pulse 2.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .fenv-seal { animation: none !important; }
+}

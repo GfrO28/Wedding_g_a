@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { setSetting } from "@/lib/kv";
 import { getUploadUrl, publicUrlFor } from "@/lib/storage/r2";
 import { sanitizeSectionOrder, SECTION_ORDER_KEY, ZONE_IMAGE_KEYS, ZONE_TOGGLE_KEYS, type ZoneImageKey, type ZoneToggleKey } from "@/lib/weddingContent";
-import { envelopeAssetUrl, envelopeSettingKey, isEnvelopeSlot } from "@/lib/envelopeAssets";
+import { ENVELOPE_DESIGN_KEY, envelopeAssetUrl, envelopeSettingKey, isEnvelopeDesign, isEnvelopeSlot } from "@/lib/envelopeAssets";
 import { DESKTOP_BG_KEY, sanitizeDesktopBackground } from "@/lib/desktopBackground";
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -132,6 +132,13 @@ export async function saveEnvelopeImageAction(slot: string, url: string) {
   await setSetting(envelopeSettingKey(slot), url);
   revalidate();
   return { assetUrl: envelopeAssetUrl(slot, url) };
+}
+
+// Versión del sobre de apertura (se publica al elegirla).
+export async function setEnvelopeDesignAction(design: string) {
+  if (!isEnvelopeDesign(design)) return;
+  await setSetting(ENVELOPE_DESIGN_KEY, design);
+  revalidate();
 }
 
 export async function resetEnvelopeImageAction(slot: string) {

@@ -552,6 +552,44 @@ const shiftPair = (p: Pair, dyP: number, dyL: number): Pair => ({
 // Alto de la primera pantalla de Locación (donde termina lo del evento).
 const VENUE_DY = { portrait: 1024, landscape: 768 };
 
+// Sobre con video: textos arriba, el sobre horizontal al medio (se toca para
+// abrir) y la cuenta regresiva abajo. El video se pone como fondo (+ Agregar).
+export const ENVELOPE_VIDEO_BG = "#2a2522";
+// (Coordenadas de la mesa anterior, como el resto de los valores por defecto.)
+function envelopeVideoItems(): Pair[] {
+  const white = "#ffffff";
+  return [
+    pair(
+      el({ kind: "shape", id: "veil", name: "Velo", text: "", variant: "rect", x: 384, y: 512, w: 768, h: 1480, fontSize: 16, font: "inter", color: "#000000", opacity: 0.3, locked: true }),
+      el({ kind: "shape", id: "veil", name: "Velo", text: "", variant: "rect", x: 512, y: 384, w: 1366, h: 768, fontSize: 16, font: "inter", color: "#000000", opacity: 0.3, locked: true }),
+    ),
+    pair(
+      el({ id: "eyebrow", name: "Antetítulo", text: "Te invitamos a nuestra boda", x: 384, y: 92, w: 700, fontSize: 30, font: "cormorant", color: white, uppercase: true, letterSpacing: 0.12 }),
+      el({ id: "eyebrow", name: "Antetítulo", text: "Te invitamos a nuestra boda", x: 512, y: 105, w: 900, fontSize: 22, font: "cormorant", color: white, uppercase: true, letterSpacing: 0.12 }),
+    ),
+    pair(
+      el({ id: "names", name: "Nombres", text: "{nombre1} & {nombre2}", x: 384, y: 236, w: 740, fontSize: 88, font: "greatvibes", color: white, lineHeight: 1.05 }),
+      el({ id: "names", name: "Nombres", text: "{nombre1} & {nombre2}", x: 512, y: 185, w: 1000, fontSize: 72, font: "greatvibes", color: white, lineHeight: 1.05 }),
+    ),
+    pair(
+      el({ kind: "block", id: "envelope", name: "Sobre", text: "", x: 384, y: 592, w: 620, fontSize: 16, font: "inter", color: "#d8c2a3" }),
+      el({ kind: "block", id: "envelope", name: "Sobre", text: "", x: 512, y: 430, w: 440, fontSize: 16, font: "inter", color: "#d8c2a3" }),
+    ),
+    pair(
+      el({ id: "hint", name: "Tocá para abrir", text: "Tocá para abrir", x: 384, y: 440, w: 520, fontSize: 22, font: "cormorant", color: "#5f4c39", uppercase: true, letterSpacing: 0.25, weight: 600 }),
+      el({ id: "hint", name: "Tocá para abrir", text: "Tocá para abrir", x: 512, y: 323, w: 400, fontSize: 15, font: "cormorant", color: "#5f4c39", uppercase: true, letterSpacing: 0.25, weight: 600 }),
+    ),
+    pair(
+      el({ id: "left", name: "Faltan", text: "Faltan", x: 384, y: 862, w: 500, fontSize: 26, font: "inter", color: white, uppercase: true, letterSpacing: 0.2, weight: 600 }),
+      el({ id: "left", name: "Faltan", text: "Faltan", x: 512, y: 625, w: 400, fontSize: 16, font: "inter", color: white, uppercase: true, letterSpacing: 0.2, weight: 600 }),
+    ),
+    pair(
+      el({ kind: "block", id: "countdown", name: "Cuenta regresiva", text: "", x: 384, y: 962, w: 660, fontSize: 34, font: "cormorant", color: white, weight: 500 }),
+      el({ kind: "block", id: "countdown", name: "Cuenta regresiva", text: "", x: 512, y: 690, w: 560, fontSize: 24, font: "cormorant", color: white, weight: 500 }),
+    ),
+  ];
+}
+
 export const SECTIONS = {
   envelope: {
     label: "Tarjeta del sobre",
@@ -559,6 +597,13 @@ export const SECTIONS = {
     boards: ARTBOARDS,
     tokens: [...COMMON_TOKENS, "invitado"],
     defaults: { portrait: envelopeLines(384, 512), landscape: envelopeLines(512, 384) },
+  },
+  envelopeVideo: {
+    label: "Sobre con video",
+    mode: "artboard",
+    boards: ARTBOARDS,
+    tokens: [...COMMON_TOKENS, "invitado"],
+    defaults: layoutOf(...envelopeVideoItems()),
   },
   hero: {
     label: "Portada",

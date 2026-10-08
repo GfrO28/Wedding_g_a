@@ -45,10 +45,11 @@ export default async function GuestInvitationPage({
     .where(eq(rsvps.guestId, guest.id))
     .limit(1);
 
-  const [content, envelope, envelopeText, rsvpText, tokens] = await Promise.all([
+  const [content, envelope, envelopeText, envelopeVideoText, rsvpText, tokens] = await Promise.all([
     getWeddingContent(),
     getEnvelopeSettings(),
     getTextLayout("envelope"),
+    getTextLayout("envelopeVideo"),
     getTextLayout("rsvp"),
     getTokenValues(guest.fullName),
   ]);
@@ -77,7 +78,7 @@ export default async function GuestInvitationPage({
   return (
     <>
     <MusicControl music={content.zoneEnabled.music ? content.music : null} />
-    {content.zoneEnabled.intro && <EnvelopeIntro assets={envelope.assets} textLayout={envelopeText} tokens={tokens} />}
+    {content.zoneEnabled.intro && <EnvelopeIntro assets={envelope.assets} textLayout={envelopeText} tokens={tokens} design={envelope.design} videoLayout={envelopeVideoText} />}
     <DesktopFixedBackground desktop={desktop} />
     <main className="h-dvh overflow-y-auto overscroll-y-contain" {...desktopPageProps(desktop)}>
       {content.sectionOrder.map((id) => content.zoneEnabled[id] && <Fragment key={id}>{sections[id]}</Fragment>)}

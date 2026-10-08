@@ -30,6 +30,9 @@ import {
   type TokenValues,
 } from "@/lib/textLayout";
 
+// Contenido de los bloques: algo fijo o una función del objeto (p. ej. el sobre usa su color).
+export type Blocks = Record<string, ReactNode | ((el: TextElement) => ReactNode)>;
+
 // Las fotos y los mapas ocupan toda su caja; el resto mide lo que su contenido.
 export const isSized = (el: TextElement) =>
   el.kind === "photo" || el.kind === "map" || el.kind === "shape" || el.kind === "ornament";
@@ -44,17 +47,21 @@ export function ElementContent({
 }: {
   el: TextElement;
   tokens: TokenValues;
-  blocks?: Record<string, ReactNode>;
+  blocks?: Blocks;
   onOpenPhoto?: (id: string) => void; // fotos de la galería: ampliar al tocarlas
 }) {
-  if (el.kind === "panel") return <PanelBox el={el}>{blocks?.[`${el.id}:${el.variant}`] ?? blocks?.[el.id] ?? null}</PanelBox>;
+  const block = (key: string) => {
+    const b = blocks?.[key];
+    return typeof b === "function" ? b(el) : b;
+  };
+  if (el.kind === "panel") return <PanelBox el={el}>{block(`${el.id}:${el.variant}`) ?? block(el.id) ?? null}</PanelBox>;
   // La cuenta regresiva (agregada o la de la sección): las etiquetas pueden
   // tener otra tipografía y no ir en mayúsculas.
   if (el.kind === "countdown" || (el.kind === "block" && el.id === "countdown"))
     return tokens.fechaISO ? (
       <Countdown targetISO={tokens.fechaISO} scaled labelFont={el.labelFont ? FONTS[el.labelFont]?.css : undefined} labelUpper={el.labelUpper} />
     ) : null;
-  if (el.kind === "block") return <>{blocks?.[el.id] ?? null}</>;
+  if (el.kind === "block") return <>{block(el.id) ?? null}</>;
   if (el.kind === "photo") {
     const zoomable = !!onOpenPhoto && el.id.startsWith("photo-");
     const open = () => onOpenPhoto?.(el.id);
@@ -202,15 +209,17 @@ export function TextArtboard({
   orientationFrom = "container",
   forceOrientation,
   page = false,
+  dim,
 }: {
   layout: TextLayout;
   tokens: TokenValues;
-  blocks?: Record<string, ReactNode>;
+  blocks?: Blocks;
   animate?: boolean;
   boards?: Boards;
   orientationFrom?: "container" | "viewport";
   forceOrientation?: Orientation;
   page?: boolean;
+  dim?: string[]; // objetos que se desvanecen (p. ej. «Tocá para abrir» al abrir el sobre)
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -299,7 +308,7 @@ export function TextArtboard({
           .map((el, i) => {
             const full = coversBoard(el, A);
             return (
-            <div key={el.id} data-el={full ? "fill" : ""} style={{ ...elementStyle(el), ...(full ? cover : null) } as CSSProperties}>
+            <div key={el.id} data-el={full ? "fill" : ""} style={{ ...elementStyle(el), ...(full ? cover : null), ...(dim?.includes(el.id) ? { opacity: 0, transition: "opacity .35s" } : null) } as CSSProperties}>
               <div
                 className={animate && inView && !full ? "artboard-in" : undefined}
                 style={{

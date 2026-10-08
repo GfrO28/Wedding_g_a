@@ -1,9 +1,10 @@
 import { getSettingsMap } from "@/lib/settings";
-import { ENVELOPE_SLOTS, envelopeAssetUrl, envelopeSettingKey, type EnvelopeSlot } from "@/lib/envelopeAssets";
+import { ENVELOPE_DESIGN_KEY, ENVELOPE_SLOTS, envelopeAssetUrl, envelopeSettingKey, isEnvelopeDesign, type EnvelopeDesign, type EnvelopeSlot } from "@/lib/envelopeAssets";
 
 export type EnvelopeSettings = {
   assets: Record<EnvelopeSlot, string>;
   custom: Record<EnvelopeSlot, boolean>;
+  design: EnvelopeDesign;
 };
 
 export async function getEnvelopeSettings(): Promise<EnvelopeSettings> {
@@ -15,5 +16,6 @@ export async function getEnvelopeSettings(): Promise<EnvelopeSettings> {
     assets[slot] = envelopeAssetUrl(slot, stored);
     custom[slot] = Boolean(stored);
   }
-  return { assets, custom };
+  const d = map[ENVELOPE_DESIGN_KEY];
+  return { assets, custom, design: isEnvelopeDesign(d) ? d : "classic" };
 }

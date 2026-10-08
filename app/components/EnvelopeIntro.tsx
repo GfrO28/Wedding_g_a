@@ -1,12 +1,89 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { EnvelopeAssets } from "./envelope/engine";
-import type { TextLayout, TokenValues } from "@/lib/textLayout";
+import { ENVELOPE_VIDEO_BG, type TextLayout, type TokenValues } from "@/lib/textLayout";
+import type { EnvelopeDesign } from "@/lib/envelopeAssets";
+import { TextArtboard } from "./TextArtboard";
+import { FramedEnvelope } from "./FramedEnvelope";
 
 export const PLAY_MUSIC_EVENT = "invitation:play-music";
 
+// Sobre de apertura: el clásico (solapas a pantalla completa) o el sobre
+// horizontal con video de fondo.
 export function EnvelopeIntro({
+  design = "classic",
+  videoLayout,
+  ...props
+}: {
+  assets: EnvelopeAssets;
+  textLayout: TextLayout;
+  tokens: TokenValues;
+  design?: EnvelopeDesign;
+  videoLayout?: TextLayout;
+}) {
+  if (design === "video" && videoLayout) return <VideoIntro layout={videoLayout} tokens={props.tokens} seal={props.assets.seal} />;
+  return <ClassicIntro {...props} />;
+}
+
+// Tiempos del sobre con video: se abre (sello, solapa y tarjeta) y la intro se desvanece.
+const OPEN_MS = 1900;
+const FADE_MS = 800;
+
+function VideoIntro({ layout, tokens, seal }: { layout: TextLayout; tokens: TokenValues; seal: string }) {
+  const [stage, setStage] = useState<"closed" | "opening" | "leaving" | "done">("closed");
+  // ?skipIntro=1 saltea la intro (en el servidor no se sabe: se muestra).
+  const skip = useSyncExternalStore(
+    () => () => {},
+    () => new URLSearchParams(window.location.search).get("skipIntro") === "1",
+    () => false,
+  );
+
+  useEffect(() => {
+    if (skip) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [skip]);
+
+  useEffect(() => {
+    if (stage === "done") document.body.style.overflow = "";
+  }, [stage]);
+
+  function open() {
+    if (stage !== "closed") return;
+    window.dispatchEvent(new Event(PLAY_MUSIC_EVENT));
+    setStage("opening");
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setTimeout(() => setStage("leaving"), reduced ? 300 : OPEN_MS);
+    setTimeout(() => setStage("done"), (reduced ? 300 : OPEN_MS) + FADE_MS);
+  }
+
+  if (skip || stage === "done") return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 overflow-hidden"
+      data-video-intro={stage}
+      style={{ width: "100vw", height: "100dvh", background: ENVELOPE_VIDEO_BG, opacity: stage === "leaving" ? 0 : 1, transition: `opacity ${FADE_MS}ms ease` }}
+    >
+      <TextArtboard
+        layout={layout}
+        tokens={tokens}
+        orientationFrom="viewport"
+        dim={stage === "closed" ? undefined : ["hint"]}
+        blocks={{
+          envelope: (el) => (
+            <FramedEnvelope color={el.color} seal={seal} monogram={`${tokens.inicial1 ?? ""}${tokens.inicial2 ?? ""}`} opened={stage !== "closed"} onOpen={open} />
+          ),
+        }}
+      />
+    </div>
+  );
+}
+
+function ClassicIntro({
   assets,
   textLayout,
   tokens,

@@ -56,7 +56,7 @@ import {
   Unlink,
   X,
 } from "lucide-react";
-import { ElementContent, isSized, TextArtboard } from "@/app/components/TextArtboard";
+import { ElementContent, isSized, TextArtboard, type Blocks } from "@/app/components/TextArtboard";
 import { Ornament, ORNAMENT_LABELS } from "@/app/components/ornaments";
 import { requestDesignImageUploadAction } from "./zone-actions";
 import { setItineraryStepIconAction } from "./content-actions";
@@ -219,7 +219,7 @@ export function ArtboardEditor({
   initialLayout: TextLayout;
   tokens: TokenValues;
   background: Background;
-  blocks?: Record<string, ReactNode>;
+  blocks?: Blocks;
   onChange?: (layout: TextLayout) => void;
   actions?: ReactNode;
   styles?: TextStyle[];
@@ -281,7 +281,7 @@ export function ArtboardEditor({
 
   // La invitación se diseña para celular; solo el sobre (a pantalla completa
   // en PC) tiene además un diseño horizontal.
-  const single = section !== "envelope";
+  const single = section !== "envelope" && section !== "envelopeVideo";
   const ext = extentOf(layout, orientation);
   const A = { ...BOARDS[orientation], h: BOARDS[orientation].h * ext };
   const fitK = area.w > 0 ? Math.max(0.05, Math.min((area.w - 48) / A.w, (area.h - 32) / A.h)) : 0;
@@ -1770,6 +1770,8 @@ function ContextToolbar({
 }) {
   const isText = el.kind === "text";
   const countdown = isCountdown(el);
+  // El sobre (versión con video): solo se le cambia el color del papel.
+  const envelopeBlock = el.kind === "block" && el.id === "envelope";
   const isPanel = el.kind === "panel";
   const isMedia = isSized(el);
   const canWrite = isText || el.kind === "link";
@@ -1908,7 +1910,9 @@ function ContextToolbar({
       )}
 
 
-      {!isMedia && (
+      {envelopeBlock && colorTool}
+
+      {!isMedia && !envelopeBlock && (
         <>
       <select
         aria-label="Tipografía"
@@ -2680,7 +2684,7 @@ function RealSizeModal({
   onClose: () => void;
   layout: TextLayout;
   tokens: TokenValues;
-  blocks?: Record<string, ReactNode>;
+  blocks?: Blocks;
   bgStyle: CSSProperties;
   section: LayoutSection;
 }) {
@@ -2701,7 +2705,7 @@ function RealSizeModal({
 
   const D = DEVICES[device];
   // Todo menos el sobre se ve en una columna con el diseño de celular.
-  const single = section !== "envelope";
+  const single = section !== "envelope" && section !== "envelopeVideo";
   const o = single ? "portrait" : orientationFor(D.w, D.h);
   const colW = single ? Math.min(D.w, Math.round((D.h * ARTBOARDS.portrait.w) / ARTBOARDS.portrait.h)) : D.w;
   const fullScreen = sectionConfig(section).boards === ARTBOARDS;

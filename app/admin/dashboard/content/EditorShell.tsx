@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, Check, ChevronDown, ChevronUp, ExternalLink, Loader2, MapPin, PanelRightClose, PanelRightOpen, Trash2 } from "lucide-react";
-import type { EnvelopeSlot } from "@/lib/envelopeAssets";
-import { applyStyles, backdropOf, isCustom, LAYOUT_SECTIONS, mapSourceOf, pickStyle, withDynamic, type LayoutSection, type TextElement, type TextLayout, type TextStyle, type TokenValues } from "@/lib/textLayout";
+import { ENVELOPE_DESIGNS, type EnvelopeDesign, type EnvelopeSlot } from "@/lib/envelopeAssets";
+import { FramedEnvelope } from "@/app/components/FramedEnvelope";
+import { applyStyles, backdropOf, ENVELOPE_VIDEO_BG, isCustom, LAYOUT_SECTIONS, mapSourceOf, pickStyle, withDynamic, type LayoutSection, type TextElement, type TextLayout, type TextStyle, type TokenValues } from "@/lib/textLayout";
 import { ArtboardEditor, type CanvasCover, type Clip, type EditorApi } from "./ArtboardEditor";
 import { GalleryPhotosPanel, type LibraryPhoto } from "./GalleryPhotosPanel";
 import { DesktopBackgroundPanel } from "./DesktopBackgroundPanel";
@@ -13,7 +14,7 @@ import { EnvelopeImagesPanel } from "./EnvelopeImagesPanel";
 import { discardDraftsAction, publishAction, saveDraftAction, saveStylesDraftAction } from "./layout-actions";
 import { StylesPanel } from "./StylesPanel";
 import { Hint } from "./Hint";
-import { saveSectionOrderAction, toggleZoneEnabledAction } from "./zone-actions";
+import { saveSectionOrderAction, setEnvelopeDesignAction, toggleZoneEnabledAction } from "./zone-actions";
 
 export type EditorSection = {
   id: string;
@@ -47,7 +48,7 @@ export function EditorShell({
   drafts: Record<LayoutSection, TextLayout>;
   styles: { published: TextStyle[]; draft: TextStyle[] };
   tokens: TokenValues;
-  envelope: { assets: Record<EnvelopeSlot, string>; custom: Record<EnvelopeSlot, boolean> };
+  envelope: { assets: Record<EnvelopeSlot, string>; custom: Record<EnvelopeSlot, boolean>; design: EnvelopeDesign };
   galleryPhotos: LibraryPhoto[];
   desktopBackground: DesktopBackground;
 }) {
@@ -65,6 +66,9 @@ export function EditorShell({
   // El sobre abre con sus imágenes a la vista: es lo primero que se busca ahí.
   const [contentOpen, setContentOpen] = useState(sections[0].id === "intro");
   const [envelopeAssets, setEnvelopeAssets] = useState(envelope.assets);
+  // Versión del sobre: cada una tiene su propio lienzo.
+  const [envDesign, setEnvDesign] = useState<EnvelopeDesign>(envelope.design);
+  const designOf = (s: EditorSection): LayoutSection | undefined => (s.id === "intro" && envDesign === "video" ? "envelopeVideo" : s.design);
   const [galleryPhotos, setGalleryPhotos] = useState(initialGalleryPhotos);
   // Mapa recién agregado: se abre «Contenido» con su campo listo para escribir.
   const [focusMap, setFocusMap] = useState<string | null>(null);
@@ -115,7 +119,7 @@ export function EditorShell({
   const current = sections.find((s) => s.id === currentId)!;
   const unpublished = (s: LayoutSection) => JSON.stringify(layouts[s]) !== JSON.stringify(publishedState[s]);
   const stylesUnpublished = JSON.stringify(styles) !== JSON.stringify(publishedStyles);
-  const anyUnpublished = stylesUnpublished || sections.some((s) => s.design && unpublished(s.design));
+  const anyUnpublished = stylesUnpublished || sections.some((s) => s.design && unpublished(s.design)) || unpublished("envelopeVideo");
 
   // Cuántos textos usan cada estilo (en todas las secciones y formatos).
   const styleUsage = useMemo(() => {
@@ -184,7 +188,7 @@ export function EditorShell({
     handleStylesChange(styles.filter((s) => s.id !== id));
   }
 
-  const design = current.design;
+  const design = designOf(current);
   const onDesignChange = useCallback((l: TextLayout) => design && handleChange(design, l), [design, handleChange]);
 
   useEffect(() => {
@@ -271,12 +275,13 @@ export function EditorShell({
       aria-pressed={contentOpen}
       className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium ${contentOpen ? "bg-neutral-900 text-white" : "border border-neutral-300 hover:bg-neutral-50"}`}
     >
-      {contentOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />} {current.id === "intro" ? "Imágenes del sobre" : "Contenido"}
+      {contentOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />} {current.id === "intro" ? "Sobre" : "Contenido"}
     </button>
   );
 
   const isEnvelope = current.id === "intro";
-  const envelopeCover: CanvasCover | undefined = isEnvelope
+  const classicEnvelope = isEnvelope && envDesign === "classic";
+  const envelopeCover: CanvasCover | undefined = classicEnvelope
     ? {
         closedLabel: "Sobre cerrado",
         openLabel: "Tarjeta (textos)",
@@ -317,8 +322,47 @@ export function EditorShell({
   // Mapas agregados en esta sección: su dirección o link se carga acá.
   const mapObjects = design ? layouts[design].portrait.filter((e) => e.kind === "map" && isCustom(e) && !e.ref) : [];
 
+  const designPicker = isEnvelope && (
+    <section className="mb-5 flex flex-col gap-2" aria-label="Versión del sobre">
+      <h3 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">Versión del sobre</h3>
+      <div className="grid grid-cols-2 gap-2">
+        {(Object.keys(ENVELOPE_DESIGNS) as EnvelopeDesign[]).map((d) => (
+          <button
+            key={d}
+            type="button"
+            aria-pressed={envDesign === d}
+            onClick={async () => {
+              setEnvDesign(d);
+              await setEnvelopeDesignAction(d);
+            }}
+            className={`flex flex-col items-center gap-1.5 rounded-lg border p-2 text-xs ${envDesign === d ? "border-blue-500 bg-blue-50 text-blue-900" : "border-neutral-200 text-neutral-700 hover:bg-neutral-50"}`}
+          >
+            {d === "classic" ? (
+              <span className="relative block h-16 w-10 overflow-hidden rounded-sm" style={{ background: ENVELOPE_BG }}>
+                <span className="absolute inset-x-0 top-0 h-1/2 bg-[#6b2333]" style={{ clipPath: "polygon(0 0,100% 0,50% 100%)" }} />
+                <span className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#c9a24f]" />
+              </span>
+            ) : (
+              <span className="relative flex h-16 w-10 items-center justify-center overflow-hidden rounded-sm bg-gradient-to-b from-neutral-500 to-neutral-800">
+                <span className="block w-8"><FramedEnvelope color="#d8c2a3" seal={envelopeAssets.seal} monogram="" /></span>
+              </span>
+            )}
+            {ENVELOPE_DESIGNS[d]}
+          </button>
+        ))}
+      </div>
+      <p className="text-[11px] leading-snug text-neutral-500">
+        {envDesign === "video"
+          ? "Poné el video con «+ Agregar → Imagen → Usar de fondo». Los textos, el sobre y la cuenta regresiva se acomodan en el lienzo; el sobre se abre al tocarlo. Cambiar de versión se publica al instante."
+          : "Las solapas se abren a pantalla completa y muestran la tarjeta con los textos. Cambiar de versión se publica al instante."}
+      </p>
+    </section>
+  );
+
   const panel =
-    current.id === "intro" ? (
+    current.id === "intro" && envDesign === "video" ? (
+      <p className="text-xs text-neutral-500">El sello del sobre es la imagen «Sello» del sobre clásico (se cambia eligiendo la versión Clásico).</p>
+    ) : current.id === "intro" ? (
       <EnvelopeImagesPanel initialAssets={envelopeAssets} initialCustom={envelope.custom} onAssetsChange={setEnvelopeAssets} textLayout={applyStyles(layouts.envelope, styles)} tokens={tokens} />
     ) : current.id === "gallery" ? (
       <GalleryPhotosPanel
@@ -406,7 +450,7 @@ export function EditorShell({
                         className={`flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left text-sm ${!isOn && !active ? "text-neutral-400" : ""}`}
                       >
                         <span className="truncate">{s.label}</span>
-                        {((s.design && unpublished(s.design)) || (s.id === "styles" && stylesUnpublished)) && (
+                        {((designOf(s) && unpublished(designOf(s)!)) || (s.id === "styles" && stylesUnpublished)) && (
                           <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? "bg-amber-300" : "bg-amber-500"}`} title="Cambios sin publicar" />
                         )}
                       </button>
@@ -466,7 +510,7 @@ export function EditorShell({
               section={design}
               initialLayout={layouts[design]}
               tokens={tokens}
-              background={{ color: isEnvelope ? ENVELOPE_BG : current.background?.color ?? "var(--color-bg)" }}
+              background={{ color: classicEnvelope ? ENVELOPE_BG : isEnvelope ? ENVELOPE_VIDEO_BG : current.background?.color ?? "var(--color-bg)" }}
               onAdded={(el) => {
                 if (el.kind !== "map") return;
                 setContentOpen(true);
@@ -478,9 +522,13 @@ export function EditorShell({
                 setContentOpen(true);
                 setFocusMap(id ?? null);
               }}
-              underlay={isEnvelope ? <EnvelopeCard /> : undefined}
+              underlay={classicEnvelope ? <EnvelopeCard /> : undefined}
               cover={envelopeCover}
-              blocks={blocks[design]}
+              blocks={
+                design === "envelopeVideo"
+                  ? { envelope: (el) => <FramedEnvelope color={el.color} seal={envelopeAssets.seal} monogram={`${tokens.inicial1 ?? ""}${tokens.inicial2 ?? ""}`} /> }
+                  : blocks[design]
+              }
               onChange={onDesignChange}
               actions={contentToggle}
               styles={styles}
@@ -504,11 +552,12 @@ export function EditorShell({
         {design && contentOpen && (
           <aside className="w-96 shrink-0 overflow-y-auto border-l border-neutral-200 bg-white p-4" aria-label={`Contenido de ${current.label}`}>
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="font-serif text-lg text-neutral-800">{isEnvelope ? "Imágenes del sobre" : `Contenido · ${current.label}`}</h2>
+              <h2 className="font-serif text-lg text-neutral-800">{isEnvelope ? "Sobre de apertura" : `Contenido · ${current.label}`}</h2>
               <button type="button" onClick={() => setContentOpen(false)} aria-label="Cerrar contenido" className="rounded p-1 text-neutral-500 hover:bg-neutral-100">
                 <PanelRightClose size={16} />
               </button>
             </div>
+            {designPicker}
             {templateCard}
             {mapObjects.length > 0 && (
               <MapObjectsPanel

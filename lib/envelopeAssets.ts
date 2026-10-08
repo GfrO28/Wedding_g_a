@@ -11,6 +11,12 @@ export const DEFAULT_ENVELOPE_ASSETS: Record<EnvelopeSlot, string> = {
 
 export const envelopeSettingKey = (slot: EnvelopeSlot) => `envelope_${slot}`;
 
+// Versión del sobre de apertura: clásico (a pantalla completa) o con video de fondo.
+export const ENVELOPE_DESIGNS = { classic: "Clásico", video: "Con video de fondo" } as const;
+export type EnvelopeDesign = keyof typeof ENVELOPE_DESIGNS;
+export const ENVELOPE_DESIGN_KEY = "envelopeDesign";
+export const isEnvelopeDesign = (v: unknown): v is EnvelopeDesign => typeof v === "string" && v in ENVELOPE_DESIGNS;
+
 export function isEnvelopeSlot(value: string): value is EnvelopeSlot {
   return (ENVELOPE_SLOTS as readonly string[]).includes(value);
 }
