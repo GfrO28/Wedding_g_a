@@ -341,7 +341,7 @@ export function mountEnvelope(container: HTMLElement, G: Geometry, opts: MountOp
     transform: `scale(${fit.k})`, transformOrigin: "0 0", pointerEvents: "none",
   });
   for (const el of opts.textLayout[fit.orientation]) {
-    if (el.hidden || el.kind !== "text") continue;
+    if (el.hidden || el.removed || el.kind !== "text") continue;
     const box = document.createElement("div");
     Object.assign(box.style, elementStyle(el));
     // Las letras se agrupan por palabra para que el texto solo se corte en

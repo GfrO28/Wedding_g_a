@@ -18,6 +18,8 @@ import { Gifts } from "@/app/components/Gifts";
 import { RSVPForm } from "@/app/components/RSVPForm";
 import { GuestMessages } from "@/app/components/GuestMessages";
 import { Footer } from "@/app/components/Footer";
+import { DesktopFixedBackground, desktopPageProps } from "@/app/components/Slide";
+import { getDesktopBackground } from "@/lib/desktopBackgroundServer";
 import { getWeddingContent } from "@/lib/weddingContent";
 
 export const dynamic = "force-dynamic";
@@ -49,11 +51,13 @@ export default async function GuestInvitationPage({
     getTokenValues(guest.fullName),
   ]);
 
+  const desktop = await getDesktopBackground();
   return (
     <>
     <MusicControl music={content.zoneEnabled.music ? content.music : null} />
     {content.zoneEnabled.intro && <EnvelopeIntro assets={envelope.assets} textLayout={envelopeText} tokens={tokens} />}
-    <main className="h-dvh overflow-y-auto overscroll-y-contain">
+    <DesktopFixedBackground desktop={desktop} />
+    <main className="h-dvh overflow-y-auto overscroll-y-contain" {...desktopPageProps(desktop)}>
       {content.zoneEnabled.hero && <Hero guestName={guest.fullName} />}
       {content.zoneEnabled.blessing && <Blessing />}
       {content.zoneEnabled.story && <OurStory />}

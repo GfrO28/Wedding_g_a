@@ -12,6 +12,8 @@ import { GuestMessages } from "@/app/components/GuestMessages";
 import { Footer } from "@/app/components/Footer";
 
 import { getWeddingContent } from "@/lib/weddingContent";
+import { DesktopFixedBackground, desktopPageProps } from "@/app/components/Slide";
+import { getDesktopBackground } from "@/lib/desktopBackgroundServer";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
 
 export const dynamic = "force-dynamic";
@@ -26,8 +28,11 @@ export default async function PreviewPage() {
     getTokenValues("Invitado de ejemplo"),
   ]);
 
+  const desktop = await getDesktopBackground();
   return (
-    <main className="h-dvh overflow-y-auto overscroll-y-contain">
+    <>
+    <DesktopFixedBackground desktop={desktop} />
+    <main className="h-dvh overflow-y-auto overscroll-y-contain" {...desktopPageProps(desktop)}>
       {content.zoneEnabled.hero && <Hero guestName="Invitado de ejemplo" />}
       {content.zoneEnabled.blessing && <Blessing />}
       {content.zoneEnabled.story && <OurStory />}
@@ -41,5 +46,6 @@ export default async function PreviewPage() {
       <GuestMessages slug="preview" />
       <Footer />
     </main>
+    </>
   );
 }

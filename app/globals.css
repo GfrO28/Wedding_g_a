@@ -13,15 +13,6 @@
 }
 
 /* El pie es una franja con la proporción de su mesa (768×360 o 1024×130). */
-.footer-board {
-  aspect-ratio: 768 / 360;
-}
-@media (orientation: landscape) {
-  .footer-board {
-    aspect-ratio: 1024 / 130;
-  }
-}
-
 @keyframes artboard-in {
   from { opacity: 0; transform: translateY(14px); }
   to { opacity: 1; transform: none; }
@@ -34,3 +25,9 @@
 @media (prefers-reduced-motion: reduce) {
   .artboard-in { animation: none; }
 }
+
+/* Fondo para PC alrededor de la columna (lo elige el <main data-desktop>). */
+.desk-color { background: var(--color-bg); }
+[data-desktop="color"] .desk-color { background: var(--desk-color, var(--color-bg)); }
+[data-desktop="color"] .desk-blur { display: none; }
+[data-desktop="image"] .desk-backdrop { display: none; }

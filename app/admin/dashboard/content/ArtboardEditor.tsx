@@ -214,12 +214,17 @@ export function ArtboardEditor({
   const [hist, setHist] = useState({ undo: 0, redo: 0 });
   const syncHist = () => setHist({ undo: past.current.length, redo: future.current.length });
 
+  // La invitación se diseña para celular; solo el sobre (a pantalla completa
+  // en PC) tiene además un diseño horizontal.
+  const single = section !== "envelope";
   const ext = extentOf(layout, orientation);
   const A = { ...BOARDS[orientation], h: BOARDS[orientation].h * ext };
   const k = area.w > 0 ? Math.max(0.05, Math.min((area.w - 48) / A.w, (area.h - 32) / A.h)) : 0;
   // Lo que se ve: los textos vinculados toman tipografía y color de su estilo.
   const resolved = useMemo(() => applyStyles(layout, styles), [layout, styles]);
-  const elements = resolved[orientation];
+  // Los objetos eliminados no se ven ni se listan (se recuperan desde ⋯).
+  const elements = resolved[orientation].filter((e) => !e.removed);
+  const removedEls = layout[orientation].filter((e) => e.removed);
   const selected = elements.find((e) => e.id === selectedId) ?? null;
   const selectedRaw = layout[orientation].find((e) => e.id === selectedId) ?? null;
   const selectedStyle = selectedRaw?.style ? styles.find((s) => s.id === selectedRaw.style) ?? null : null;
@@ -672,14 +677,29 @@ export function ArtboardEditor({
     setSelectedId(nid);
   }
 
+  // Los objetos agregados (y las fotos de la galería) se borran del diseño; los
+  // que vienen con la invitación quedan marcados como eliminados y se pueden
+  // recuperar desde ⋯.
   function remove(id: string) {
-    if (!isCustom({ id }) && !id.startsWith("photo-")) return;
+    const target = layout[orientation].find((e) => e.id === id);
+    if (!target) return;
+    const permanent = isCustom({ id }) || id.startsWith("photo-");
+    if (target.kind === "panel" && !window.confirm(`«${target.name}» tiene contenido (formulario, lista o tarjetas). ¿Eliminarlo del diseño? Se puede recuperar desde el menú ⋯.`)) return;
     const next = clone(layout);
-    for (const o of ["portrait", "landscape"] as Orientation[]) next[o] = next[o].filter((e) => e.id !== id);
+    for (const o of ["portrait", "landscape"] as Orientation[])
+      next[o] = permanent ? next[o].filter((e) => e.id !== id) : next[o].map((e) => (e.id === id ? { ...e, removed: true } : e));
     if (id.startsWith("photo-")) next.manualPhotos = true; // sale de la diapositiva, sigue en la biblioteca
     commit(next, layout);
     setSelectedId(null);
     finishEdit();
+  }
+
+  function recover(id: string) {
+    const next = clone(layout);
+    for (const o of ["portrait", "landscape"] as Orientation[]) next[o] = next[o].map((e) => (e.id === id ? { ...e, removed: false } : e));
+    commit(next, layout);
+    setSelectedId(id);
+    setPopover(null);
   }
 
   function restack(id: string, front: boolean) {
@@ -699,7 +719,7 @@ export function ArtboardEditor({
   /* ---------- Fotos de la galería ---------- */
 
   const isGalleryPhoto = (el: { id: string }) => el.id.startsWith("photo-");
-  const canRemove = (el: TextElement) => isCustom(el) || isGalleryPhoto(el);
+  const canRemove = (el: TextElement) => !!el;
 
   // Pone una foto de la biblioteca en la diapositiva (donde se soltó, o en el
   // próximo lugar libre). Desde ahí las fotos se manejan a mano.
@@ -811,7 +831,7 @@ export function ArtboardEditor({
     <div className="flex h-full min-h-0 flex-col">
       {/* Barra superior del lienzo */}
       <div className="flex flex-wrap items-center gap-2 border-b border-neutral-200 bg-white px-3 py-2">
-        <div className="flex rounded-md bg-neutral-100 p-0.5" role="tablist" aria-label="Formato">
+        {!single && <div className="flex rounded-md bg-neutral-100 p-0.5" role="tablist" aria-label="Formato">
           {(Object.keys(BOARDS) as Orientation[]).map((o) => (
             <button
               key={o}
@@ -824,7 +844,7 @@ export function ArtboardEditor({
               {ORIENTATION_LABEL[o]}
             </button>
           ))}
-        </div>
+        </div>}
         <div className="flex items-center gap-1">
           <IconButton label="Deshacer (Ctrl+Z)" onClick={undo} disabled={!hist.undo}><Undo2 size={15} /></IconButton>
           <IconButton label="Rehacer (Ctrl+Y)" onClick={redo} disabled={!hist.redo}><Redo2 size={15} /></IconButton>
@@ -925,9 +945,19 @@ export function ArtboardEditor({
             <IconButton label="Más opciones" onClick={() => setPopover(popover === "menu" ? null : "menu")}><MoreHorizontal size={16} /></IconButton>
             {popover === "menu" && (
               <div className="absolute right-0 top-full z-30 mt-1 w-64 rounded-lg border border-neutral-200 bg-white p-1 shadow-lg">
-                <MenuItem onClick={copyFromOther}>
-                  Copiar el diseño de {ORIENTATION_LABEL[orientation === "portrait" ? "landscape" : "portrait"]}
-                </MenuItem>
+                {!single && (
+                  <MenuItem onClick={copyFromOther}>
+                    Copiar el diseño de {ORIENTATION_LABEL[orientation === "portrait" ? "landscape" : "portrait"]}
+                  </MenuItem>
+                )}
+                {removedEls.length > 0 && (
+                  <div className="my-1 border-t border-neutral-100 pt-1">
+                    <p className="px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Recuperar eliminados</p>
+                    {removedEls.map((e) => (
+                      <MenuItem key={e.id} onClick={() => recover(e.id)}>↺ {e.name}</MenuItem>
+                    ))}
+                  </div>
+                )}
                 <MenuItem onClick={restoreOriginal}>Volver al diseño original de esta sección</MenuItem>
               </div>
             )}
@@ -958,7 +988,13 @@ export function ArtboardEditor({
             onCreateStyle={createStyle}
             onDuplicate={canDuplicate(selected) ? () => duplicate(selected.id) : undefined}
             onDelete={canRemove(selected) ? () => remove(selected.id) : undefined}
-            deleteLabel={isGalleryPhoto(selected) ? "Quitar de la diapositiva (sigue en la galería)" : undefined}
+            deleteLabel={
+              isGalleryPhoto(selected)
+                ? "Quitar de la diapositiva (sigue en la galería)"
+                : isCustom(selected)
+                  ? undefined
+                  : "Eliminar (se recupera desde el menú ⋯)"
+            }
             onFront={() => restack(selected.id, true)}
             onBack={() => restack(selected.id, false)}
             onToggleLock={() => toggleLock(selected.id)}
@@ -1834,9 +1870,12 @@ function RealSizeModal({
   }, [onClose]);
 
   const D = DEVICES[device];
-  const o = orientationFor(D.w, D.h);
+  // Todo menos el sobre se ve en una columna con el diseño de celular.
+  const single = section !== "envelope";
+  const o = single ? "portrait" : orientationFor(D.w, D.h);
+  const colW = single ? Math.min(D.w, Math.round((D.h * ARTBOARDS.portrait.w) / ARTBOARDS.portrait.h)) : D.w;
   const fullScreen = sectionConfig(section).boards === ARTBOARDS;
-  const frameH = fullScreen ? D.h * extentOf(layout, o) : (D.w * BOARDS[o].h) / BOARDS[o].w;
+  const frameH = fullScreen ? D.h * extentOf(layout, o) : (colW * BOARDS[o].h) / BOARDS[o].w;
   const pk = Math.min(1, (vp.w - 64) / D.w, (vp.h - 150) / frameH);
 
   return (
@@ -1859,9 +1898,12 @@ function RealSizeModal({
         </button>
       </div>
       <div className="relative overflow-hidden rounded shadow-2xl" style={{ width: D.w * pk, height: frameH * pk }}>
-        <div className="absolute left-0 top-0" style={{ width: D.w, height: frameH, transform: `scale(${pk})`, transformOrigin: "0 0", ...bgStyle }}>
-          {overlay}
-          <TextArtboard layout={layout} tokens={tokens} blocks={blocks} boards={BOARDS} forceOrientation={o} />
+        <div className="absolute left-0 top-0 overflow-hidden bg-neutral-700" style={{ width: D.w, height: frameH, transform: `scale(${pk})`, transformOrigin: "0 0" }}>
+          {colW < D.w && <div className="absolute -inset-10" style={{ ...bgStyle, filter: "blur(28px)", opacity: 0.8 }} />}
+          <div className="absolute top-0 overflow-hidden shadow-2xl" style={{ left: (D.w - colW) / 2, width: colW, height: frameH, ...bgStyle }}>
+            {overlay}
+            <TextArtboard layout={layout} tokens={tokens} blocks={blocks} boards={BOARDS} forceOrientation={o} />
+          </div>
         </div>
       </div>
     </div>

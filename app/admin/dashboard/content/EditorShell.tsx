@@ -6,6 +6,8 @@ import type { EnvelopeSlot } from "@/lib/envelopeAssets";
 import { applyStyles, LAYOUT_SECTIONS, pickStyle, withDynamic, type LayoutSection, type TextLayout, type TextStyle, type TokenValues } from "@/lib/textLayout";
 import { ArtboardEditor, type CanvasCover, type EditorApi } from "./ArtboardEditor";
 import { GalleryPhotosPanel, type LibraryPhoto } from "./GalleryPhotosPanel";
+import { DesktopBackgroundPanel } from "./DesktopBackgroundPanel";
+import type { DesktopBackground } from "@/lib/desktopBackground";
 import { ENVELOPE_BG, EnvelopeCard, EnvelopeClosed } from "./EnvelopeCanvas";
 import { EnvelopeImagesPanel } from "./EnvelopeImagesPanel";
 import { discardDraftsAction, publishAction, saveDraftAction, saveStylesDraftAction } from "./layout-actions";
@@ -34,6 +36,7 @@ export function EditorShell({
   tokens,
   envelope,
   galleryPhotos: initialGalleryPhotos,
+  desktopBackground,
 }: {
   sections: EditorSection[];
   panels: Record<string, ReactNode>;
@@ -44,6 +47,7 @@ export function EditorShell({
   tokens: TokenValues;
   envelope: { assets: Record<EnvelopeSlot, string>; custom: Record<EnvelopeSlot, boolean> };
   galleryPhotos: LibraryPhoto[];
+  desktopBackground: DesktopBackground;
 }) {
   const [currentId, setCurrentId] = useState(sections[0].id);
   const [layouts, setLayouts] = useState(drafts);
@@ -238,6 +242,8 @@ export function EditorShell({
         onPlace={(item) => editorApi.current?.place(item)}
         onUnplace={(key) => editorApi.current?.unplace(key)}
       />
+    ) : current.id === "desktop" ? (
+      <DesktopBackgroundPanel initial={desktopBackground} sampleImage={sections.find((x) => x.id === "hero")?.background?.image ?? null} />
     ) : current.id === "styles" ? (
       <StylesPanel styles={styles} usage={styleUsage} tokens={tokens} onChange={handleStylesChange} onDelete={deleteStyle} />
     ) : (

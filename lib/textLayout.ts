@@ -88,6 +88,7 @@ export type TextElement = {
   z: number; // orden de apilado: más alto, más adelante
   opacity: number; // 0.1 a 1
   locked: boolean; // bloqueado: no se mueve ni cambia de tamaño en el editor
+  removed: boolean; // eliminado del diseño (los fijos se pueden recuperar)
   fontSize: number;
   font: FontKey;
   color: string;
@@ -348,7 +349,7 @@ export function typeStyle(el: TextElement): Record<string, string> {
 const base = {
   kind: "text" as const, align: "center" as const, letterSpacing: 0, lineHeight: 1.15,
   weight: 400, italic: false, uppercase: false, rotation: 0, hidden: false, style: null,
-  ref: "", src: "", frame: "none" as FrameKey, variant: "", z: 0, opacity: 1, locked: false,
+  ref: "", src: "", frame: "none" as FrameKey, variant: "", z: 0, opacity: 1, locked: false, removed: false,
 };
 type Spec = Partial<TextElement> & Pick<TextElement, "id" | "name" | "text" | "fontSize" | "font" | "color">;
 const el = (s: Spec & { x?: number; y?: number; w?: number; h?: number }): TextElement => ({ ...base, x: 0, y: 0, w: 600, h: 0, ...s });
@@ -637,6 +638,7 @@ function cleanElement(d: TextElement, s: Record<string, unknown>, A: Board): Tex
     z: clamp(s.z, -1000, 1000, d.z),
     opacity: clamp(s.opacity, 0.1, 1, d.opacity),
     locked: typeof s.locked === "boolean" ? s.locked : d.locked,
+    removed: s.removed === true,
     src: "",
     style: null,
   };

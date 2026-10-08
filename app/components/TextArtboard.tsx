@@ -180,8 +180,10 @@ export function TextArtboard({
   let baseH = 0;
   if (size && size.w > 0 && (page || size.h > 0)) {
     const orientation =
+      // La invitación se diseña para celular: las secciones usan siempre la mesa
+      // vertical (en PC se ven en una columna centrada).
       forceOrientation ??
-      (page || orientationFrom === "viewport" ? orientationFor(size.vw, size.vh) : orientationFor(size.w, size.h));
+      (page ? "portrait" : orientationFrom === "viewport" ? orientationFor(size.vw, size.vh) : orientationFor(size.w, size.h));
     const ext = Math.max(extentOf(layout, orientation), page ? grow : 1);
     const base = boards[orientation];
     baseH = base.h;
@@ -211,7 +213,7 @@ export function TextArtboard({
     content = (
       <div ref={boardRef} style={boardStyle}>
         {byZ(layout[orientation])
-          .filter((el) => !el.hidden)
+          .filter((el) => !el.hidden && !el.removed)
           .map((el, i) => (
             <div key={el.id} data-el style={elementStyle(el) as CSSProperties}>
               <div

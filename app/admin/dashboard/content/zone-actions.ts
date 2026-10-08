@@ -5,6 +5,7 @@ import { setSetting } from "@/lib/kv";
 import { getUploadUrl, publicUrlFor } from "@/lib/storage/r2";
 import { ZONE_IMAGE_KEYS, ZONE_TOGGLE_KEYS, type ZoneImageKey, type ZoneToggleKey } from "@/lib/weddingContent";
 import { envelopeAssetUrl, envelopeSettingKey, isEnvelopeSlot } from "@/lib/envelopeAssets";
+import { DESKTOP_BG_KEY, sanitizeDesktopBackground } from "@/lib/desktopBackground";
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const ALLOWED_AUDIO_TYPES = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/ogg"];
@@ -131,4 +132,12 @@ export async function requestDesignImageUploadAction(filename: string, contentTy
   const key = `design/${crypto.randomUUID()}-${safeName(filename)}`;
   const uploadUrl = await getUploadUrl(key, contentType);
   return { error: null, uploadUrl, publicUrl: publicUrlFor(key) };
+}
+
+// Fondo para PC (alrededor de la columna de la invitación). Se publica al guardar.
+export async function saveDesktopBackgroundAction(input: unknown) {
+  const clean = sanitizeDesktopBackground(input);
+  await setSetting(DESKTOP_BG_KEY, JSON.stringify(clean));
+  revalidate();
+  return clean;
 }

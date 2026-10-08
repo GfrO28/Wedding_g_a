@@ -6,6 +6,7 @@ import { getWeddingContent } from "@/lib/weddingContent";
 import { getTheme } from "@/lib/theme";
 import { getEnvelopeSettings } from "@/lib/envelope";
 import { getEditorLayouts, getTokenValues } from "@/lib/textLayoutServer";
+import { getDesktopBackground } from "@/lib/desktopBackgroundServer";
 import {
   addHotelAction,
   addItineraryStepAction,
@@ -87,6 +88,7 @@ export default async function ContentEditorPage() {
     { id: "music", label: "Música", group: "general", zone: "music", enabled: w.zoneEnabled.music },
     { id: "palette", label: "Paleta de colores", group: "general" },
     { id: "styles", label: "Estilos de texto", group: "general" },
+    { id: "desktop", label: "Fondo para PC", group: "general" },
   ];
 
   const blocks: Record<string, Record<string, ReactNode>> = {
@@ -283,6 +285,7 @@ export default async function ContentEditorPage() {
       tokens={tokens}
       envelope={{ assets: envelope.assets, custom: envelope.custom }}
       galleryPhotos={allPhotos.map((p) => ({ id: p.id, url: p.url, alt: p.alt }))}
+      desktopBackground={await getDesktopBackground()}
     />
   );
 }
