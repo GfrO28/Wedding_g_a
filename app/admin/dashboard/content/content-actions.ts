@@ -7,6 +7,7 @@ import {
   getEffectiveAccommodation,
   getEffectiveItinerary,
   getEffectiveStory,
+  getWeddingContent,
   type StoryChapter,
 } from "@/lib/weddingContent";
 
@@ -17,55 +18,6 @@ function revalidate() {
 
 function str(formData: FormData, name: string) {
   return String(formData.get(name) ?? "").trim();
-}
-
-export async function updateCoupleAction(formData: FormData) {
-  await setSetting("contentPartner1", str(formData, "partner1"));
-  await setSetting("contentPartner2", str(formData, "partner2"));
-  await setSetting("contentHashtag", str(formData, "hashtag"));
-  await setSetting("contentWeddingDate", str(formData, "weddingDateISO"));
-  await setSetting("contentRsvpDeadline", str(formData, "rsvpDeadlineISO"));
-  revalidate();
-}
-
-export async function updateBlessingAction(formData: FormData) {
-  await setJSON("contentQuote", {
-    text: str(formData, "quoteText"),
-    source: str(formData, "quoteSource"),
-  });
-  await setJSON("contentParents", {
-    partner1: [str(formData, "parent1a"), str(formData, "parent1b")].filter(Boolean),
-    partner2: [str(formData, "parent2a"), str(formData, "parent2b")].filter(Boolean),
-  });
-  revalidate();
-}
-
-export async function updatePlacesAction(formData: FormData) {
-  await setJSON("contentCeremony", {
-    name: "Ceremonia",
-    time: str(formData, "ceremonyTime"),
-    venue: str(formData, "ceremonyVenue"),
-    address: str(formData, "ceremonyAddress"),
-    mapUrl: str(formData, "ceremonyMapUrl"),
-  });
-  await setJSON("contentReception", {
-    name: "Recepción",
-    time: str(formData, "receptionTime"),
-    venue: str(formData, "receptionVenue"),
-    address: str(formData, "receptionAddress"),
-    mapUrl: str(formData, "receptionMapUrl"),
-  });
-  revalidate();
-}
-
-export async function updateDressCodeAction(formData: FormData) {
-  await setSetting("contentDressCode", str(formData, "dressCode"));
-  revalidate();
-}
-
-export async function updateTransportationAction(formData: FormData) {
-  await setSetting("contentTransportation", str(formData, "transportation"));
-  revalidate();
 }
 
 export async function updateGiftsAction(formData: FormData) {
@@ -169,5 +121,68 @@ export async function setItineraryStepIconAction(key: string, icon: string) {
   const steps = await getEffectiveItinerary();
   if (!steps.some((s) => stepKey(s.id) === key)) return;
   await setJSON("contentItinerary", steps.map((s) => (stepKey(s.id) === key ? { ...s, icon: stepIcon(icon) } : s)));
+  revalidate();
+}
+
+// --- Fechas (Portada) ---
+
+// Del calendario llega "AAAA-MM-DDTHH:mm" (hora local de la boda); se guarda
+// con la zona horaria que ya tenía la fecha (Perú: -05:00).
+export async function updateDatesAction(formData: FormData) {
+  const w = await getWeddingContent();
+  const tzOf = (iso: string) => /([+-]\d{2}:\d{2}|Z)$/.exec(iso)?.[1] ?? "-05:00";
+  const toISO = (local: string, prev: string) => (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(local) ? `${local}:00${tzOf(prev)}` : prev);
+  await setSetting("contentWeddingDate", toISO(str(formData, "weddingLocal"), w.weddingDateISO));
+  await setSetting("contentRsvpDeadline", toISO(str(formData, "rsvpLocal"), w.rsvpDeadlineISO));
+  revalidate();
+}
+
+// --- Cómo llegar: dirección (mapa y Waze) y link de Google Maps ---
+
+export async function updateMapsAction(formData: FormData) {
+  const w = await getWeddingContent();
+  await setJSON("contentCeremony", { ...w.ceremony, address: str(formData, "ceremonyAddress"), mapUrl: str(formData, "ceremonyMapUrl") });
+  await setJSON("contentReception", { ...w.reception, address: str(formData, "receptionAddress"), mapUrl: str(formData, "receptionMapUrl") });
+  revalidate();
+}
+
+// --- Editar capítulos y hoteles ---
+
+const clip = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : "");
+
+export async function updateStoryChapterAction(
+  id: string,
+  data: { year: string; title: string; text: string; image: string; layout: string; imageFocus: string },
+) {
+  const chapters = await getEffectiveStory();
+  await setJSON(
+    "contentStory",
+    chapters.map((c) =>
+      c.id === id
+        ? {
+            ...c,
+            year: clip(data.year, 20),
+            title: clip(data.title, 120),
+            text: clip(data.text, 2000),
+            image: clip(data.image, 600),
+            layout: (["image-left", "image-right", "image-top", "text-only"].includes(data.layout) ? data.layout : c.layout) as typeof c.layout,
+            imageFocus: (["center", "top", "bottom"].includes(data.imageFocus) ? data.imageFocus : c.imageFocus) as typeof c.imageFocus,
+          }
+        : c,
+    ),
+  );
+  revalidate();
+}
+
+export async function updateHotelAction(id: string, data: { name: string; description: string; bookingUrl: string; deadline: string }) {
+  const hotels = await getEffectiveAccommodation();
+  await setJSON(
+    "contentAccommodation",
+    hotels.map((h) =>
+      h.id === id
+        ? { ...h, name: clip(data.name, 120) || h.name, description: clip(data.description, 500), bookingUrl: clip(data.bookingUrl, 600), deadline: clip(data.deadline, 40) }
+        : h,
+    ),
+  );
   revalidate();
 }

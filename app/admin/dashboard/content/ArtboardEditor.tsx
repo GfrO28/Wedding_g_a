@@ -184,6 +184,7 @@ export function ArtboardEditor({
   cover,
   apiRef,
   onOpenLibrary,
+  imageLibrary = [],
 }: {
   section: LayoutSection;
   initialLayout: TextLayout;
@@ -199,6 +200,7 @@ export function ArtboardEditor({
   cover?: CanvasCover;
   apiRef?: React.Ref<EditorApi>;
   onOpenLibrary?: () => void; // Galería: "+ Agregar" lleva a la biblioteca de fotos
+  imageLibrary?: { src: string; alt: string }[]; // fotos ya subidas, para reutilizar
 }) {
   const cfg = sectionConfig(section);
   const BOARDS = cfg.boards;
@@ -1129,6 +1131,7 @@ export function ArtboardEditor({
             onToggle={() => setPopover(popover === "add" ? null : "add")}
             full={customCount >= MAX_CUSTOM}
             onAdd={addObject}
+            library={imageLibrary}
             onOpenLibrary={cfg.photos ? () => { setPopover(null); onOpenLibrary?.(); } : undefined}
           />
         )}
@@ -1830,14 +1833,25 @@ function AddMenu({
   full,
   onAdd,
   onOpenLibrary,
+  library = [],
 }: {
   open: boolean;
   onToggle: () => void;
   full: boolean;
   onAdd: (kind: CustomKind, extra?: Partial<TextElement>) => void;
   onOpenLibrary?: () => void;
+  library?: { src: string; alt: string }[];
 }) {
   const [busy, setBusy] = useState(false);
+
+  // Reutilizar una foto ya subida: no se sube de nuevo (la caja toma su proporción).
+  function reuse(p: { src: string; alt: string }) {
+    const img = new Image();
+    const done = (ratio: number) => onAdd("photo", { src: p.src, w: 360, h: Math.round(Math.min(3, Math.max(0.2, ratio)) * 360), text: p.alt });
+    img.onload = () => done(img.naturalHeight / img.naturalWidth || 1);
+    img.onerror = () => done(1);
+    img.src = p.src;
+  }
   const [error, setError] = useState<string | null>(null);
 
   async function upload(file: File) {
@@ -1903,8 +1917,30 @@ function AddMenu({
               Elegir de las fotos de la galería
             </button>
           ) : (
+          <>
+          {library.length > 0 && (
+            <>
+              <p className="mb-1 text-[11px] text-neutral-500">Fotos ya subidas (se reutilizan, no se suben de nuevo):</p>
+              <ul className="mb-2 grid max-h-36 grid-cols-5 gap-1 overflow-y-auto" aria-label="Fotos ya subidas">
+                {library.map((p) => (
+                  <li key={p.src}>
+                    <button
+                      type="button"
+                      disabled={full}
+                      onClick={() => reuse(p)}
+                      aria-label={`Usar foto ya subida: ${p.alt || "foto"}`}
+                      className="block aspect-square w-full overflow-hidden rounded border border-neutral-200 hover:opacity-80 disabled:opacity-40"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={p.src} alt="" className="h-full w-full object-cover" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           <label className={`flex cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-neutral-300 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 ${full || busy ? "pointer-events-none opacity-40" : ""}`}>
-            {busy ? "Subiendo…" : "Subir imagen (JPG, PNG o WebP)"}
+            {busy ? "Subiendo…" : "Subir una imagen nueva (JPG, PNG o WebP)"}
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp"
@@ -1918,6 +1954,7 @@ function AddMenu({
               }}
             />
           </label>
+          </>
           )}
           <p className="mt-1 text-[11px] text-neutral-400">
             {onOpenLibrary ? "Las fotos se suben en el panel de la galería y se arrastran al lienzo." : "Después podés darle borde Polaroid o vintage."}

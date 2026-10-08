@@ -8,16 +8,9 @@ import { getEnvelopeSettings } from "@/lib/envelope";
 import { getEditorLayouts, getTokenValues } from "@/lib/textLayoutServer";
 import { getDesktopBackground } from "@/lib/desktopBackgroundServer";
 import {
-  addHotelAction,
-  addStoryChapterAction,
-  deleteHotelAction,
-  deleteStoryChapterAction,
-  updateBlessingAction,
-  updateCoupleAction,
-  updateDressCodeAction,
+  updateDatesAction,
   updateGiftsAction,
-  updatePlacesAction,
-  updateTransportationAction,
+  updateMapsAction,
 } from "./content-actions";
 import { ZoneImageUpload } from "./ZoneImageUpload";
 import { MusicUploader } from "./MusicUploader";
@@ -31,6 +24,7 @@ import { AccommodationBody } from "@/app/components/Accommodation";
 import { GiftsBody, getGiftsData } from "@/app/components/Gifts";
 import { RSVPPreviewBody } from "@/app/components/RSVPForm";
 import { ItineraryStepsEditor } from "./ItineraryStepsEditor";
+import { HotelsEditor, StoryChaptersEditor } from "./ContentEditors";
 import { MessagesBody, getApprovedMessages } from "@/app/components/GuestMessages";
 
 export const dynamic = "force-dynamic";
@@ -100,92 +94,44 @@ export default async function ContentEditorPage() {
   const panels: Record<string, ReactNode> = {
     hero: (
       <Stack>
-        <Group title="La pareja y la fecha">
-          <form action={updateCoupleAction} className="flex flex-col gap-3">
-            <Field label="Nombre 1"><input name="partner1" defaultValue={w.partner1} className={inputClass} /></Field>
-            <Field label="Nombre 2"><input name="partner2" defaultValue={w.partner2} className={inputClass} /></Field>
-            <Field label="Hashtag"><input name="hashtag" defaultValue={w.hashtag} className={inputClass} /></Field>
-            <Field label="Fecha y hora de la boda (ej: 2027-11-27T14:30:00-05:00)">
-              <input name="weddingDateISO" defaultValue={w.weddingDateISO} className={`${inputClass} font-mono text-xs`} />
+        <Group title="Fecha y hora">
+          <form action={updateDatesAction} className="flex flex-col gap-3">
+            <Field label="Fecha y hora de la boda">
+              <input type="datetime-local" name="weddingLocal" defaultValue={w.weddingDateISO.slice(0, 16)} className={inputClass} />
             </Field>
-            <Field label="Fecha límite para confirmar">
-              <input name="rsvpDeadlineISO" defaultValue={w.rsvpDeadlineISO} className={`${inputClass} font-mono text-xs`} />
+            <Field label="Fecha límite para confirmar asistencia">
+              <input type="datetime-local" name="rsvpLocal" defaultValue={w.rsvpDeadlineISO.slice(0, 16)} className={inputClass} />
             </Field>
             <SaveButton />
           </form>
+          <p className="text-xs text-neutral-500">La fecha de la boda alimenta la cuenta regresiva y el texto con la fecha.</p>
         </Group>
         <Group title="Foto de fondo"><ZoneImageUpload zone="hero" url={w.zoneImages.hero} /></Group>
       </Stack>
     ),
     blessing: (
       <Stack>
-        <Group title="Frase y padres">
-          <form action={updateBlessingAction} className="flex flex-col gap-3">
-            <Field label="Frase o versículo"><textarea name="quoteText" defaultValue={w.quote.text} rows={3} className={inputClass} /></Field>
-            <Field label="Fuente (ej: Colosenses 3:14)"><input name="quoteSource" defaultValue={w.quote.source} className={inputClass} /></Field>
-            <Field label={`Padres de ${w.partner1}`}>
-              <input name="parent1a" defaultValue={w.parents.partner1[0] ?? ""} className={`${inputClass} mb-2`} placeholder="Madre" />
-              <input name="parent1b" defaultValue={w.parents.partner1[1] ?? ""} className={inputClass} placeholder="Padre" />
-            </Field>
-            <Field label={`Padres de ${w.partner2}`}>
-              <input name="parent2a" defaultValue={w.parents.partner2[0] ?? ""} className={`${inputClass} mb-2`} placeholder="Madre" />
-              <input name="parent2b" defaultValue={w.parents.partner2[1] ?? ""} className={inputClass} placeholder="Padre" />
-            </Field>
-            <SaveButton />
-          </form>
-        </Group>
+        <p className="text-sm text-neutral-500">Los textos se editan sobre el lienzo: doble clic en un texto para escribir.</p>
         <Group title="Foto de fondo"><ZoneImageUpload zone="blessing" url={w.zoneImages.blessing} /></Group>
       </Stack>
     ),
     story: (
       <Stack>
         <Group title="Capítulos">
-          <ListItems items={w.story.map((c) => ({ id: c.id, label: `${c.year} — ${c.title}` }))} deleteAction={deleteStoryChapterAction} />
+          <StoryChaptersEditor
+            chapters={w.story}
+            library={allPhotos.map((p) => ({ id: p.id, url: p.url, alt: p.alt }))}
+            layouts={STORY_LAYOUTS}
+            focuses={IMAGE_FOCUS}
+          />
         </Group>
-        <Group title="Agregar capítulo">
-          <form action={addStoryChapterAction} className="flex flex-col gap-3">
-            <Field label="Año"><input name="year" required placeholder="2019" className={inputClass} /></Field>
-            <Field label="Título"><input name="title" required placeholder="Cómo nos conocimos" className={inputClass} /></Field>
-            <Field label="Texto"><textarea name="text" required rows={3} className={inputClass} /></Field>
-            <Field label="Link de la foto (opcional; subila antes en Galería)"><input name="image" className={inputClass} /></Field>
-            <Field label="Disposición">
-              <select name="layout" defaultValue="image-left" className={inputClass}>
-                {STORY_LAYOUTS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-              </select>
-            </Field>
-            <Field label="Encuadre de la foto">
-              <select name="imageFocus" defaultValue="center" className={inputClass}>
-                {IMAGE_FOCUS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
-              </select>
-            </Field>
-            <AddButton label="Agregar capítulo" />
-          </form>
-        </Group>
+        <p className="text-sm text-neutral-500">Los capítulos se editan acá. El título de la sección se edita sobre el lienzo (doble clic).</p>
       </Stack>
     ),
     event: (
       <Stack>
-        <Group title="Lugares y horarios">
-          <form action={updatePlacesAction} className="flex flex-col gap-3">
-            <p className="text-sm font-medium text-neutral-700">Ceremonia</p>
-            <Field label="Hora"><input name="ceremonyTime" defaultValue={w.ceremony.time} className={inputClass} /></Field>
-            <Field label="Lugar"><input name="ceremonyVenue" defaultValue={w.ceremony.venue} className={inputClass} /></Field>
-            <Field label="Dirección"><input name="ceremonyAddress" defaultValue={w.ceremony.address} className={inputClass} /></Field>
-            <Field label="Link de Google Maps"><input name="ceremonyMapUrl" defaultValue={w.ceremony.mapUrl} className={inputClass} /></Field>
-            <p className="mt-2 text-sm font-medium text-neutral-700">Recepción</p>
-            <Field label="Hora"><input name="receptionTime" defaultValue={w.reception.time} className={inputClass} /></Field>
-            <Field label="Lugar"><input name="receptionVenue" defaultValue={w.reception.venue} className={inputClass} /></Field>
-            <Field label="Dirección"><input name="receptionAddress" defaultValue={w.reception.address} className={inputClass} /></Field>
-            <Field label="Link de Google Maps"><input name="receptionMapUrl" defaultValue={w.reception.mapUrl} className={inputClass} /></Field>
-            <SaveButton />
-          </form>
-        </Group>
-        <Group title="Código de vestimenta">
-          <form action={updateDressCodeAction} className="flex flex-col gap-3">
-            <input name="dressCode" defaultValue={w.dressCode} className={inputClass} />
-            <SaveButton />
-          </form>
-        </Group>
+        <p className="text-sm text-neutral-500">Los textos se editan sobre el lienzo: doble clic en un texto para escribir.</p>
+        <p className="text-xs text-neutral-500">Las direcciones y los links de los mapas se cargan en «Cómo llegar».</p>
         <Group title="Foto de fondo"><ZoneImageUpload zone="event" url={w.zoneImages.event} /></Group>
       </Stack>
     ),
@@ -197,38 +143,32 @@ export default async function ContentEditorPage() {
     ),
     location: (
       <Stack>
-        <p className="text-sm text-neutral-500">Usa las direcciones y los links de mapas cargados en «El evento».</p>
+        <Group title="Mapas">
+          <form action={updateMapsAction} className="flex flex-col gap-3">
+            <p className="text-sm font-medium text-neutral-700">Ceremonia</p>
+            <Field label="Dirección (la usan el mapa y Waze)"><input name="ceremonyAddress" defaultValue={w.ceremony.address} className={inputClass} /></Field>
+            <Field label="Link de Google Maps"><input name="ceremonyMapUrl" defaultValue={w.ceremony.mapUrl} className={inputClass} placeholder="https://maps.app.goo.gl/…" /></Field>
+            <p className="mt-2 text-sm font-medium text-neutral-700">Recepción</p>
+            <Field label="Dirección (la usan el mapa y Waze)"><input name="receptionAddress" defaultValue={w.reception.address} className={inputClass} /></Field>
+            <Field label="Link de Google Maps"><input name="receptionMapUrl" defaultValue={w.reception.mapUrl} className={inputClass} placeholder="https://maps.app.goo.gl/…" /></Field>
+            <SaveButton />
+          </form>
+        </Group>
         <Group title="Foto de fondo"><ZoneImageUpload zone="location" url={w.zoneImages.location} /></Group>
       </Stack>
     ),
     accommodation: (
       <Stack>
-        <Group title="Hoteles">
-          <ListItems items={w.accommodation.map((h) => ({ id: h.id, label: h.name }))} deleteAction={deleteHotelAction} />
-        </Group>
-        <Group title="Agregar hotel">
-          <form action={addHotelAction} className="flex flex-col gap-3">
-            <Field label="Nombre del hotel"><input name="name" required className={inputClass} /></Field>
-            <Field label="Reservar antes del"><input name="deadline" placeholder="2027-10-15" className={inputClass} /></Field>
-            <Field label="Descripción o tarifa"><input name="description" className={inputClass} /></Field>
-            <Field label="Link de reserva"><input name="bookingUrl" className={inputClass} /></Field>
-            <AddButton label="Agregar hotel" />
-          </form>
-        </Group>
-        <Group title="Transporte">
-          <form action={updateTransportationAction} className="flex flex-col gap-3">
-            <textarea name="transportation" defaultValue={w.transportation} rows={3} className={inputClass} />
-            <SaveButton />
-          </form>
-        </Group>
+        <Group title="Hoteles"><HotelsEditor hotels={w.accommodation} /></Group>
+        <p className="text-sm text-neutral-500">Los textos se editan sobre el lienzo: doble clic en un texto para escribir.</p>
         <Group title="Foto de fondo"><ZoneImageUpload zone="accommodation" url={w.zoneImages.accommodation} /></Group>
       </Stack>
     ),
     gifts: (
       <Stack>
-        <Group title="Mensaje y datos de pago">
+        <Group title="Datos de pago">
           <form action={updateGiftsAction} className="flex flex-col gap-3">
-            <Field label="Mensaje"><textarea name="message" defaultValue={w.gifts.message} rows={3} className={inputClass} /></Field>
+            <input type="hidden" name="message" value={w.gifts.message} />
             <PayToggle name="yapeOn" label="Mostrar Yape" on={w.gifts.payment.yape.enabled !== false} />
             <Field label="Yape: número"><input name="yapePhone" defaultValue={w.gifts.payment.yape.phone} className={inputClass} /></Field>
             <Field label="Yape: a nombre de"><input name="yapeName" defaultValue={w.gifts.payment.yape.name} className={inputClass} /></Field>
@@ -243,13 +183,13 @@ export default async function ContentEditorPage() {
             <SaveButton />
           </form>
         </Group>
-        <p className="text-xs text-neutral-500">La lista de regalos (reservas y fondos) se administra desde el panel principal.</p>
+        <p className="text-xs text-neutral-500">El mensaje se edita sobre el lienzo. La lista de regalos (reservas y fondos) se administra desde el panel principal.</p>
         <Group title="Foto de fondo"><ZoneImageUpload zone="gifts" url={w.zoneImages.gifts} /></Group>
       </Stack>
     ),
     rsvp: <p className="text-sm text-neutral-500">Las respuestas de los invitados se ven en el panel principal.</p>,
     messages: <p className="text-sm text-neutral-500">Los mensajes de los invitados se aprueban desde el panel principal.</p>,
-    footer: <p className="text-sm text-neutral-500">Los nombres y el hashtag salen de los datos de la Portada.</p>,
+    footer: <p className="text-sm text-neutral-500">Los textos se editan sobre el lienzo: doble clic en un texto para escribir.</p>,
     music: <MusicUploader music={w.music} />,
     palette: <ThemeEditor theme={theme} />,
   };
@@ -299,37 +239,6 @@ function SaveButton() {
     <button type="submit" className="w-fit rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700">
       Guardar
     </button>
-  );
-}
-
-function AddButton({ label }: { label: string }) {
-  return (
-    <button type="submit" className="w-fit rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700">
-      {label}
-    </button>
-  );
-}
-
-function ListItems({
-  items,
-  deleteAction,
-}: {
-  items: { id: string; label: string }[];
-  deleteAction: (formData: FormData) => void;
-}) {
-  if (items.length < 1) return <p className="text-sm text-neutral-400">Todavía no hay elementos.</p>;
-  return (
-    <div className="flex flex-col gap-1.5">
-      {items.map((item) => (
-        <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border border-neutral-200 px-3 py-1.5 text-sm">
-          <span className="min-w-0 truncate text-neutral-700">{item.label}</span>
-          <form action={deleteAction}>
-            <input type="hidden" name="id" value={item.id} />
-            <button className="rounded-md px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-100">Borrar</button>
-          </form>
-        </div>
-      ))}
-    </div>
   );
 }
 

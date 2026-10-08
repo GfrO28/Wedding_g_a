@@ -63,6 +63,21 @@ export function EditorShell({
   const [envelopeAssets, setEnvelopeAssets] = useState(envelope.assets);
   const [galleryPhotos, setGalleryPhotos] = useState(initialGalleryPhotos);
   const editorApi = useRef<EditorApi>(null);
+  // Fotos que ya están subidas (galería e imágenes usadas en otras secciones):
+  // se pueden reutilizar en "+ Agregar" sin volver a subirlas.
+  const imageLibrary = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { src: string; alt: string }[] = [];
+    const add = (src: string, alt: string) => {
+      if (!src || seen.has(src)) return;
+      seen.add(src);
+      out.push({ src, alt });
+    };
+    for (const p of galleryPhotos) add(p.url, p.alt ?? "");
+    for (const s of Object.values(layouts))
+      for (const e of [...s.portrait, ...s.landscape]) if (e.kind === "photo" && e.id.startsWith("x-")) add(e.src, e.text);
+    return out;
+  }, [galleryPhotos, layouts]);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [publishing, setPublishing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -362,6 +377,7 @@ export function EditorShell({
               onStylesChange={handleStylesChange}
               styleUsage={styleUsage}
               apiRef={editorApi}
+              imageLibrary={imageLibrary}
               onOpenLibrary={() => setContentOpen(true)}
             />
           ) : (
