@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, Check, ExternalLink, Loader2, MapPin, PanelRightClose, PanelRightOpen, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, ChevronUp, ExternalLink, Loader2, MapPin, PanelRightClose, PanelRightOpen, Trash2 } from "lucide-react";
 import type { EnvelopeSlot } from "@/lib/envelopeAssets";
 import { applyStyles, backdropOf, isCustom, LAYOUT_SECTIONS, mapSourceOf, pickStyle, withDynamic, type LayoutSection, type TextElement, type TextLayout, type TextStyle, type TokenValues } from "@/lib/textLayout";
-import { ArtboardEditor, type CanvasCover, type EditorApi } from "./ArtboardEditor";
+import { ArtboardEditor, type CanvasCover, type Clip, type EditorApi } from "./ArtboardEditor";
 import { GalleryPhotosPanel, type LibraryPhoto } from "./GalleryPhotosPanel";
 import { DesktopBackgroundPanel } from "./DesktopBackgroundPanel";
 import type { DesktopBackground } from "@/lib/desktopBackground";
@@ -13,7 +13,7 @@ import { EnvelopeImagesPanel } from "./EnvelopeImagesPanel";
 import { discardDraftsAction, publishAction, saveDraftAction, saveStylesDraftAction } from "./layout-actions";
 import { StylesPanel } from "./StylesPanel";
 import { Hint } from "./Hint";
-import { toggleZoneEnabledAction } from "./zone-actions";
+import { saveSectionOrderAction, toggleZoneEnabledAction } from "./zone-actions";
 
 export type EditorSection = {
   id: string;
@@ -51,6 +51,8 @@ export function EditorShell({
   galleryPhotos: LibraryPhoto[];
   desktopBackground: DesktopBackground;
 }) {
+  // Orden de las secciones del cuerpo (el sobre va primero y el pie al final, fijos).
+  const [order, setOrder] = useState(() => sections.filter((s) => s.group === "sections" && s.id !== "intro" && s.id !== "footer").map((s) => s.id));
   const [currentId, setCurrentId] = useState((sections.find((s) => !s.zone || s.enabled !== false) ?? sections[0]).id);
   const [layouts, setLayouts] = useState(drafts);
   const [publishedState, setPublishedState] = useState(published);
@@ -66,6 +68,8 @@ export function EditorShell({
   const [galleryPhotos, setGalleryPhotos] = useState(initialGalleryPhotos);
   // Mapa recién agregado: se abre «Contenido» con su campo listo para escribir.
   const [focusMap, setFocusMap] = useState<string | null>(null);
+  // Lo cortado o copiado en el lienzo (se pega en cualquier sección).
+  const [clipboard, setClipboard] = useState<Clip | null>(null);
   const editorApi = useRef<EditorApi>(null);
   // Fotos que ya están subidas (galería e imágenes usadas en otras secciones):
   // se pueden reutilizar en "+ Agregar" sin volver a subirlas.
@@ -237,6 +241,22 @@ export function EditorShell({
     await toggleZoneEnabledAction(s.zone, true);
   }
 
+  // Sube o baja una sección (salteando las que no están en la invitación). Se publica al toque.
+  async function moveSection(id: string, dir: -1 | 1) {
+    const visible = order.filter((x) => enabled[x]);
+    const i = visible.indexOf(id), j = i + dir;
+    if (i < 0 || j < 0 || j >= visible.length) return;
+    const next = [...order];
+    const a = next.indexOf(id), b = next.indexOf(visible[j]);
+    [next[a], next[b]] = [next[b], next[a]];
+    setOrder(next);
+    await saveSectionOrderAction(next);
+  }
+  const navSections = [...sections].sort((a, b) => {
+    const r = (s: EditorSection) => (s.id === "intro" ? -1 : s.id === "footer" ? 1e3 : order.indexOf(s.id));
+    return a.group === "sections" && b.group === "sections" ? r(a) - r(b) : 0;
+  });
+
   async function toggleZone(s: EditorSection) {
     if (!s.zone) return;
     const next = !enabled[s.id];
@@ -295,7 +315,7 @@ export function EditorShell({
   ) : null;
 
   // Mapas agregados en esta sección: su dirección o link se carga acá.
-  const mapObjects = design ? layouts[design].portrait.filter((e) => e.kind === "map" && isCustom(e)) : [];
+  const mapObjects = design ? layouts[design].portrait.filter((e) => e.kind === "map" && isCustom(e) && !e.ref) : [];
 
   const panel =
     current.id === "intro" ? (
@@ -362,15 +382,18 @@ export function EditorShell({
               <p className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
                 {group === "sections" ? "Secciones" : "General"}
               </p>
-              {sections
+              {navSections
                 .filter((s) => s.group === group && (group === "general" || !s.zone || enabled[s.id]))
-                .map((s) => {
+                .map((s, i, list) => {
+                  const movable = order.includes(s.id);
+                  const canUp = movable && i > 0 && order.includes(list[i - 1].id);
+                  const canDown = movable && i < list.length - 1 && order.includes(list[i + 1].id);
                   const active = s.id === currentId;
                   const isOn = s.zone ? enabled[s.id] : true;
                   return (
                     <div
                       key={s.id}
-                      className={`flex items-center gap-1 rounded-md pr-1.5 ${active ? "bg-neutral-900 text-white" : "hover:bg-neutral-100"}`}
+                      className={`group/row flex items-center gap-1 rounded-md pr-1.5 ${active ? "bg-neutral-900 text-white" : "hover:bg-neutral-100"}`}
                     >
                       <button
                         type="button"
@@ -387,6 +410,16 @@ export function EditorShell({
                           <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? "bg-amber-300" : "bg-amber-500"}`} title="Cambios sin publicar" />
                         )}
                       </button>
+                      {movable && (
+                        <span className={`flex flex-col group-hover/row:opacity-100 group-focus-within/row:opacity-100 ${active ? "opacity-100" : "opacity-0"}`} data-move={s.id}>
+                          <button type="button" disabled={!canUp} onClick={() => moveSection(s.id, -1)} aria-label={`Subir la sección ${s.label}`} title="Subir" className={`rounded leading-none disabled:invisible ${active ? "text-white/70 hover:text-white" : "text-neutral-400 hover:text-neutral-900"}`}>
+                            <ChevronUp size={12} />
+                          </button>
+                          <button type="button" disabled={!canDown} onClick={() => moveSection(s.id, 1)} aria-label={`Bajar la sección ${s.label}`} title="Bajar" className={`rounded leading-none disabled:invisible ${active ? "text-white/70 hover:text-white" : "text-neutral-400 hover:text-neutral-900"}`}>
+                            <ChevronDown size={12} />
+                          </button>
+                        </span>
+                      )}
                       {s.zone && group === "sections" && (
                         <button
                           type="button"
@@ -439,6 +472,8 @@ export function EditorShell({
                 setContentOpen(true);
                 setFocusMap(el.id);
               }}
+              clipboard={clipboard}
+              onClipboard={setClipboard}
               onOpenContent={(id) => {
                 setContentOpen(true);
                 setFocusMap(id ?? null);
@@ -544,9 +579,8 @@ const SECTION_HELP: Record<string, string> = {
   countdown: "Los días, horas y minutos que faltan",
   blessing: "Una frase, el monograma y los padres",
   story: "Capítulos con foto de su historia",
-  event: "Ceremonia y recepción: hora y lugar",
+  event: "Ceremonia y recepción: hora, lugar, mapas y botones de Google Maps y Waze",
   itinerary: "Los momentos del día, con íconos",
-  location: "Mapas y botones de Google Maps y Waze",
   gallery: "Fotos con marco y ampliación",
   accommodation: "Hoteles recomendados",
   gifts: "Lista de regalos, luna de miel y datos de pago",

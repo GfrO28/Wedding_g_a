@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { setSetting } from "@/lib/kv";
 import { getUploadUrl, publicUrlFor } from "@/lib/storage/r2";
-import { ZONE_IMAGE_KEYS, ZONE_TOGGLE_KEYS, type ZoneImageKey, type ZoneToggleKey } from "@/lib/weddingContent";
+import { sanitizeSectionOrder, SECTION_ORDER_KEY, ZONE_IMAGE_KEYS, ZONE_TOGGLE_KEYS, type ZoneImageKey, type ZoneToggleKey } from "@/lib/weddingContent";
 import { envelopeAssetUrl, envelopeSettingKey, isEnvelopeSlot } from "@/lib/envelopeAssets";
 import { DESKTOP_BG_KEY, sanitizeDesktopBackground } from "@/lib/desktopBackground";
 
@@ -24,6 +24,14 @@ export async function toggleZoneEnabledAction(zone: string, enabled: boolean) {
   if (!isZoneToggleKey(zone)) return;
   await setSetting(`zoneEnabled_${zone}`, enabled ? "true" : "false");
   revalidate();
+}
+
+// Orden de las secciones de la invitación (se publica al guardarlo).
+export async function saveSectionOrderAction(order: string[]) {
+  const clean = sanitizeSectionOrder(order);
+  await setSetting(SECTION_ORDER_KEY, JSON.stringify(clean));
+  revalidate();
+  return clean;
 }
 
 function safeName(filename: string) {

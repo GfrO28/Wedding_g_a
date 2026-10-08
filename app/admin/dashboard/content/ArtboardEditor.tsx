@@ -21,7 +21,9 @@ import {
   ArrowDownToLine,
   ArrowUpToLine,
   Check,
+  ClipboardPaste,
   Copy,
+  Scissors,
   Eye,
   EyeOff,
   Italic,
@@ -82,6 +84,7 @@ import {
   backdropElement,
   veilElement,
   coversBoard,
+  toPasteable,
   FRAMES,
   EFFECTS,
   type EffectKey,
@@ -137,6 +140,9 @@ type Drag = {
 type Guides = { x?: number; y?: number; label?: { x: number; y: number; text: string } };
 type Popover = null | "style" | "tokens" | "color" | "advanced" | "menu" | "add";
 // Lo que el panel de la galería le pide al lienzo.
+// Portapapeles del editor: lo cortado o copiado se puede pegar en cualquier sección.
+export type Clip = { from: string; cut: boolean; items: { portrait: TextElement; landscape: TextElement | null }[] };
+
 export type EditorApi = {
   place: (item: GalleryItem) => void;
   unplace: (key: string) => void;
@@ -206,6 +212,8 @@ export function ArtboardEditor({
   imageLibrary = [],
   onAdded,
   onOpenContent,
+  clipboard = null,
+  onClipboard,
 }: {
   section: LayoutSection;
   initialLayout: TextLayout;
@@ -224,6 +232,8 @@ export function ArtboardEditor({
   imageLibrary?: { src: string; alt: string }[]; // fotos ya subidas, para reutilizar
   onAdded?: (el: TextElement) => void; // objeto recién agregado (un mapa abre «Contenido»)
   onOpenContent?: (id?: string) => void;
+  clipboard?: Clip | null;
+  onClipboard?: (c: Clip | null) => void;
 }) {
   const cfg = sectionConfig(section);
   const BOARDS = cfg.boards;
@@ -772,6 +782,16 @@ export function ArtboardEditor({
       setSel(elements.map((x) => x.id));
       return;
     }
+    if (mod && (e.key.toLowerCase() === "c" || e.key.toLowerCase() === "x") && sel.length) {
+      e.preventDefault();
+      toClipboard(e.key.toLowerCase() === "x");
+      return;
+    }
+    if (mod && e.key.toLowerCase() === "v" && clipboard) {
+      e.preventDefault();
+      paste();
+      return;
+    }
     if (sel.length > 1) {
       const step = e.shiftKey ? 10 : 1;
       const moves: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
@@ -929,6 +949,62 @@ export function ArtboardEditor({
     commit(next, layout);
     setSelectedId(null);
     finishEdit();
+  }
+
+  /* ---------- Cortar, copiar y pegar ---------- */
+
+  const [clipNote, setClipNote] = useState<string | null>(null);
+  // Cortar o copiar lo seleccionado. Cortar lo saca de esta sección (los
+  // objetos que vienen con la invitación quedan como eliminados, se recuperan
+  // desde ⋯). Los bloques de contenido no se mueven.
+  function toClipboard(cut: boolean) {
+    const ids = sel.filter((id) => {
+      const e = layout[orientation].find((x) => x.id === id);
+      return e && toPasteable({ ...e, src: resolved[orientation].find((x) => x.id === id)?.src ?? e.src }, "x-tmp00") !== null;
+    });
+    const skipped = sel.length - ids.length;
+    if (!ids.length) {
+      setClipNote("Los bloques de contenido (formularios, listas) no se pueden cortar ni copiar.");
+      return;
+    }
+    const pick = (o: Orientation, id: string) => {
+      const e = layout[o].find((x) => x.id === id);
+      return e ? { ...e, src: resolved[o].find((x) => x.id === id)?.src ?? e.src } : null;
+    };
+    onClipboard?.({ from: section, cut, items: ids.map((id) => ({ portrait: pick(orientation, id)!, landscape: pick(otherOf(orientation), id) })) });
+    setClipNote(`${cut ? "Cortado" : "Copiado"}: ${ids.length} ${ids.length === 1 ? "objeto" : "objetos"}${skipped ? ` (${skipped} bloque${skipped > 1 ? "s" : ""} de contenido no se mueve${skipped > 1 ? "n" : ""})` : ""}. Pegalo en cualquier sección con Ctrl+V o «Pegar».`);
+    if (cut) removeMany(ids);
+  }
+
+  // Pega lo del portapapeles como objetos nuevos de esta sección, en el mismo lugar.
+  function paste() {
+    if (!clipboard) return;
+    const room = MAX_CUSTOM - customCount;
+    const items = clipboard.items.slice(0, Math.max(0, room));
+    if (!items.length) {
+      setClipNote("Llegaste al máximo de objetos en esta sección.");
+      return;
+    }
+    const next = clone(layout);
+    const ids: string[] = [];
+    for (const it of items) {
+      const nid = newCustomId();
+      ids.push(nid);
+      for (const o of ["portrait", "landscape"] as Orientation[]) {
+        const src = (o === orientation ? it.portrait : it.landscape) ?? it.portrait;
+        const t = toPasteable(src, nid);
+        if (!t) continue;
+        const Ah = BOARDS[o].h * extentOf(layout, o);
+        // Si en esta sección queda fuera de la diapositiva, va al medio.
+        const y = t.y > Ah ? Ah / 2 : t.y;
+        next[o] = [...next[o], { ...t, y, z: maxZ(next[o]) + 1 }];
+      }
+    }
+    commit(next, layout);
+    setSel(ids);
+    setPopover(null);
+    areaRef.current?.focus({ preventScroll: true });
+    setClipNote(clipboard.items.length > items.length ? "Algunos objetos no entraron (máximo de objetos por sección)." : null);
   }
 
   function moveGroup(dx: number, dy: number) {
@@ -1302,6 +1378,23 @@ export function ArtboardEditor({
             onOpenLibrary={cfg.photos ? () => { setPopover(null); onOpenLibrary?.(); } : undefined}
           />
         )}
+        {!cover && clipboard && (
+          <button
+            type="button"
+            onClick={paste}
+            title="Pegar lo que cortaste o copiaste (Ctrl+V)"
+            className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-50"
+            data-paste
+          >
+            <ClipboardPaste size={14} /> Pegar ({clipboard.items.length})
+          </button>
+        )}
+        {clipNote && (
+          <span className="flex items-center gap-1 text-[11px] text-neutral-500" data-clip-note>
+            {clipNote}
+            <button type="button" onClick={() => setClipNote(null)} aria-label="Cerrar aviso" className="text-neutral-400 hover:text-neutral-700"><X size={12} /></button>
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-1.5">
           {actions}
           <button
@@ -1405,6 +1498,8 @@ export function ArtboardEditor({
             <ToolButton label="Centrar verticalmente" onClick={() => alignGroup("vcenter")}><AlignCenterHorizontal size={15} /></ToolButton>
             <ToolButton label="Alinear abajo" onClick={() => alignGroup("bottom")}><AlignEndHorizontal size={15} /></ToolButton>
             <span className="mx-0.5 h-5 w-px bg-neutral-200" aria-hidden />
+            <ToolButton label="Cortar (Ctrl+X): para pegarlos en otra sección" onClick={() => toClipboard(true)}><Scissors size={14} /></ToolButton>
+            <ToolButton label="Copiar (Ctrl+C)" onClick={() => toClipboard(false)}><Copy size={14} /></ToolButton>
             <ToolButton label="Eliminar los seleccionados (Supr)" onClick={() => removeMany(sel)}><Trash2 size={14} /></ToolButton>
             <Hint id="group" className="ml-1"><span className="text-[11px] text-neutral-400">Arrastrá cualquiera para moverlos juntos · Shift+clic suma o quita</span></Hint>
           </>
@@ -1439,6 +1534,7 @@ export function ArtboardEditor({
             onToggleLock={() => toggleLock(selected.id)}
             onLive={(c) => livePatch(selected.id, c)}
             onLiveEnd={endLive}
+            onCut={selected.kind !== "panel" ? () => toClipboard(true) : undefined}
             onCopyFormat={isTexty(selected) ? () => setPainter(Object.fromEntries(FORMAT_KEYS.map((k) => [k, selected[k]])) as Format) : undefined}
             onOpenContent={selected.kind === "map" && isCustom(selected) ? () => onOpenContent?.(selected.id) : undefined}
           />
@@ -1643,6 +1739,7 @@ function ContextToolbar({
   onLiveEnd,
   onCopyFormat,
   onOpenContent,
+  onCut,
 }: {
   el: TextElement;
   orientation: Orientation;
@@ -1669,6 +1766,7 @@ function ContextToolbar({
   onLiveEnd: () => void;
   onCopyFormat?: () => void;
   onOpenContent?: () => void;
+  onCut?: () => void;
 }) {
   const isText = el.kind === "text";
   const countdown = isCountdown(el);
@@ -1974,6 +2072,7 @@ function ContextToolbar({
         {el.locked ? <Lock size={14} /> : <LockOpen size={14} />}
       </ToolButton>
       {onDuplicate && <ToolButton label="Duplicar (Ctrl+D)" onClick={onDuplicate}><Copy size={14} /></ToolButton>}
+      {onCut && <ToolButton label="Cortar (Ctrl+X): para pegarlo en otra sección" onClick={onCut}><Scissors size={14} /></ToolButton>}
       <ToolButton label={el.hidden ? "Mostrar" : "Ocultar"} onClick={() => onPatch({ hidden: !el.hidden })}>
         {el.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
       </ToolButton>

@@ -123,6 +123,7 @@ export type TextLayout = Record<Orientation, TextElement[]> & {
   arrange?: string; // Itinerario: acomodo automático de los pasos (ARRANGEMENTS)
   bg?: { x: number; y: number; zoom: number }; // encuadre del fondo (diseños de antes; ver withBackdrop)
   bgObjects?: boolean; // el fondo y el velo ya son objetos del diseño
+  merged?: boolean; // Locación: ya incluye lo que antes era "Cómo llegar"
   layers?: { id: string; name: string }[]; // capas creadas por quien diseña (agrupan objetos)
 };
 
@@ -159,7 +160,7 @@ export const ORNAMENT_KEYS = [
   "flame", "bird", "shirt", "palette",
   "divider", "rings", "heart", "flower", "flower2", "leaf", "sprout", "sparkles", "star", "feather", "gem", "crown",
 ] as const;
-const CUSTOM_KINDS = ["text", "photo", "shape", "ornament", "countdown", "map"] as const;
+const CUSTOM_KINDS = ["text", "photo", "shape", "ornament", "countdown", "map", "link"] as const;
 export type CustomKind = (typeof CUSTOM_KINDS)[number];
 const CUSTOM_ID = /^x-[a-z0-9]{4,16}$/;
 export const MAX_CUSTOM = 40;
@@ -181,6 +182,9 @@ export function customTemplate(kind: CustomKind, id: string, x = 0, y = 0): Text
     case "map":
       // text: dirección o link del mapa (se carga en «Contenido»).
       return el({ ...common, kind: "map", name: "Mapa", text: "", w: 620, h: 360, color: "var(--color-fg)" });
+    case "link":
+      // Botón que abre el mapa (ref = lugar 1 o 2; variant "waze" = Waze).
+      return el({ ...common, kind: "link", name: "Botón", text: "Google Maps", w: 280, fontSize: 24, color: "var(--color-muted)", ref: "1" });
     default:
       return el({ ...common, kind: "text", name: "Texto", text: "Escribí acá", w: 500, color: "var(--color-fg)", lineHeight: 1.3 });
   }
@@ -457,6 +461,7 @@ export type SectionConfig = {
   photos?: boolean; // tiene una foto por cada imagen de la galería (withDynamic)
   steps?: boolean; // tiene un grupo de objetos por cada paso del itinerario (withDynamic)
   chapters?: boolean; // tiene un grupo de objetos por cada capítulo de la historia (withDynamic)
+  defaultExtent?: number; // alto inicial en pantallas (si no se guardó otro)
 };
 
 // Cada tarjeta de "El evento": recuadro, nombre, hora, salón y dirección, sueltos.
@@ -539,6 +544,13 @@ const customSection = (n: number): SectionConfig => ({
     P("text", "Texto", "Escribí acá el contenido de esta sección.", { y: 520, fs: 32 }, { y: 330, fs: 17 }),
   ),
 });
+
+const shiftPair = (p: Pair, dyP: number, dyL: number): Pair => ({
+  portrait: { ...p.portrait, y: p.portrait.y + dyP },
+  landscape: { ...p.landscape, y: p.landscape.y + dyL },
+});
+// Alto de la primera pantalla de Locación (donde termina lo del evento).
+const VENUE_DY = { portrait: 1024, landscape: 768 };
 
 export const SECTIONS = {
   envelope: {
@@ -629,13 +641,16 @@ export const SECTIONS = {
   },
   story: { label: "Nuestra historia", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, extendable: true, chapters: true, defaults: layoutOf(T("Nuestra historia", 110, 70)) },
   event: {
-    label: "El evento", mode: "artboard", boards: ARTBOARDS, extendable: true,
-    tokens: [...COMMON_TOKENS, "vestimenta", "evento1", "hora1", "salon1", "direccion1", "evento2", "hora2", "salon2", "direccion2"],
+    label: "Locación", mode: "artboard", boards: ARTBOARDS, extendable: true, defaultExtent: 1.5,
+    tokens: [...COMMON_TOKENS, "vestimenta", "evento1", "hora1", "salon1", "direccion1", "evento2", "hora2", "salon2", "direccion2", "lugar1", "lugar2"],
     defaults: layoutOf(
       T("El evento", 120, 80),
       ...eventCard(1),
       ...eventCard(2),
       P("dressCode", "Código de vestimenta", "Código de vestimenta: {vestimenta}", { y: 960, fs: 28 }, { y: 660, fs: 14 }),
+      // Lo que antes era "Cómo llegar": título, mapas y botones.
+      shiftPair(T("Cómo llegar", 110, 70, "placesTitle", "Título de los lugares"), VENUE_DY.portrait, VENUE_DY.landscape),
+      ...[...placeItems(1), ...placeItems(2)].map((p) => shiftPair(p, VENUE_DY.portrait, VENUE_DY.landscape)),
     ),
   },
   dresscode: {
@@ -848,6 +863,9 @@ export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayo
       if (kind === "photo") clean.src = validSrc(s.src);
       if (kind === "shape") clean.variant = typeof s.variant === "string" && s.variant in SHAPES ? s.variant : "rect";
       if (kind === "ornament") clean.variant = (ORNAMENT_KEYS as readonly string[]).includes(s.variant as string) ? (s.variant as string) : "flower";
+      if ((kind === "map" || kind === "link") && (s.ref === "1" || s.ref === "2" || s.ref === "")) clean.ref = s.ref as string;
+      if (kind === "map" && s.ref === undefined) clean.ref = "";
+      if (kind === "link") clean.variant = s.variant === "waze" ? "waze" : "";
       if (kind === "photo" && !clean.src) continue;
       if (s.fill === true && (kind === "photo" || kind === "shape")) Object.assign(clean, coverBox(fillA), { locked: true });
       out[o].push(clean);
@@ -901,8 +919,34 @@ export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayo
     const e = src.extent as Record<string, unknown>;
     const pick = (v: unknown) => (EXTENTS as readonly number[]).includes(v as number) ? (v as number) : 1;
     out.extent = { portrait: pick(e.portrait), landscape: pick(e.landscape) };
+  } else if (cfg.defaultExtent && !src.portrait) {
+    out.extent = { portrait: cfg.defaultExtent, landscape: cfg.defaultExtent };
   }
+  if ((src as { merged?: unknown }).merged === true) out.merged = true;
   return out;
+}
+
+/* ---------- Cortar y pegar entre secciones ---------- */
+
+// Un objeto de una sección convertido en objeto agregado (para pegarlo en
+// otra). Los bloques de contenido (formularios, listas) no se pueden mover.
+export function toPasteable(e: TextElement, id: string): TextElement | null {
+  const common = { ...e, id, layer: "", removed: false, style: e.kind === "text" ? e.style : null };
+  switch (e.kind) {
+    case "panel":
+      return null;
+    case "block":
+      if (e.id === "countdown") return { ...common, kind: "countdown" };
+      if (e.id === "divider") return { ...common, kind: "ornament", variant: "divider", h: Math.max(20, Math.round(e.w * 0.1)) };
+      return null;
+    case "photo":
+      return e.src ? { ...common, ref: "" } : null;
+    case "map":
+    case "link":
+      return common;
+    default:
+      return { ...common, ref: "" };
+  }
 }
 
 /* ---------- Fondo y velo ---------- */
@@ -941,6 +985,43 @@ export function withBackdrop(layout: TextLayout, zoneBg: string | null | undefin
   }
   delete out.bg;
   delete out.overlay;
+  return out;
+}
+
+// Locación: los diseños guardados de "El evento" y "Cómo llegar" se juntan en
+// uno. Lo de "Cómo llegar" va debajo de lo del evento, tal como estaba
+// acomodado; queda el fondo del evento (estirado al nuevo alto).
+export function withLocation(event: TextLayout, location: TextLayout | null): TextLayout {
+  if (event.merged) return event;
+  const out: TextLayout = { ...event, merged: true, portrait: [...event.portrait], landscape: [...event.landscape] };
+  if (!location) return out;
+  const ext = { portrait: 1, landscape: 1 };
+  for (const o of ["portrait", "landscape"] as Orientation[]) {
+    const B = ARTBOARDS[o];
+    const evExt = extentOf(event, o), locExt = extentOf(location, o);
+    // Lo que realmente ocupa el evento (si su sección es de 1 pantalla).
+    const dy = B.h * evExt;
+    const total = EXTENTS.find((x) => x >= evExt + locExt) ?? EXTENTS[EXTENTS.length - 1];
+    ext[o] = total;
+    const oldA = { w: B.w, h: B.h * evExt }, newA = { w: B.w, h: B.h * total };
+    // El fondo y el velo del evento pasan a tapar la sección entera.
+    out[o] = out[o].map((e) => (coversBoard(e, oldA) ? { ...e, ...coverBox(newA) } : e));
+    const locA = { w: B.w, h: B.h * locExt };
+    const ids = new Set(out[o].map((e) => e.id));
+    const maxZ = Math.max(0, ...out[o].map((e) => e.z));
+    for (const l of byZ(location[o])) {
+      if (isCustom(l) && coversBoard(l, locA)) continue; // su fondo y velo no se repiten
+      const id = l.id === "title" ? "placesTitle" : l.id;
+      const moved = { ...l, id, y: l.y + dy, z: maxZ + 1 + l.z };
+      const i = out[o].findIndex((e) => e.id === id);
+      if (i >= 0 && !isCustom(l)) out[o][i] = { ...out[o][i], ...moved, name: out[o][i].name };
+      else if (!ids.has(id)) out[o].push(moved);
+      else out[o].push({ ...moved, id: newCustomId() });
+      ids.add(id);
+    }
+  }
+  out.extent = ext;
+  out.layers = [...(event.layers ?? []), ...(location.layers ?? [])];
   return out;
 }
 

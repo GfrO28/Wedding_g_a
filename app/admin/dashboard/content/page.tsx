@@ -43,16 +43,15 @@ export default async function ContentEditorPage() {
   // El fondo de cada sección es un objeto del diseño (ver withBackdrop).
   const bg = () => ({ color: "var(--color-bg)" });
 
-  const sections: EditorSection[] = [
+  const allSections: EditorSection[] = [
     { id: "intro", label: "Sobre de apertura", group: "sections", zone: "intro", enabled: w.zoneEnabled.intro, design: "envelope", background: { color: "#EFE8DD" } },
     { id: "hero", label: "Portada", group: "sections", zone: "hero", enabled: w.zoneEnabled.hero, design: "hero", background: bg() },
     { id: "countdown", label: "Cuenta regresiva", group: "sections", zone: "countdown", enabled: w.zoneEnabled.countdown, design: "countdown", background: bg() },
     { id: "blessing", label: "Frase y padres", group: "sections", zone: "blessing", enabled: w.zoneEnabled.blessing, design: "blessing", background: bg() },
     { id: "story", label: "Nuestra historia", group: "sections", zone: "story", enabled: w.zoneEnabled.story, design: "story", background: bg() },
-    { id: "event", label: "El evento", group: "sections", zone: "event", enabled: w.zoneEnabled.event, design: "event", background: bg() },
+    { id: "event", label: "Locación", group: "sections", zone: "event", enabled: w.zoneEnabled.event, design: "event", background: bg() },
     { id: "dresscode", label: "Dress Code", group: "sections", zone: "dresscode", enabled: w.zoneEnabled.dresscode, design: "dresscode", background: bg() },
     { id: "itinerary", label: "Itinerario", group: "sections", zone: "itinerary", enabled: w.zoneEnabled.itinerary, design: "itinerary", background: bg() },
-    { id: "location", label: "Cómo llegar", group: "sections", zone: "location", enabled: w.zoneEnabled.location, design: "location", background: bg() },
     { id: "gallery", label: "Galería", group: "sections", zone: "gallery", enabled: w.zoneEnabled.gallery, design: "gallery", background: bg() },
     { id: "accommodation", label: "Alojamiento", group: "sections", zone: "accommodation", enabled: w.zoneEnabled.accommodation, design: "accommodation", background: bg() },
     { id: "custom1", label: "Personalizada 1", group: "sections", zone: "custom1", enabled: w.zoneEnabled.custom1, design: "custom1", background: bg(), custom: true },
@@ -67,6 +66,10 @@ export default async function ContentEditorPage() {
     { id: "styles", label: "Estilos de texto", group: "general" },
     { id: "desktop", label: "Fondo para PC", group: "general" },
   ];
+  // Las secciones del cuerpo van en el orden elegido (el sobre primero, el pie al final).
+  const rank = (id: string) => (id === "intro" ? -1 : (w.sectionOrder as string[]).indexOf(id));
+  const body = allSections.filter((s) => s.group === "sections" && s.id !== "footer").sort((a, b) => rank(a.id) - rank(b.id));
+  const sections = [...body, ...allSections.filter((s) => s.id === "footer" || s.group === "general")];
 
   const blocks: Record<string, Record<string, ReactNode>> = {
     blessing: { divider: <Divider scaled /> },
@@ -124,19 +127,7 @@ export default async function ContentEditorPage() {
     event: (
       <Stack>
         <Hint id="canvas-texts"><p className="text-sm text-neutral-500">Los textos se editan sobre el lienzo: doble clic en un texto para escribir.</p></Hint>
-        <Hint id="event-maps"><p className="text-xs text-neutral-500">Las direcciones y los links de los mapas se cargan en «Cómo llegar».</p></Hint>
-        <BgHint />
-      </Stack>
-    ),
-    itinerary: (
-      <Stack>
-        <Group title="Pasos"><ItineraryStepsEditor steps={w.itinerary} /></Group>
-        <BgHint />
-      </Stack>
-    ),
-    location: (
-      <Stack>
-        <Group title="Mapas">
+        <Group title="Lugares y mapas">
           <form action={updateMapsAction} className="flex flex-col gap-3">
             <p className="text-sm font-medium text-neutral-700">Ceremonia</p>
             <Field label="Dirección (la usan el mapa y Waze)"><input name="ceremonyAddress" defaultValue={w.ceremony.address} className={inputClass} /></Field>
@@ -147,6 +138,12 @@ export default async function ContentEditorPage() {
             <SaveButton />
           </form>
         </Group>
+        <BgHint />
+      </Stack>
+    ),
+    itinerary: (
+      <Stack>
+        <Group title="Pasos"><ItineraryStepsEditor steps={w.itinerary} /></Group>
         <BgHint />
       </Stack>
     ),

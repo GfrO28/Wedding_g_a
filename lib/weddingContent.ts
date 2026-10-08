@@ -71,6 +71,43 @@ export const ZONE_TOGGLE_KEYS = [
   "custom3",
 ] as const;
 export type ZoneToggleKey = (typeof ZONE_TOGGLE_KEYS)[number];
+
+// Secciones del cuerpo de la invitación, en su orden por defecto. El sobre va
+// siempre primero y el pie de página siempre al final. ("Cómo llegar" ahora es
+// parte de Locación.)
+export const SECTION_ORDER = [
+  "hero",
+  "countdown",
+  "blessing",
+  "story",
+  "event",
+  "dresscode",
+  "itinerary",
+  "gallery",
+  "accommodation",
+  "custom1",
+  "custom2",
+  "custom3",
+  "gifts",
+  "rsvp",
+  "messages",
+] as const;
+export type OrderedSection = (typeof SECTION_ORDER)[number];
+export const SECTION_ORDER_KEY = "sectionOrder";
+
+// El orden guardado, con las secciones que falten en su lugar por defecto.
+export function sanitizeSectionOrder(input: unknown): OrderedSection[] {
+  const known = SECTION_ORDER as readonly string[];
+  const saved = Array.isArray(input) ? [...new Set(input.filter((x): x is OrderedSection => typeof x === "string" && known.includes(x)))] : [];
+  const out = [...saved];
+  for (const id of SECTION_ORDER) {
+    if (out.includes(id)) continue;
+    // Va después de la sección que la precede en el orden por defecto.
+    const prev = SECTION_ORDER.slice(0, SECTION_ORDER.indexOf(id)).reverse().find((p) => out.includes(p));
+    out.splice(prev ? out.indexOf(prev) + 1 : 0, 0, id);
+  }
+  return out;
+}
 const OPT_IN_ZONES: readonly string[] = ["countdown", "dresscode", "custom1", "custom2", "custom3"];
 
 export type WeddingContent = {
@@ -101,6 +138,7 @@ export type WeddingContent = {
   };
   zoneImages: Record<ZoneImageKey, string | null>;
   zoneEnabled: Record<ZoneToggleKey, boolean>;
+  sectionOrder: OrderedSection[];
 };
 
 function parseJSON<T>(value: string | undefined, fallback: T): T {
@@ -165,6 +203,7 @@ export async function getWeddingContent(): Promise<WeddingContent> {
     zoneImages: Object.fromEntries(
       ZONE_IMAGE_KEYS.map((key) => [key, map[`zoneBg_${key}`] ?? null]),
     ) as Record<ZoneImageKey, string | null>,
+    sectionOrder: sanitizeSectionOrder(parseJSON<unknown>(map[SECTION_ORDER_KEY], null)),
     zoneEnabled: Object.fromEntries(
       // Las secciones nuevas (cuenta regresiva, Dress Code, personalizadas) arrancan sin agregar.
       ZONE_TOGGLE_KEYS.map((key) => [key, OPT_IN_ZONES.includes(key) ? map[`zoneEnabled_${key}`] === "true" : map[`zoneEnabled_${key}`] !== "false"]),

@@ -4,7 +4,6 @@ import { OurStory } from "@/app/components/OurStory";
 import { Gallery } from "@/app/components/Gallery";
 import { EventDetails } from "@/app/components/EventDetails";
 import { Itinerary } from "@/app/components/Itinerary";
-import { Location } from "@/app/components/Location";
 import { Accommodation } from "@/app/components/Accommodation";
 import { Gifts } from "@/app/components/Gifts";
 import { RSVPForm } from "@/app/components/RSVPForm";
@@ -13,7 +12,8 @@ import { Footer } from "@/app/components/Footer";
 import { CountdownSection } from "@/app/components/CountdownSection";
 import { ArtboardSection } from "@/app/components/ArtboardSection";
 
-import { getWeddingContent } from "@/lib/weddingContent";
+import { getWeddingContent, type OrderedSection } from "@/lib/weddingContent";
+import { Fragment, type ReactNode } from "react";
 import { DesktopFixedBackground, desktopPageProps } from "@/app/components/Slide";
 import { getDesktopBackground } from "@/lib/desktopBackgroundServer";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
@@ -31,27 +31,29 @@ export default async function PreviewPage() {
   ]);
 
   const desktop = await getDesktopBackground();
+  // Cada sección del cuerpo; se muestran en el orden que se eligió en el editor.
+  const sections: Record<OrderedSection, ReactNode> = {
+    hero: <Hero guestName={"Invitado de ejemplo"} />,
+    countdown: <CountdownSection />,
+    blessing: <Blessing />,
+    story: <OurStory />,
+    event: <EventDetails />,
+    dresscode: <ArtboardSection section="dresscode" guestName={"Invitado de ejemplo"} />,
+    itinerary: <Itinerary />,
+    gallery: <Gallery />,
+    accommodation: <Accommodation />,
+    custom1: <ArtboardSection section="custom1" guestName={"Invitado de ejemplo"} />,
+    custom2: <ArtboardSection section="custom2" guestName={"Invitado de ejemplo"} />,
+    custom3: <ArtboardSection section="custom3" guestName={"Invitado de ejemplo"} />,
+    gifts: <Gifts slug={"preview"} />,
+    rsvp: <RSVPForm slug="preview" maxAttendees={2} existing={null} layout={rsvpText} tokens={tokens} />,
+    messages: <GuestMessages slug={"preview"} />,
+  };
   return (
     <>
     <DesktopFixedBackground desktop={desktop} />
     <main className="h-dvh overflow-y-auto overscroll-y-contain" {...desktopPageProps(desktop)}>
-      {content.zoneEnabled.hero && <Hero guestName="Invitado de ejemplo" />}
-      {content.zoneEnabled.countdown && <CountdownSection />}
-      {content.zoneEnabled.blessing && <Blessing />}
-      {content.zoneEnabled.story && <OurStory />}
-      {content.zoneEnabled.event && <EventDetails />}
-      {content.zoneEnabled.dresscode && <ArtboardSection section="dresscode" guestName={"Invitado de ejemplo"} />}
-      {content.zoneEnabled.itinerary && <Itinerary />}
-      {content.zoneEnabled.location && <Location />}
-      {content.zoneEnabled.gallery && <Gallery />}
-      {content.zoneEnabled.accommodation && <Accommodation />}
-      {content.zoneEnabled.custom1 && <ArtboardSection section="custom1" guestName={"Invitado de ejemplo"} />}
-      {content.zoneEnabled.custom2 && <ArtboardSection section="custom2" guestName={"Invitado de ejemplo"} />}
-      {content.zoneEnabled.custom3 && <ArtboardSection section="custom3" guestName={"Invitado de ejemplo"} />}
-      {content.zoneEnabled.gifts && <Gifts slug="preview" />}
-      {content.zoneEnabled.rsvp && (
-      <RSVPForm slug="preview" maxAttendees={2} existing={null} layout={rsvpText} tokens={tokens} />)}
-      {content.zoneEnabled.messages && <GuestMessages slug="preview" />}
+      {content.sectionOrder.map((id) => content.zoneEnabled[id] && <Fragment key={id}>{sections[id]}</Fragment>)}
       {content.zoneEnabled.footer && <Footer />}
     </main>
     </>

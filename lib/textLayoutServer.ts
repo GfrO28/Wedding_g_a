@@ -14,6 +14,7 @@ import {
   sectionConfig,
   withDynamic,
   withBackdrop,
+  withLocation,
   stepKey,
   type StepItem,
   type ChapterItem,
@@ -53,7 +54,9 @@ export async function getTextLayout(section: LayoutSection): Promise<TextLayout>
     chapters: cfg.chapters ? await getChapters() : [],
   };
   const zoneBg = section === "envelope" || section === "footer" ? null : map[`zoneBg_${section}`];
-  const layout = withBackdrop(withDynamic(section, sanitizeLayout(section, parse(map[layoutSettingKey(section)])), items), zoneBg);
+  let layout = withBackdrop(withDynamic(section, sanitizeLayout(section, parse(map[layoutSettingKey(section)])), items), zoneBg);
+  // Locación incluye lo que antes era "Cómo llegar".
+  if (section === "event") layout = withLocation(layout, withBackdrop(sanitizeLayout("location", parse(map[layoutSettingKey("location")])), map.zoneBg_location));
   return applyStyles(layout, sanitizeStyles(parse(map[STYLES_KEY])));
 }
 
@@ -74,6 +77,10 @@ export async function getEditorLayouts(): Promise<{
     const draft = parse(map[draftLayoutKey(s)]);
     drafts[s] = draft ? withBackdrop(withDynamic(s, sanitizeLayout(s, draft), items), zoneBg) : published[s];
   }
+  // Locación incluye lo que antes era "Cómo llegar" (publicado y borrador).
+  const noDraft = drafts.event === published.event && drafts.location === published.location;
+  published.event = withLocation(published.event, published.location);
+  drafts.event = noDraft ? published.event : withLocation(drafts.event, drafts.location);
   const publishedStyles = sanitizeStyles(parse(map[STYLES_KEY]));
   const draftStyles = parse(map[DRAFT_STYLES_KEY]);
   return {
