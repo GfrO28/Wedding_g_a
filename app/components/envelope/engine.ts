@@ -14,7 +14,9 @@ export const ENVELOPE_CONFIG = {
   // false = los píxeles semitransparentes (sombra incrustada en el PNG) no
   // cuentan para medir la forma de la solapa.
   useBakedShadow: false,
-  layout: { reference: { w: 768, h: 1024 }, sideTipTarget: 0.53, maxFlapDepth: 0.5, coverSafety: 1.04 },
+  // fit "stretch": cada solapa se ajusta a la pantalla y las cuatro puntas se
+  // juntan en el centro (tip). "cover" es el armado anterior (3:4 recortado).
+  layout: { reference: { w: 768, h: 1024 }, sideTipTarget: 0.53, maxFlapDepth: 0.5, coverSafety: 1.04, fit: "stretch" as "cover" | "stretch", tip: 0.505 },
   seal: { sizeVmin: 16, minPx: 72, maxPx: 200 },
   hint: "Toca el sello",
   angles: { side: 160, topBottom: 170 },
@@ -217,9 +219,9 @@ function coverage(W: number, H: number, P: Placement, G: Geometry, res = 200): C
 
 // Encaje del brief: laterales con la punta en sideTipTarget·W, y superior e
 // inferior a la escala mínima que cubre todo (búsqueda binaria sobre las máscaras).
-function briefLayout(W: number, H: number, G: Geometry) {
+function briefLayout(W: number, H: number, G: Geometry, tip?: number) {
   const cfg = ENVELOPE_CONFIG.layout, L = G.left, T = G.top;
-  let sS = (cfg.sideTipTarget * W) / ((L.tx - L.hx) * L.iw);
+  let sS = ((tip ?? cfg.sideTipTarget) * W) / ((L.tx - L.hx) * L.iw);
   const sTmax = (cfg.maxFlapDepth * H) / ((T.ty - T.by) * T.ih);
   for (let i = 0; i < 40 && !coverage(W, H, place(W, H, sS, sTmax, G), G).ok; i++) sS *= 1.05;
   let lo = 0, hi = sTmax;
@@ -235,12 +237,12 @@ function briefLayout(W: number, H: number, G: Geometry) {
 // La composición se arma una sola vez en la pantalla de referencia (donde las
 // piezas quedan a escala pareja) y después se amplía entera para cubrir cada
 // pantalla, así ninguna solapa crece más que otra.
-export function computeLayout(W: number, H: number, G: Geometry): Layout {
-  const key = `${W}x${H}`;
+export function computeLayout(W: number, H: number, G: Geometry, tip?: number): Layout {
+  const key = `${W}x${H}x${tip ?? ""}`;
   const hit = G.cache.get(key);
   if (hit) return hit;
   const R = ENVELOPE_CONFIG.layout.reference;
-  const ref = briefLayout(R.w, R.h, G);
+  const ref = briefLayout(R.w, R.h, G, tip);
   const k = Math.max(W / R.w, H / R.h);
   const dx = (W - R.w * k) / 2, dy = (H - R.h * k) / 2;
   const P = {} as Placement;
@@ -257,12 +259,38 @@ export function computeLayout(W: number, H: number, G: Geometry): Layout {
   return out;
 }
 
+// Modo «adaptado»: cada solapa se estira a la forma exacta de la pantalla.
+// Las laterales cubren todo el alto con la punta en tip·ancho y la superior e
+// inferior todo el ancho con la punta en tip·alto: los cuatro triángulos se
+// juntan en el centro (tip un poco más de 0,5 para que no quede una rendija).
+function stretchLayout(W: number, H: number, G: Geometry, tip: number): Layout {
+  const L = G.left, T = G.top;
+  const lw = (W * tip + BLEED) / (L.tx - L.hx), lh = (H + 2 * BLEED) / (L.bottom - L.top);
+  const tw = (W + 2 * BLEED) / (T.right - T.left), th = (H * tip + BLEED) / (T.ty - T.by);
+  const ly = -BLEED - L.top * lh, tx = -BLEED - T.left * tw;
+  const P: Placement = {
+    top: { x: tx, y: -T.by * th - BLEED, w: tw, h: th, ox: T.tx * tw, oy: T.by * th, mx: 1, my: 1 },
+    bottom: { x: tx, y: H - (1 - T.by) * th + BLEED, w: tw, h: th, ox: T.tx * tw, oy: (1 - T.by) * th, mx: 1, my: -1 },
+    right: { x: W - (1 - L.hx) * lw + BLEED, y: ly, w: lw, h: lh, ox: (1 - L.hx) * lw, oy: L.ty * lh, mx: -1, my: 1 },
+    left: { x: -L.hx * lw - BLEED, y: ly, w: lw, h: lh, ox: L.hx * lw, oy: L.ty * lh, mx: 1, my: 1 },
+  };
+  return {
+    W, H, P, k: 1, cov: coverage(W, H, P, G),
+    sSide: Math.max(lw / L.iw, lh / L.ih), sTop: Math.max(tw / T.iw, th / T.ih), cropX: 0, cropY: 0,
+  };
+}
+
+export type FitMode = "cover" | "stretch";
+
 // En pantallas horizontales el sobre se arma sobre un marco vertical (su alto
 // es el ancho de la pantalla) y ese marco se gira 90°.
-export function frameFor(W: number, H: number, G: Geometry) {
+// fit "cover": la composición de referencia (3:4) se amplía entera y se recorta.
+// fit "stretch": las solapas se ajustan a la forma exacta del marco.
+export function frameFor(W: number, H: number, G: Geometry, fit: FitMode = ENVELOPE_CONFIG.layout.fit, tip?: number) {
   const rotated = W > H;
   const VW = rotated ? H : W, VH = rotated ? W : H;
-  return { rotated, VW, VH, layout: computeLayout(VW, VH, G) };
+  if (fit === "stretch") return { rotated, VW, VH, layout: stretchLayout(VW, VH, G, tip ?? ENVELOPE_CONFIG.layout.tip) };
+  return { rotated, VW, VH, layout: computeLayout(VW, VH, G, tip) };
 }
 
 // Pantallas exigentes para recomendar resoluciones: celulares grandes (3×),
@@ -339,20 +367,23 @@ export type MountOptions = {
   tokens: TokenValues;
   reducedMotion?: boolean;
   debug?: boolean;
+  fit?: FitMode; // cómo se acomodan las solapas a la pantalla (por defecto: el del config)
+  tip?: number; // dónde se juntan las puntas (fracción del ancho; por defecto la del config)
+  colors?: { background?: string; hint?: string }; // interior del sobre y texto «Toca el sello»
   onOpen?: () => void;
   onComplete?: () => void;
 };
 
 export function mountEnvelope(container: HTMLElement, G: Geometry, opts: MountOptions) {
   const C = ENVELOPE_CONFIG, W = opts.width, H = opts.height;
-  const F = frameFor(W, H, G), Lr = F.layout, P = Lr.P, VW = F.VW, VH = F.VH;
+  const F = frameFor(W, H, G, opts.fit, opts.tip), Lr = F.layout, P = Lr.P, VW = F.VW, VH = F.VH;
   const vmin = Math.min(W, H) / 100;
   const tweens: gsap.core.Animation[] = [];
   let tl: gsap.core.Timeline | null = null;
   let playing = false;
 
   const intro = document.createElement("div");
-  Object.assign(intro.style, { position: "absolute", inset: "0", overflow: "hidden", background: C.colors.background });
+  Object.assign(intro.style, { position: "absolute", inset: "0", overflow: "hidden", background: opts.colors?.background ?? C.colors.background });
   const scene = document.createElement("div");
   Object.assign(scene.style, { position: "absolute", inset: "0", transformOrigin: "50% 50%" });
   intro.appendChild(scene);
@@ -444,7 +475,7 @@ export function mountEnvelope(container: HTMLElement, G: Geometry, opts: MountOp
   hint.textContent = C.hint;
   Object.assign(hint.style, {
     position: "absolute", left: W / 2 + "px", top: H / 2 + D / 2 + Math.max(10, vmin * 2) + "px", transform: "translateX(-50%)",
-    fontSize: Math.max(14, vmin * 3) + "px", fontStyle: "italic", color: "#efe8dd", whiteSpace: "nowrap", pointerEvents: "none",
+    fontSize: Math.max(14, vmin * 3) + "px", fontStyle: "italic", color: opts.colors?.hint ?? "#efe8dd", whiteSpace: "nowrap", pointerEvents: "none",
     letterSpacing: ".04em", fontFamily: `var(--font-envelope), "Cormorant Garamond", serif`,
   });
   scene.appendChild(hint);

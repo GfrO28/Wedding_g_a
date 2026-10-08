@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Download, Play, X } from "lucide-react";
-import { DEFAULT_ENVELOPE_ASSETS, ENVELOPE_SLOTS, type EnvelopeSlot } from "@/lib/envelopeAssets";
+import { useEffect, useRef, useState } from "react";
+import { AlertTriangle, CheckCircle2, Download, Loader2, Play, X } from "lucide-react";
+import { DEFAULT_ENVELOPE_ASSETS, ENVELOPE_SLOTS, envelopeColors, type EnvelopeSlot } from "@/lib/envelopeAssets";
+import { PAPERS, paintFlapBlob } from "@/app/components/envelope/paper";
 import type { TextLayout, TokenValues } from "@/lib/textLayout";
 import type { PieceNeed } from "@/app/components/envelope/engine";
 import { EnvelopePreview } from "./EnvelopePreview";
-import { requestEnvelopeUploadAction, resetEnvelopeImageAction, saveEnvelopeImageAction } from "./zone-actions";
+import { requestEnvelopeUploadAction, resetEnvelopeImageAction, saveEnvelopeImageAction, setEnvelopePaperAction } from "./zone-actions";
 
 const LABELS: Record<EnvelopeSlot, { title: string; note: string }> = {
   flapLeft: { title: "Solapa izquierda", note: "Borde recto (la bisagra) a la izquierda y la punta hacia la derecha. La derecha es su espejo." },
@@ -15,6 +16,15 @@ const LABELS: Record<EnvelopeSlot, { title: string; note: string }> = {
 };
 
 const fmt = (n: number) => n.toLocaleString("es");
+
+// Medidas para el sobre adaptado (calculadas con el motor): las laterales cubren
+// todo el alto y llegan al centro; la superior y la inferior, todo el ancho
+// hasta el centro. Se diseñan para una pantalla 9:16 y se ajustan a cada una.
+const DESIGN: Record<EnvelopeSlot, { ratio: number; ratioText: string; size: [number, number]; min: [number, number]; template?: string }> = {
+  flapLeft: { ratio: 9 / 32, ratioText: "9 : 32 (vertical)", size: [1125, 4000], min: [640, 2280], template: "/assets/envelope/plantilla-solapa-lateral.svg" },
+  flapTop: { ratio: 9 / 8, ratioText: "9 : 8 (horizontal)", size: [2250, 2000], min: [1350, 1200], template: "/assets/envelope/plantilla-solapa-superior.svg" },
+  seal: { ratio: 1, ratioText: "1 : 1 (cuadrado)", size: [420, 420], min: [280, 280] },
+};
 // Proporción en palabras: 0,59 : 1 (más alta que ancha).
 function ratioText(w: number, h: number) {
   const r = (w / h).toLocaleString("es", { maximumFractionDigits: 2 });
@@ -41,7 +51,11 @@ export function EnvelopeImagesPanel({
   textLayout,
   tokens,
   onAssetsChange,
+  paper,
+  onPaperChange,
 }: {
+  paper: string;
+  onPaperChange: (color: string) => void;
   initialAssets: Record<EnvelopeSlot, string>;
   initialCustom: Record<EnvelopeSlot, boolean>;
   textLayout: TextLayout;
@@ -49,6 +63,7 @@ export function EnvelopeImagesPanel({
   onAssetsChange?: (assets: Record<EnvelopeSlot, string>) => void;
 }) {
   const [assets, setAssets] = useState(initialAssets);
+  const latest = useRef(initialAssets);
   const [custom, setCustom] = useState(initialCustom);
   const [busy, setBusy] = useState<EnvelopeSlot | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -79,9 +94,9 @@ export function EnvelopeImagesPanel({
     return () => window.removeEventListener("keydown", esc);
   }, [preview]);
 
-  async function upload(slot: EnvelopeSlot, file: File) {
+  async function upload(slot: EnvelopeSlot, file: File, keepBusy = false) {
     setError(null);
-    setBusy(slot);
+    if (!keepBusy) setBusy(slot);
     try {
       const req = await requestEnvelopeUploadAction(slot, file.name, file.type);
       if (!req.uploadUrl || !req.publicUrl) {
@@ -95,22 +110,51 @@ export function EnvelopeImagesPanel({
       }
       const { assetUrl } = await saveEnvelopeImageAction(slot, req.publicUrl);
       if (assetUrl) {
-        const next = { ...assets, [slot]: assetUrl };
+        // Se sube una pieza tras otra: se parte siempre de lo último guardado.
+        const next = { ...latest.current, [slot]: assetUrl };
+        latest.current = next;
         setAssets(next);
         onAssetsChange?.(next);
         setCustom((c) => ({ ...c, [slot]: true }));
+        return true;
       }
     } catch {
       setError("No se pudo subir la imagen. Revisá tu conexión y probá de nuevo.");
     } finally {
-      setBusy(null);
+      if (!keepBusy) setBusy(null);
+    }
+    return false;
+  }
+
+  // Papel: genera las dos solapas a tamaño final (WebP) y las sube. El color
+  // también define el interior del sobre y el texto «Toca el sello».
+  const [pick, setPick] = useState(paper);
+  const [making, setMaking] = useState(false);
+  async function applyPaper() {
+    setMaking(true);
+    setError(null);
+    try {
+      const name = PAPERS.find((p) => p.base === pick)?.key ?? "papel";
+      const [side, top] = await Promise.all([paintFlapBlob("side", pick), paintFlapBlob("top", pick)]);
+      const ok =
+        (await upload("flapLeft", new File([side], `solapa-lateral-${name}.webp`, { type: "image/webp" }), true)) &&
+        (await upload("flapTop", new File([top], `solapa-superior-${name}.webp`, { type: "image/webp" }), true));
+      if (ok) {
+        await setEnvelopePaperAction(pick);
+        onPaperChange(pick);
+      }
+    } catch {
+      setError("No se pudieron generar las solapas.");
+    } finally {
+      setMaking(false);
     }
   }
 
   async function reset(slot: EnvelopeSlot) {
     setBusy(slot);
     await resetEnvelopeImageAction(slot);
-    const next = { ...assets, [slot]: DEFAULT_ENVELOPE_ASSETS[slot] };
+    const next = { ...latest.current, [slot]: DEFAULT_ENVELOPE_ASSETS[slot] };
+    latest.current = next;
     setAssets(next);
     onAssetsChange?.(next);
     setCustom((c) => ({ ...c, [slot]: false }));
@@ -127,10 +171,44 @@ export function EnvelopeImagesPanel({
         <Play size={14} /> Ver la animación del sobre
       </button>
 
+      <section className="flex flex-col gap-2 rounded-md border border-neutral-200 p-2.5" aria-label="Papel del sobre" data-paper>
+        <p className="text-sm font-medium text-neutral-800">Papel del sobre</p>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {PAPERS.map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              aria-pressed={pick === p.base}
+              onClick={() => setPick(p.base)}
+              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${pick === p.base ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-300 hover:bg-neutral-50"}`}
+            >
+              <span className="h-3.5 w-3.5 rounded-full border border-black/10" style={{ background: p.base }} /> {p.label}
+            </button>
+          ))}
+          <label className="flex items-center gap-1 rounded-full border border-neutral-300 px-2 py-0.5 text-xs" title="Otro color">
+            <input type="color" aria-label="Color de papel propio" value={pick} onChange={(e) => setPick(e.target.value)} className="h-5 w-5 cursor-pointer border-0 bg-transparent p-0" />
+            Otro
+          </label>
+        </div>
+        <button
+          type="button"
+          onClick={applyPaper}
+          disabled={making || busy !== null}
+          className="flex items-center justify-center gap-1.5 rounded-md border border-neutral-900 px-3 py-1.5 text-xs font-medium hover:bg-neutral-50 disabled:opacity-50"
+        >
+          {making && <Loader2 size={13} className="animate-spin" />} {making ? "Generando y subiendo…" : "Generar las solapas con este papel"}
+        </button>
+        <p className="text-[11px] leading-snug text-neutral-500">
+          Crea la solapa lateral y la superior con textura, luz y sombra, a tamaño final, y las sube (reemplaza las
+          actuales). El color también se usa para el interior del sobre y el texto «Toca el sello».
+        </p>
+      </section>
+
       <p className="text-xs text-neutral-500">
-        PNG o WebP con fondo transparente. La animación mide la forma de cada pieza (la bisagra y la punta) y la
-        agranda hasta cubrir la pantalla: conviene mantener la proporción de la original y subirla al tamaño
-        recomendado, calculado para celulares grandes y monitores 2K. En WebP pesan mucho menos y el sobre carga más rápido.
+        O subí tus propias imágenes: PNG o WebP con fondo transparente. La animación mide la forma de cada pieza (la bisagra y la punta) y la
+        agranda hasta cubrir la pantalla. Con la proporción y el tamaño recomendados (calculados para celulares
+        grandes y monitores 2K) coincide justo con la animación. Las plantillas traen la bisagra y la punta
+        marcadas. En WebP pesan mucho menos y el sobre carga más rápido.
       </p>
 
       {ENVELOPE_SLOTS.map((slot) => (
@@ -182,7 +260,7 @@ export function EnvelopeImagesPanel({
             <button type="button" onClick={() => setPreview(false)} aria-label="Cerrar" className="absolute right-3 top-3 rounded-full p-1 text-neutral-500 hover:bg-neutral-100">
               <X size={18} />
             </button>
-            <EnvelopePreview assets={assets} textLayout={textLayout} tokens={tokens} />
+            <EnvelopePreview assets={assets} textLayout={textLayout} tokens={tokens} colors={envelopeColors(paper)} />
           </div>
         </div>
       )}
@@ -191,31 +269,36 @@ export function EnvelopeImagesPanel({
 }
 
 // Proporción y resolución recomendadas para una pieza, y cómo queda la imagen actual.
-function SlotSizes({ slot, def, cur, custom }: { slot: EnvelopeSlot; def: Sizes; cur: Sizes; custom: boolean }) {
+function SlotSizes({ slot, cur, custom }: { slot: EnvelopeSlot; def: Sizes; cur: Sizes; custom: boolean }) {
+  const d = DESIGN[slot];
   const f = cur.need.scale;
+  const r = cur.iw / cur.ih;
+  // Otra forma: la animación la agranda para tapar huecos (la punta pasa del centro).
+  const shapeOff = slot !== "seal" && Math.abs(r - d.ratio) / d.ratio > 0.15;
   const status =
     f <= 1.05
       ? { ok: true, text: "nítida en todas las pantallas" }
       : f <= 1.5
         ? { ok: true, text: `bien (se agranda hasta ${f.toLocaleString("es", { maximumFractionDigits: 1 })}× en las pantallas más grandes)` }
-        : { ok: false, text: `se va a ver borrosa en pantallas grandes (se agranda ${f.toLocaleString("es", { maximumFractionDigits: 1 })}×). Con esta forma, subila de al menos ${fmt(cur.need.min.w)} × ${fmt(cur.need.min.h)} px.` };
+        : { ok: false, text: `se va a ver borrosa en pantallas grandes (se agranda ${f.toLocaleString("es", { maximumFractionDigits: 1 })}×)` };
   return (
     <div className="mt-2 flex flex-col gap-1 rounded bg-neutral-50 px-2.5 py-2 text-[11px] leading-snug text-neutral-600" data-sizes={slot}>
       <p>
-        <b className="font-medium text-neutral-800">Proporción:</b> como la original, {fmt(def.iw)} × {fmt(def.ih)} → {ratioText(def.iw, def.ih)}
+        <b className="font-medium text-neutral-800">Proporción:</b> {d.ratioText}
       </p>
       <p data-recommended>
-        <b className="font-medium text-neutral-800">Tamaño recomendado:</b> {fmt(def.need.min.w)} × {fmt(def.need.min.h)} px
-        <span className="text-neutral-400"> · máxima nitidez: {fmt(def.need.ideal.w)} × {fmt(def.need.ideal.h)}</span>
+        <b className="font-medium text-neutral-800">Tamaño recomendado:</b> {fmt(d.size[0])} × {fmt(d.size[1])} px
+        <span className="text-neutral-400"> · mínimo {fmt(d.min[0])} × {fmt(d.min[1])}</span>
       </p>
-      <p className={`flex items-start gap-1 ${status.ok ? "text-emerald-700" : "text-amber-700"}`} data-current>
-        {status.ok ? <CheckCircle2 size={12} className="mt-px shrink-0" /> : <AlertTriangle size={12} className="mt-px shrink-0" />}
+      <p className={`flex items-start gap-1 ${status.ok && !shapeOff ? "text-emerald-700" : "text-amber-700"}`} data-current>
+        {status.ok && !shapeOff ? <CheckCircle2 size={12} className="mt-px shrink-0" /> : <AlertTriangle size={12} className="mt-px shrink-0" />}
         <span>
-          {custom ? "Tu imagen" : "La original"}: {fmt(cur.iw)} × {fmt(cur.ih)} px, {status.text}
+          {custom ? "Tu imagen" : "La original"}: {fmt(cur.iw)} × {fmt(cur.ih)} px ({ratioText(cur.iw, cur.ih)}), {status.text}.
+          {shapeOff && " Tiene otra proporción: la animación la agranda para tapar la pantalla y la punta pasa del centro."}
         </span>
       </p>
-      <a href={DEFAULT_ENVELOPE_ASSETS[slot]} download className="flex w-fit items-center gap-1 text-blue-700 hover:underline">
-        <Download size={11} /> Descargar la original como plantilla
+      <a href={d.template ?? DEFAULT_ENVELOPE_ASSETS[slot]} download className="flex w-fit items-center gap-1 text-blue-700 hover:underline">
+        <Download size={11} /> {d.template ? "Descargar la plantilla con las guías" : "Descargar el original"}
       </a>
     </div>
   );

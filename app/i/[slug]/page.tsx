@@ -78,7 +78,7 @@ export default async function GuestInvitationPage({
   return (
     <>
     <MusicControl music={content.zoneEnabled.music ? content.music : null} />
-    {content.zoneEnabled.intro && <EnvelopeIntro assets={envelope.assets} textLayout={envelopeText} tokens={tokens} design={envelope.design} videoLayout={envelopeVideoText} videoAssets={envelope.video} />}
+    {content.zoneEnabled.intro && <EnvelopeIntro assets={envelope.assets} textLayout={envelopeText} tokens={tokens} design={envelope.design} videoLayout={envelopeVideoText} videoAssets={envelope.video} paper={envelope.paper} />}
     <DesktopFixedBackground desktop={desktop} />
     <main className="h-dvh overflow-y-auto overscroll-y-contain" {...desktopPageProps(desktop)}>
       {content.sectionOrder.map((id) => content.zoneEnabled[id] && <Fragment key={id}>{sections[id]}</Fragment>)}

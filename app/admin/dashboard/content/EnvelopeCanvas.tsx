@@ -29,7 +29,9 @@ export function EnvelopeClosed({
   width,
   height,
   onOpened,
+  colors,
 }: {
+  colors?: { background: string; hint: string };
   assets: EnvelopeAssets;
   layout: TextLayout;
   tokens: TokenValues;
@@ -53,7 +55,7 @@ export function EnvelopeClosed({
       const engine = await import("@/app/components/envelope/engine");
       const G = await engine.loadGeometry(assets);
       if (cancelled) return;
-      mounted = engine.mountEnvelope(stage, G, { width, height, textLayout: layout, tokens, onComplete: () => opened.current() });
+      mounted = engine.mountEnvelope(stage, G, { width, height, textLayout: layout, tokens, colors, onComplete: () => opened.current() });
       setLoading(false);
     })();
     return () => {
@@ -62,7 +64,7 @@ export function EnvelopeClosed({
     };
     // El diseño se toma al montar: cambiarlo mientras se ve cerrado no hace falta.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assets, width, height, tokens]);
+  }, [assets, width, height, tokens, colors]);
 
   return (
     <div ref={ref} className="absolute inset-0 overflow-hidden" data-envelope-closed>

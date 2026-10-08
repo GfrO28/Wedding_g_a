@@ -22,12 +22,15 @@ export function EnvelopePreview({
   assets,
   textLayout,
   tokens,
+  colors,
 }: {
   assets: EnvelopeAssets;
   textLayout: TextLayout;
   tokens: TokenValues;
+  colors?: { background: string; hint: string };
 }) {
   const [device, setDevice] = useState(1);
+  const bg = colors?.background, hint = colors?.hint;
   const [run, setRun] = useState(0);
   const [debug, setDebug] = useState(false);
   const [boxWidth, setBoxWidth] = useState(0);
@@ -55,7 +58,7 @@ export function EnvelopePreview({
       const engine = await import("@/app/components/envelope/engine");
       const G = await engine.loadGeometry(assets);
       if (cancelled) return;
-      const m = engine.mountEnvelope(stage, G, { width: D.w, height: D.h, debug, textLayout, tokens });
+      const m = engine.mountEnvelope(stage, G, { width: D.w, height: D.h, debug, textLayout, tokens, colors: bg && hint ? { background: bg, hint } : undefined });
       mounted = m;
       const F = m.layout, r = F.layout;
       const sides = F.rotated ? r.cropY : r.cropX, ends = F.rotated ? r.cropX : r.cropY;
@@ -72,7 +75,7 @@ export function EnvelopePreview({
       cancelled = true;
       mounted?.destroy();
     };
-  }, [assets, D.w, D.h, debug, run, textLayout, tokens]);
+  }, [assets, D.w, D.h, debug, run, textLayout, tokens, bg, hint]);
 
   const maxH = 520;
   const k = boxWidth > 0 ? Math.min(boxWidth / D.w, maxH / D.h) : 0;

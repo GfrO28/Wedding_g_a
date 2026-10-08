@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2250" height="2000" viewBox="0 0 2250 2000">
+  <!-- Plantilla: solapa superior, 9:8. Borrá las guías y dejá el fondo transparente al exportar. -->
+  <rect width="2250" height="2000" fill="none" stroke="#bbb" stroke-width="4" stroke-dasharray="24 16"/>
+  <polygon points="0,0 2250,0 1125,2000" fill="#6b2333" fill-opacity="0.18" stroke="#6b2333" stroke-width="6"/>
+  <line x1="0" y1="3" x2="2250" y2="3" stroke="#2563eb" stroke-width="6"/>
+  <circle cx="1125" cy="1996" r="14" fill="#2563eb"/>
+  <g font-family="Arial, sans-serif" fill="#2563eb" font-size="44" text-anchor="middle">
+    <text x="1125" y="110">Bisagra: borde recto, opaco de lado a lado</text>
+    <text x="1125" y="1910">Punta: centro del borde de abajo</text>
+    <text x="1125" y="900" fill="#666">Solapa superior · 2250 × 2000 px (9:8)</text>
+    <text x="1125" y="960" fill="#666">PNG/WebP transparente · la inferior es su espejo</text>
+  </g>
+</svg>

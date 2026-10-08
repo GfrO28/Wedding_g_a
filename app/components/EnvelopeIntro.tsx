@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { EnvelopeAssets } from "./envelope/engine";
 import { ENVELOPE_VIDEO_BG, type TextLayout, type TokenValues } from "@/lib/textLayout";
-import type { EnvelopeDesign, VideoEnvelopeAssets } from "@/lib/envelopeAssets";
+import { DEFAULT_ENVELOPE_PAPER, envelopeColors, type EnvelopeDesign, type VideoEnvelopeAssets } from "@/lib/envelopeAssets";
 import { TextArtboard } from "./TextArtboard";
 import { FramedEnvelope, type FramedEnvelopeImages } from "./FramedEnvelope";
 
@@ -23,6 +23,7 @@ export function EnvelopeIntro({
   design?: EnvelopeDesign;
   videoLayout?: TextLayout;
   videoAssets?: VideoEnvelopeAssets;
+  paper?: string;
 }) {
   if (design === "video" && videoLayout)
     return <VideoIntro layout={videoLayout} tokens={props.tokens} seal={props.assets.seal} images={videoAssets ? { front: videoAssets.vFront, flap: videoAssets.vFlap, card: videoAssets.vCard, seal: videoAssets.vSeal } : undefined} />;
@@ -90,11 +91,14 @@ function ClassicIntro({
   assets,
   textLayout,
   tokens,
+  paper = DEFAULT_ENVELOPE_PAPER,
 }: {
   assets: EnvelopeAssets;
   textLayout: TextLayout;
   tokens: TokenValues;
+  paper?: string;
 }) {
+  const colors = envelopeColors(paper);
   const ref = useRef<HTMLDivElement>(null);
   const [done, setDone] = useState(false);
 
@@ -132,6 +136,7 @@ function ClassicIntro({
           textLayout,
           tokens,
           reducedMotion,
+          colors: envelopeColors(paper),
           debug,
           onOpen: () => window.dispatchEvent(new Event(PLAY_MUSIC_EVENT)),
           onComplete: () => {
@@ -161,7 +166,7 @@ function ClassicIntro({
       mounted?.destroy();
       document.body.style.overflow = prevOverflow;
     };
-  }, [assets, textLayout, tokens]);
+  }, [assets, textLayout, tokens, paper]);
 
   if (done) return null;
 
@@ -169,7 +174,7 @@ function ClassicIntro({
     <div
       ref={ref}
       className="fixed inset-0 z-50 overflow-hidden"
-      style={{ width: "100vw", height: "100dvh", background: "#4A1520" }}
+      style={{ width: "100vw", height: "100dvh", background: colors.background }}
     />
   );
 }

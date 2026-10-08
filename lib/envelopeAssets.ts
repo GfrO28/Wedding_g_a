@@ -3,11 +3,24 @@
 export const ENVELOPE_SLOTS = ["flapLeft", "flapTop", "seal"] as const;
 export type EnvelopeSlot = (typeof ENVELOPE_SLOTS)[number];
 
+// Solapas por defecto: papel marfil (generadas con app/components/envelope/paper.ts).
 export const DEFAULT_ENVELOPE_ASSETS: Record<EnvelopeSlot, string> = {
-  flapLeft: "/assets/envelope/solapa_izq.png",
-  flapTop: "/assets/envelope/solapa_sup.png",
+  flapLeft: "/assets/envelope/solapa_lateral.webp",
+  flapTop: "/assets/envelope/solapa_superior.webp",
   seal: "/assets/envelope/sello.png",
 };
+
+// Color del papel del sobre clásico: define el interior que se ve al abrir y
+// el color del texto «Toca el sello».
+export const ENVELOPE_PAPER_KEY = "envelopePaper";
+export const DEFAULT_ENVELOPE_PAPER = "#efe5d3";
+export const isPaperColor = (v: unknown): v is string => typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v);
+export function envelopeColors(paper: string) {
+  const n = parseInt(paper.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  const dark = (k: number) => `rgb(${Math.round(r * k)}, ${Math.round(g * k)}, ${Math.round(b * k)})`;
+  return { background: dark(0.55), hint: lum > 0.55 ? "rgba(60,45,30,.75)" : "rgba(255,248,235,.85)" };
+}
 
 export const envelopeSettingKey = (slot: EnvelopeSlot | VideoEnvelopeSlot) => `envelope_${slot}`;
 

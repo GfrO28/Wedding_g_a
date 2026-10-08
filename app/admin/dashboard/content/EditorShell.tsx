@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, Check, ChevronDown, ChevronUp, ExternalLink, Loader2, MapPin, PanelRightClose, PanelRightOpen, Trash2 } from "lucide-react";
-import { ENVELOPE_DESIGNS, type EnvelopeDesign, type EnvelopeSlot, type VideoEnvelopeAssets } from "@/lib/envelopeAssets";
+import { ENVELOPE_DESIGNS, envelopeColors, type EnvelopeDesign, type EnvelopeSlot, type VideoEnvelopeAssets } from "@/lib/envelopeAssets";
 import { VideoEnvelopeImagesPanel, videoEnvelopeImages } from "./VideoEnvelopeImagesPanel";
 import { FramedEnvelope } from "@/app/components/FramedEnvelope";
 import { applyStyles, backdropOf, ENVELOPE_VIDEO_BG, isCustom, LAYOUT_SECTIONS, mapSourceOf, pickStyle, withDynamic, type LayoutSection, type TextElement, type TextLayout, type TextStyle, type TokenValues } from "@/lib/textLayout";
@@ -10,7 +10,7 @@ import { ArtboardEditor, type CanvasCover, type Clip, type EditorApi } from "./A
 import { GalleryPhotosPanel, type LibraryPhoto } from "./GalleryPhotosPanel";
 import { DesktopBackgroundPanel } from "./DesktopBackgroundPanel";
 import type { DesktopBackground } from "@/lib/desktopBackground";
-import { ENVELOPE_BG, EnvelopeCard, EnvelopeClosed } from "./EnvelopeCanvas";
+import { EnvelopeCard, EnvelopeClosed } from "./EnvelopeCanvas";
 import { EnvelopeImagesPanel } from "./EnvelopeImagesPanel";
 import { discardDraftsAction, publishAction, saveDraftAction, saveStylesDraftAction } from "./layout-actions";
 import { StylesPanel } from "./StylesPanel";
@@ -49,7 +49,7 @@ export function EditorShell({
   drafts: Record<LayoutSection, TextLayout>;
   styles: { published: TextStyle[]; draft: TextStyle[] };
   tokens: TokenValues;
-  envelope: { assets: Record<EnvelopeSlot, string>; custom: Record<EnvelopeSlot, boolean>; design: EnvelopeDesign; video: VideoEnvelopeAssets };
+  envelope: { assets: Record<EnvelopeSlot, string>; custom: Record<EnvelopeSlot, boolean>; design: EnvelopeDesign; video: VideoEnvelopeAssets; paper: string };
   galleryPhotos: LibraryPhoto[];
   desktopBackground: DesktopBackground;
 }) {
@@ -70,6 +70,9 @@ export function EditorShell({
   // Versión del sobre: cada una tiene su propio lienzo.
   const [envDesign, setEnvDesign] = useState<EnvelopeDesign>(envelope.design);
   const [videoAssets, setVideoAssets] = useState(envelope.video);
+  // Papel del sobre clásico: colores del interior y del texto «Toca el sello».
+  const [paper, setPaper] = useState(envelope.paper);
+  const paperColors = useMemo(() => envelopeColors(paper), [paper]);
   const monogram = `${tokens.inicial1 ?? ""}${tokens.inicial2 ?? ""}`;
   const designOf = (s: EditorSection): LayoutSection | undefined => (s.id === "intro" && envDesign === "video" ? "envelopeVideo" : s.design);
   const [galleryPhotos, setGalleryPhotos] = useState(initialGalleryPhotos);
@@ -290,7 +293,7 @@ export function EditorShell({
         openLabel: "Tarjeta (textos)",
         hint: "Así lo ven los invitados. Tocá el sello para ver la animación; al terminar pasás a editar los textos de la tarjeta.",
         render: ({ width, height, layout, onOpened }) => (
-          <EnvelopeClosed assets={envelopeAssets} layout={layout} tokens={tokens} width={width} height={height} onOpened={onOpened} />
+          <EnvelopeClosed assets={envelopeAssets} layout={layout} tokens={tokens} width={width} height={height} onOpened={onOpened} colors={paperColors} />
         ),
       }
     : undefined;
@@ -341,7 +344,7 @@ export function EditorShell({
             className={`flex flex-col items-center gap-1.5 rounded-lg border p-2 text-xs ${envDesign === d ? "border-blue-500 bg-blue-50 text-blue-900" : "border-neutral-200 text-neutral-700 hover:bg-neutral-50"}`}
           >
             {d === "classic" ? (
-              <span className="relative block h-16 w-10 overflow-hidden rounded-sm" style={{ background: ENVELOPE_BG }}>
+              <span className="relative block h-16 w-10 overflow-hidden rounded-sm" style={{ background: paperColors.background }}>
                 <span className="absolute inset-x-0 top-0 h-1/2 bg-[#6b2333]" style={{ clipPath: "polygon(0 0,100% 0,50% 100%)" }} />
                 <span className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#c9a24f]" />
               </span>
@@ -372,7 +375,7 @@ export function EditorShell({
         monogram={monogram}
       />
     ) : current.id === "intro" ? (
-      <EnvelopeImagesPanel initialAssets={envelopeAssets} initialCustom={envelope.custom} onAssetsChange={setEnvelopeAssets} textLayout={applyStyles(layouts.envelope, styles)} tokens={tokens} />
+      <EnvelopeImagesPanel initialAssets={envelopeAssets} initialCustom={envelope.custom} onAssetsChange={setEnvelopeAssets} textLayout={applyStyles(layouts.envelope, styles)} tokens={tokens} paper={paper} onPaperChange={setPaper} />
     ) : current.id === "gallery" ? (
       <GalleryPhotosPanel
         photos={galleryPhotos}
@@ -519,7 +522,7 @@ export function EditorShell({
               section={design}
               initialLayout={layouts[design]}
               tokens={tokens}
-              background={{ color: classicEnvelope ? ENVELOPE_BG : isEnvelope ? ENVELOPE_VIDEO_BG : current.background?.color ?? "var(--color-bg)" }}
+              background={{ color: classicEnvelope ? paperColors.background : isEnvelope ? ENVELOPE_VIDEO_BG : current.background?.color ?? "var(--color-bg)" }}
               onAdded={(el) => {
                 if (el.kind !== "map") return;
                 setContentOpen(true);
