@@ -9,10 +9,8 @@ import { getEditorLayouts, getTokenValues } from "@/lib/textLayoutServer";
 import { getDesktopBackground } from "@/lib/desktopBackgroundServer";
 import {
   addHotelAction,
-  addItineraryStepAction,
   addStoryChapterAction,
   deleteHotelAction,
-  deleteItineraryStepAction,
   deleteStoryChapterAction,
   updateBlessingAction,
   updateCoupleAction,
@@ -32,17 +30,10 @@ import { VARIANTS } from "@/lib/textLayout";
 import { AccommodationBody } from "@/app/components/Accommodation";
 import { GiftsBody, getGiftsData } from "@/app/components/Gifts";
 import { RSVPPreviewBody } from "@/app/components/RSVPForm";
+import { ItineraryStepsEditor } from "./ItineraryStepsEditor";
 import { MessagesBody, getApprovedMessages } from "@/app/components/GuestMessages";
 
 export const dynamic = "force-dynamic";
-
-const ICONS = [
-  { value: "church", label: "Iglesia" },
-  { value: "glass", label: "Copa" },
-  { value: "utensils", label: "Cubiertos" },
-  { value: "party", label: "Fiesta" },
-  { value: "clock", label: "Reloj" },
-];
 
 const STORY_LAYOUTS = [
   { value: "image-left", label: "Foto a la izquierda" },
@@ -200,21 +191,7 @@ export default async function ContentEditorPage() {
     ),
     itinerary: (
       <Stack>
-        <Group title="Pasos">
-          <ListItems items={w.itinerary.map((s) => ({ id: s.id, label: `${s.time} — ${s.label}` }))} deleteAction={deleteItineraryStepAction} />
-        </Group>
-        <Group title="Agregar paso">
-          <form action={addItineraryStepAction} className="flex flex-col gap-3">
-            <Field label="Hora"><input name="time" required placeholder="18:00" className={inputClass} /></Field>
-            <Field label="Nombre"><input name="label" required placeholder="Brindis" className={inputClass} /></Field>
-            <Field label="Ícono">
-              <select name="icon" defaultValue="clock" className={inputClass}>
-                {ICONS.map((i) => <option key={i.value} value={i.value}>{i.label}</option>)}
-              </select>
-            </Field>
-            <AddButton label="Agregar paso" />
-          </form>
-        </Group>
+        <Group title="Pasos"><ItineraryStepsEditor steps={w.itinerary} /></Group>
         <Group title="Foto de fondo"><ZoneImageUpload zone="itinerary" url={w.zoneImages.itinerary} /></Group>
       </Stack>
     ),

@@ -397,7 +397,19 @@ const stepKeys = (l: TextLayout) =>
 // Suma los pasos nuevos (acomodados con la versión que está en pantalla) y
 // quita los borrados, conservando la posición del resto.
 function mergeSteps(current: TextLayout, incoming: TextLayout): TextLayout | null {
-  if (stepKeys(current) === stepKeys(incoming)) return null;
+  if (stepKeys(current) === stepKeys(incoming)) {
+    // Mismos pasos: solo se sincronizan los íconos editados en "Contenido".
+    const icon = (l: TextLayout, id: string) => l.portrait.find((e) => e.id === id)?.variant;
+    const changed = incoming.portrait.filter((e) => /^step-.+-icon$/.test(e.id) && icon(current, e.id) !== e.variant);
+    if (!changed.length) return null;
+    const out: TextLayout = { ...current };
+    for (const o of ["portrait", "landscape"] as const)
+      out[o] = current[o].map((e) => {
+        const c = changed.find((x) => x.id === e.id);
+        return c ? { ...e, variant: c.variant } : e;
+      });
+    return out;
+  }
   const steps = incoming.portrait.filter((e) => /^step-.+-icon$/.test(e.id)).map((e) => ({ key: e.ref, icon: "clock" }));
   const merged = withDynamic("itinerary", current, { steps });
   // Los íconos de los pasos nuevos vienen del servidor (el que se eligió al cargarlo).

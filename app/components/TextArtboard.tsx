@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Ornament } from "./ornaments";
 import {
   ARTBOARDS,
@@ -33,14 +35,35 @@ export function ElementContent({
   el,
   tokens,
   blocks,
+  onOpenPhoto,
 }: {
   el: TextElement;
   tokens: TokenValues;
   blocks?: Record<string, ReactNode>;
+  onOpenPhoto?: (id: string) => void; // fotos de la galería: ampliar al tocarlas
 }) {
   if (el.kind === "panel") return <PanelBox el={el}>{blocks?.[`${el.id}:${el.variant}`] ?? blocks?.[el.id] ?? null}</PanelBox>;
   if (el.kind === "block") return <>{blocks?.[el.id] ?? null}</>;
-  if (el.kind === "photo") return <FramedPhoto el={el} />;
+  if (el.kind === "photo") {
+    const zoomable = !!onOpenPhoto && el.id.startsWith("photo-");
+    const open = () => onOpenPhoto?.(el.id);
+    return (
+      <div
+        className={`photo-fx fx-${el.effect}${zoomable ? " is-zoomable" : ""}`}
+        {...(zoomable
+          ? {
+              role: "button",
+              tabIndex: 0,
+              "aria-label": `Ampliar foto${el.text ? `: ${el.text}` : ""}`,
+              onClick: open,
+              onKeyDown: (e: React.KeyboardEvent) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), open()),
+            }
+          : null)}
+      >
+        <FramedPhoto el={el} />
+      </div>
+    );
+  }
   if (el.kind === "shape") {
     // Recuadro: solo el borde (como las tarjetas), del grosor proporcional a la caja.
     const outline = el.variant === "outline";
@@ -161,6 +184,7 @@ export function TextArtboard({
   const [size, setSize] = useState<{ w: number; h: number; vw: number; vh: number } | null>(null);
   const [inView, setInView] = useState(!animate);
   const [grow, setGrow] = useState(1);
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   // La aparición se dispara cuando la sección entra en pantalla.
   useEffect(() => {
@@ -190,6 +214,7 @@ export function TextArtboard({
   }, []);
 
   let content: ReactNode = null;
+  let photos: TextElement[] = [];
   let pageHeight: number | undefined;
   let fitK = 1;
   let baseH = 0;
@@ -238,12 +263,16 @@ export function TextArtboard({
                   ...(animate ? (inView ? { animationDelay: `${Math.min(i, 12) * 0.1}s` } : { opacity: 0 }) : null),
                 }}
               >
-                <ElementContent el={el} tokens={tokens} blocks={blocks} />
+                <ElementContent el={el} tokens={tokens} blocks={blocks} onOpenPhoto={setLightbox} />
               </div>
             </div>
           ))}
       </div>
     );
+    // Fotos de la galería en orden de lectura (de arriba abajo, de izquierda a derecha).
+    photos = layout[orientation]
+      .filter((e) => e.kind === "photo" && e.id.startsWith("photo-") && !e.hidden && !e.removed)
+      .sort((a, b) => (Math.abs(a.y - b.y) > 40 ? a.y - b.y : a.x - b.x));
   }
 
   // Si algo pasa el borde de abajo (un formulario largo, muchos regalos), la
@@ -266,6 +295,7 @@ export function TextArtboard({
     return () => ro.disconnect();
   });
 
+  const lbIndex = lightbox ? photos.findIndex((p) => p.id === lightbox) : -1;
   return (
     <div
       ref={ref}
@@ -273,6 +303,87 @@ export function TextArtboard({
       style={page ? { height: pageHeight ?? "100dvh" } : undefined}
     >
       {content}
+      {lbIndex >= 0 && (
+        <Lightbox
+          photos={photos}
+          index={lbIndex}
+          onIndex={(i) => setLightbox(photos[(i + photos.length) % photos.length].id)}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </div>
+  );
+}
+
+// Foto ampliada con su marco, y flechas para recorrer las demás fotos de la
+// galería (también con el teclado y deslizando el dedo).
+function Lightbox({
+  photos,
+  index,
+  onIndex,
+  onClose,
+}: {
+  photos: TextElement[];
+  index: number;
+  onIndex: (i: number) => void;
+  onClose: () => void;
+}) {
+  const el = photos[index];
+  const startX = useRef<number | null>(null);
+  const many = photos.length > 1;
+
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowRight" && many) onIndex(index + 1);
+      else if (e.key === "ArrowLeft" && many) onIndex(index - 1);
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [index, many, onClose, onIndex]);
+
+  const nav = "absolute top-1/2 -translate-y-1/2 rounded-full bg-white/15 p-3 text-white backdrop-blur hover:bg-white/30";
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-black/85 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Foto ampliada"
+      data-lightbox
+      onClick={onClose}
+      onPointerDown={(e) => (startX.current = e.clientX)}
+      onPointerUp={(e) => {
+        const dx = startX.current === null ? 0 : e.clientX - startX.current;
+        startX.current = null;
+        if (many && Math.abs(dx) > 50) onIndex(index + (dx < 0 ? 1 : -1));
+      }}
+    >
+      <figure
+        key={el.id}
+        className="lightbox-in"
+        style={{ width: `min(86vw, calc(76vh * ${el.w / el.h}))`, aspectRatio: `${el.w} / ${el.h}` }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <FramedPhoto el={el} />
+      </figure>
+      {el.text && <p className="mt-4 max-w-[80vw] text-center text-sm text-white/80">{el.text}</p>}
+      {many && (
+        <>
+          <button type="button" aria-label="Foto anterior" className={`${nav} left-3`} onClick={(e) => (e.stopPropagation(), onIndex(index - 1))}>
+            <ChevronLeft size={22} />
+          </button>
+          <button type="button" aria-label="Foto siguiente" className={`${nav} right-3`} onClick={(e) => (e.stopPropagation(), onIndex(index + 1))}>
+            <ChevronRight size={22} />
+          </button>
+          <p className="absolute bottom-4 text-xs tabular-nums text-white/70" data-lightbox-count>
+            {index + 1} / {photos.length}
+          </p>
+        </>
+      )}
+      <button type="button" aria-label="Cerrar" className="absolute right-3 top-3 rounded-full bg-white/15 p-2 text-white hover:bg-white/30" onClick={onClose}>
+        <X size={20} />
+      </button>
+    </div>,
+    document.body,
   );
 }

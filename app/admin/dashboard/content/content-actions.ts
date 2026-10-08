@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { setJSON, setSetting } from "@/lib/kv";
+import { stepIcon, stepKey } from "@/lib/textLayout";
 import {
   getEffectiveAccommodation,
   getEffectiveItinerary,
@@ -117,7 +118,7 @@ export async function addItineraryStepAction(formData: FormData) {
     id: crypto.randomUUID(),
     time: str(formData, "time"),
     label: str(formData, "label"),
-    icon: str(formData, "icon") || "clock",
+    icon: stepIcon(str(formData, "icon") || "clock"),
   });
   await setJSON("contentItinerary", steps);
   revalidate();
@@ -149,5 +150,24 @@ export async function deleteHotelAction(formData: FormData) {
   const id = str(formData, "id");
   const hotels = await getEffectiveAccommodation();
   await setJSON("contentAccommodation", hotels.filter((h) => h.id !== id));
+  revalidate();
+}
+
+// Editar un paso del itinerario (hora, nombre e ícono) desde el panel.
+export async function updateItineraryStepAction(id: string, data: { time: string; label: string; icon: string }) {
+  const steps = await getEffectiveItinerary();
+  const clip = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : "");
+  await setJSON(
+    "contentItinerary",
+    steps.map((s) => (s.id === id ? { ...s, time: clip(data.time, 20) || s.time, label: clip(data.label, 80) || s.label, icon: stepIcon(clip(data.icon, 20)) } : s)),
+  );
+  revalidate();
+}
+
+// Cambiar el ícono de un paso desde el lienzo (los objetos del paso usan su clave).
+export async function setItineraryStepIconAction(key: string, icon: string) {
+  const steps = await getEffectiveItinerary();
+  if (!steps.some((s) => stepKey(s.id) === key)) return;
+  await setJSON("contentItinerary", steps.map((s) => (stepKey(s.id) === key ? { ...s, icon: stepIcon(icon) } : s)));
   revalidate();
 }

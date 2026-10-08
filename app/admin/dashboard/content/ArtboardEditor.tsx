@@ -25,6 +25,7 @@ import {
   Eye,
   EyeOff,
   Italic,
+  Layers,
   Loader2,
   Lock,
   LockOpen,
@@ -54,7 +55,9 @@ import {
 import { ElementContent, isSized, TextArtboard } from "@/app/components/TextArtboard";
 import { Ornament, ORNAMENT_LABELS } from "@/app/components/ornaments";
 import { requestDesignImageUploadAction } from "./zone-actions";
+import { setItineraryStepIconAction } from "./content-actions";
 import { GALLERY_DRAG_TYPE } from "./GalleryPhotosPanel";
+import { LayersPanel } from "./LayersPanel";
 import {
   applyStyles,
   ARTBOARDS,
@@ -74,6 +77,8 @@ import {
   extentOf,
   overlayOf,
   FRAMES,
+  EFFECTS,
+  type EffectKey,
   VARIANTS,
   ARRANGEMENTS,
   arrangeSteps,
@@ -144,7 +149,7 @@ const clone = (l: TextLayout): TextLayout => JSON.parse(JSON.stringify(l));
 // Lo que se ve igual en celular y PC: el texto, la tipografía, el color, el
 // formato, el estilo, el borde y la versión. La posición, el tamaño, la
 // alineación, el giro y si está oculto son de cada formato.
-const SHARED_PROPS = [...STYLE_PROPS, "text", "style", "frame", "variant", "opacity"] as const;
+const SHARED_PROPS = [...STYLE_PROPS, "text", "style", "frame", "variant", "opacity", "effect"] as const;
 const otherOf = (o: Orientation): Orientation => (o === "portrait" ? "landscape" : "portrait");
 
 // Aplica en el otro formato la parte compartida de un cambio.
@@ -213,6 +218,7 @@ export function ArtboardEditor({
   const [overflow, setOverflow] = useState<Set<string>>(new Set());
   const [popover, setPopover] = useState<Popover>(null);
   const [realSize, setRealSize] = useState(false);
+  const [layersOpen, setLayersOpen] = useState(true);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [closed, setClosed] = useState(!!cover);
   const [replay, setReplay] = useState(0);
@@ -313,6 +319,9 @@ export function ArtboardEditor({
     const touchesStyle = Object.keys(changes).some((k) => (STYLE_PROPS as readonly string[]).includes(k));
     const elChanges: Partial<TextElement> = linked && touchesStyle ? { ...pickStyle(linked), ...changes, style: null } : { ...changes };
     record({ layout, styles });
+    // El ícono de un paso del itinerario también se guarda en los datos del paso.
+    const step = /^step-(.+)-icon$/.exec(id);
+    if (step && typeof elChanges.variant === "string") void setItineraryStepIconAction(step[1], elChanges.variant);
     if (Object.keys(elChanges).length) {
       const next = clone(layout);
       next[orientation] = next[orientation].map((e) => (e.id === id ? { ...e, ...elChanges } : e));
@@ -1019,6 +1028,15 @@ export function ArtboardEditor({
             </button>
           ))}
         </div>}
+        <button
+          type="button"
+          onClick={() => setLayersOpen((o) => !o)}
+          aria-pressed={layersOpen}
+          title="Mostrar u ocultar el panel de capas"
+          className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium ${layersOpen ? "bg-neutral-900 text-white" : "border border-neutral-300 hover:bg-neutral-50"}`}
+        >
+          <Layers size={14} /> Capas
+        </button>
         <div className="flex items-center gap-1">
           <IconButton label="Deshacer (Ctrl+Z)" onClick={undo} disabled={!hist.undo}><Undo2 size={15} /></IconButton>
           <IconButton label="Rehacer (Ctrl+Y)" onClick={redo} disabled={!hist.redo}><Redo2 size={15} /></IconButton>
@@ -1201,6 +1219,33 @@ export function ArtboardEditor({
         )}
       </div>
 
+      <div className="flex min-h-0 flex-1">
+      {layersOpen && (
+        <LayersPanel
+          elements={elements}
+          selected={sel}
+          warnings={new Set(elements.filter((el) => !el.hidden && (smallestPx(el) < MIN_READABLE_PX || overflow.has(el.id))).map((el) => el.id))}
+          onSelect={(id, additive) => (additive ? setSel((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id])) : setSelectedId(id))}
+          onSelectMany={(ids) => setSel(ids)}
+          onToggleHidden={(id) => {
+            const el = layout[orientation].find((x) => x.id === id);
+            if (el) patch(id, { hidden: !el.hidden });
+          }}
+          onSetHidden={(ids, hidden) => {
+            const next = clone(layout);
+            next[orientation] = next[orientation].map((e) => (ids.includes(e.id) ? { ...e, hidden } : e));
+            commit(next, layout);
+          }}
+          onToggleLock={toggleLock}
+          onReorder={(topFirst) => {
+            // El primero de la lista queda adelante de todo.
+            const z = new Map(topFirst.map((id, i) => [id, topFirst.length - i]));
+            const next = clone(layout);
+            next[orientation] = next[orientation].map((e) => (z.has(e.id) ? { ...e, z: z.get(e.id)! } : e));
+            commit(next, layout);
+          }}
+        />
+      )}
       {/* Lienzo */}
       <div
         ref={areaRef}
@@ -1350,34 +1395,6 @@ export function ArtboardEditor({
         </div>
       </div>
 
-      {/* Capas */}
-      <div className="flex flex-wrap items-center gap-1.5 border-t border-neutral-200 bg-white px-3 py-2">
-        <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Capas</span>
-        {byZ(elements).map((el) => {
-          const warn = !el.hidden && (smallestPx(el) < MIN_READABLE_PX || overflow.has(el.id));
-          const isSel = sel.includes(el.id);
-          return (
-            <span key={el.id} className={`inline-flex items-center rounded-full border text-xs ${isSel ? "border-blue-600 bg-blue-50 text-blue-800" : "border-neutral-200 text-neutral-700"}`}>
-              <button
-                type="button"
-                onClick={(e) => (e.shiftKey ? setSel((cur) => (cur.includes(el.id) ? cur.filter((x) => x !== el.id) : [...cur, el.id])) : setSelectedId(el.id))}
-                className="flex items-center gap-1 py-0.5 pl-2.5 pr-1"
-              >
-                {warn && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-label="Revisar" />}
-                {el.locked && <Lock size={10} aria-label="Bloqueado" />}
-                <span className={el.hidden ? "line-through opacity-60" : ""}>{el.name}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => patch(el.id, { hidden: !el.hidden })}
-                aria-label={el.hidden ? `Mostrar ${el.name}` : `Ocultar ${el.name}`}
-                className="py-0.5 pl-0.5 pr-2 text-neutral-400 hover:text-neutral-800"
-              >
-                {el.hidden ? <EyeOff size={12} /> : <Eye size={12} />}
-              </button>
-            </span>
-          );
-        })}
       </div>
 
       {realSize && (
@@ -1645,6 +1662,20 @@ function ContextToolbar({
         >
           {(Object.keys(FRAMES) as FrameKey[]).map((f) => (
             <option key={f} value={f}>Borde: {FRAMES[f]}</option>
+          ))}
+        </select>
+      )}
+
+      {el.kind === "photo" && (
+        <select
+          aria-label="Efecto al pasar el mouse"
+          title="Efecto al pasar el mouse o tocar la foto"
+          className="h-8 rounded-md border border-neutral-300 px-2 text-sm"
+          value={el.effect}
+          onChange={(e) => onPatch({ effect: e.target.value as EffectKey })}
+        >
+          {(Object.keys(EFFECTS) as EffectKey[]).map((f) => (
+            <option key={f} value={f}>Efecto: {EFFECTS[f]}</option>
           ))}
         </select>
       )}

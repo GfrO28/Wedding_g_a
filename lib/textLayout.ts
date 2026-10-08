@@ -89,6 +89,7 @@ export type TextElement = {
   opacity: number; // 0.1 a 1
   locked: boolean; // bloqueado: no se mueve ni cambia de tamaño en el editor
   removed: boolean; // eliminado del diseño (los fijos se pueden recuperar)
+  effect: EffectKey; // fotos: efecto al pasar el mouse o tocarla
   fontSize: number;
   font: FontKey;
   color: string;
@@ -131,12 +132,24 @@ export type FrameKey = keyof typeof FRAMES;
 
 export const EXTENTS = [1, 1.5, 2, 2.5, 3, 4] as const;
 
+// Efectos de las fotos al pasar el mouse (o tocarlas en el celular).
+export const EFFECTS = {
+  none: "Sin efecto",
+  lift: "Levantar con sombra",
+  zoom: "Acercar",
+  tilt: "Inclinar",
+  glow: "Brillo",
+} as const;
+export type EffectKey = keyof typeof EFFECTS;
+
 /* ---------- Objetos agregados desde el editor ---------- */
 
 export const SHAPES = { rect: "Rectángulo", rounded: "Redondeado", circle: "Círculo", line: "Línea", outline: "Recuadro (solo borde)" } as const;
 export const ORNAMENT_KEYS = [
-  "church", "utensils", "party", "clock",
-  "divider", "rings", "heart", "flower", "flower2", "leaf", "sprout", "sparkles", "star", "feather", "gem", "crown", "wine",
+  "church", "rings2", "wine", "martini", "beer", "toast", "coffee", "utensils", "cake", "party", "music", "dj", "mic", "dance",
+  "camera", "video", "gift", "bell", "mail", "ticket", "car", "bus", "plane", "hotel", "pin", "clock", "sun", "sunset", "moon",
+  "flame", "bird",
+  "divider", "rings", "heart", "flower", "flower2", "leaf", "sprout", "sparkles", "star", "feather", "gem", "crown",
 ] as const;
 const CUSTOM_KINDS = ["text", "photo", "shape", "ornament"] as const;
 export type CustomKind = (typeof CUSTOM_KINDS)[number];
@@ -351,7 +364,7 @@ export function typeStyle(el: TextElement): Record<string, string> {
 const base = {
   kind: "text" as const, align: "center" as const, letterSpacing: 0, lineHeight: 1.15,
   weight: 400, italic: false, uppercase: false, rotation: 0, hidden: false, style: null,
-  ref: "", src: "", frame: "none" as FrameKey, variant: "", z: 0, opacity: 1, locked: false, removed: false,
+  ref: "", src: "", frame: "none" as FrameKey, variant: "", z: 0, opacity: 1, locked: false, removed: false, effect: "none" as EffectKey,
 };
 type Spec = Partial<TextElement> & Pick<TextElement, "id" | "name" | "text" | "fontSize" | "font" | "color">;
 const el = (s: Spec & { x?: number; y?: number; w?: number; h?: number }): TextElement => ({ ...base, x: 0, y: 0, w: 600, h: 0, ...s });
@@ -618,7 +631,7 @@ export const photoId = (key: string) => `photo-${key.replace(/[^A-Za-z0-9_-]/g, 
 
 // Plantilla de una foto de la galería (su lugar inicial lo pone withDynamic).
 const photoTemplate = (id: string): TextElement =>
-  el({ kind: "photo", id, name: "Foto", text: "", x: 0, y: 0, w: 320, h: 320, fontSize: 16, font: "inter", color: "var(--color-fg)", frame: "rounded", ref: id.slice(6) });
+  el({ kind: "photo", id, name: "Foto", text: "", x: 0, y: 0, w: 320, h: 320, fontSize: 16, font: "inter", color: "var(--color-fg)", frame: "rounded", ref: id.slice(6), effect: "lift" });
 
 function cleanElement(d: TextElement, s: Record<string, unknown>, A: Board): TextElement {
   const sized = d.kind === "photo" || d.kind === "map" || d.kind === "shape" || d.kind === "ornament";
@@ -645,6 +658,7 @@ function cleanElement(d: TextElement, s: Record<string, unknown>, A: Board): Tex
     opacity: clamp(s.opacity, 0.1, 1, d.opacity),
     locked: typeof s.locked === "boolean" ? s.locked : d.locked,
     removed: s.removed === true,
+    effect: typeof s.effect === "string" && s.effect in EFFECTS ? (s.effect as EffectKey) : d.effect,
     src: "",
     style: null,
   };
@@ -789,8 +803,9 @@ export type StepItem = { key: string; icon: string };
 type StepPart = "card" | "icon" | "time" | "label";
 const STEP_ID = /^step-([A-Za-z0-9]{1,60})-(card|icon|time|label)$/;
 export const stepKey = (id: string) => id.replace(/[^A-Za-z0-9]/g, "").slice(0, 60);
-const STEP_ICON: Record<string, string> = { church: "church", glass: "wine", utensils: "utensils", party: "party", clock: "clock" };
-export const stepIcon = (icon: string) => STEP_ICON[icon] ?? "clock";
+// Ícono de un paso: cualquiera de los adornos. "glass" de los datos de antes era la copa de vino.
+export const stepIcon = (icon: string) =>
+  icon === "glass" ? "wine" : (ORNAMENT_KEYS as readonly string[]).includes(icon) ? icon : "clock";
 
 function stepTemplate(key: string, part: StepPart): TextElement {
   const id = `step-${key}-${part}`;
@@ -879,9 +894,10 @@ function withSteps(layout: TextLayout, steps: StepItem[]): TextLayout {
         let e = kept.find((x) => x.id === id);
         if (!e) {
           e = { ...stepTemplate(s.key, part), ...(pos?.get(id) ?? {}) };
-          if (part === "icon") e.variant = stepIcon(s.icon);
           kept.push(e);
         }
+        // El ícono sale de los datos del paso (se edita en Contenido o en el lienzo).
+        if (part === "icon") e.variant = stepIcon(s.icon);
         e.name = `Paso ${i + 1} · ${{ card: "recuadro", icon: "ícono", time: "hora", label: "nombre" }[part]}`;
       }
     });
