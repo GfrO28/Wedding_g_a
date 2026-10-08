@@ -102,23 +102,29 @@ export function GiftsBody({
       {parts.includes("payment") && (
         <FadeIn delay={0.2}>
           <div className="mx-auto max-w-sm space-y-4 rounded-lg border border-[var(--color-border)] p-6 text-left text-sm">
-            <div>
-              <p className="mb-1 font-medium text-[var(--color-fg)]">Yape</p>
-              <Row label="Número" value={payment.yape.phone} copyable />
-              <Row label="A nombre de" value={payment.yape.name} />
-            </div>
-            <div>
-              <p className="mb-1 font-medium text-[var(--color-fg)]">Plin</p>
-              <Row label="Número" value={payment.plin.phone} copyable />
-              <Row label="A nombre de" value={payment.plin.name} />
-            </div>
-            <div>
-              <p className="mb-1 font-medium text-[var(--color-fg)]">Transferencia bancaria</p>
-              <Row label="Banco" value={payment.bank.bank} />
-              <Row label="Titular" value={payment.bank.accountHolder} />
-              <Row label="Cuenta" value={payment.bank.accountNumber} copyable />
-              {payment.bank.cci && <Row label="CCI" value={payment.bank.cci} copyable />}
-            </div>
+            {payment.yape.enabled !== false && (
+              <div>
+                <p className="mb-1 font-medium text-[var(--color-fg)]">Yape</p>
+                <Row label="Número" value={payment.yape.phone} copyable />
+                <Row label="A nombre de" value={payment.yape.name} />
+              </div>
+            )}
+            {payment.plin.enabled !== false && (
+              <div>
+                <p className="mb-1 font-medium text-[var(--color-fg)]">Plin</p>
+                <Row label="Número" value={payment.plin.phone} copyable />
+                <Row label="A nombre de" value={payment.plin.name} />
+              </div>
+            )}
+            {payment.bank.enabled !== false && (
+              <div>
+                <p className="mb-1 font-medium text-[var(--color-fg)]">Transferencia bancaria</p>
+                <Row label="Banco" value={payment.bank.bank} />
+                <Row label="Titular" value={payment.bank.accountHolder} />
+                <Row label="Cuenta" value={payment.bank.accountNumber} copyable />
+                {payment.bank.cci && <Row label="CCI" value={payment.bank.cci} copyable />}
+              </div>
+            )}
           </div>
         </FadeIn>
       )}

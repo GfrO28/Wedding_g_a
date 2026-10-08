@@ -94,6 +94,9 @@ export async function getTokenValues(guestName: string): Promise<TokenValues> {
     direccion2: w.reception.address,
     mapa1: w.ceremony.mapUrl,
     mapa2: w.reception.mapUrl,
+    // Waze abre la app si está instalada (si no, su web) y busca la dirección.
+    waze1: `https://waze.com/ul?q=${encodeURIComponent(w.ceremony.address)}&navigate=yes`,
+    waze2: `https://waze.com/ul?q=${encodeURIComponent(w.reception.address)}&navigate=yes`,
     evento1: w.ceremony.name,
     hora1: w.ceremony.time,
     salon1: w.ceremony.venue,

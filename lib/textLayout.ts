@@ -259,6 +259,8 @@ export const TOKEN_HELP: Record<string, string> = {
   lugar2: "Recepción (nombre y salón)",
   direccion1: "Dirección de la ceremonia",
   direccion2: "Dirección de la recepción",
+  waze1: "Link de Waze de la ceremonia",
+  waze2: "Link de Waze de la recepción",
   evento1: "Nombre del evento 1 (Ceremonia)",
   hora1: "Hora de la ceremonia",
   salon1: "Lugar de la ceremonia",
@@ -297,7 +299,7 @@ export function elementStyle(el: TextElement): Record<string, string> {
   if (el.opacity < 1) Object.assign(box, { opacity: String(el.opacity) });
   if (el.kind === "photo" || el.kind === "map" || el.kind === "shape" || el.kind === "ornament") return { ...box, height: `${el.h}px` };
   const text = { ...box, ...typeStyle(el), fontSize: `${el.fontSize}px`, whiteSpace: "pre-wrap", overflowWrap: "break-word" };
-  return el.kind === "link" ? { ...text, textDecoration: "underline", textUnderlineOffset: "0.2em" } : text;
+  return text;
 }
 
 // Cómo se dibuja el borde de una foto: el marco y el filtro de la imagen.
@@ -434,8 +436,12 @@ function placeItems(i: 1 | 2): Pair[] {
       el({ kind: "map", id: `place${i}-map`, name: `Mapa ${i}`, text: "", ref: String(i), x: lx, y: 300, w: 420, h: 236, fontSize: 16, font: "inter", color: "var(--color-fg)" }),
     ),
     pair(
-      el({ ...lnk, id: `place${i}-link`, name: `Enlace al mapa ${i}`, text: "Abrir en Google Maps", x: 384, y: p.y + 375, w: 500, fontSize: 26 }),
-      el({ ...lnk, id: `place${i}-link`, name: `Enlace al mapa ${i}`, text: "Abrir en Google Maps", x: lx, y: 445, w: 420, fontSize: 14 }),
+      el({ ...lnk, id: `place${i}-link`, name: `Botón Google Maps ${i}`, text: "Google Maps", x: 384 - 150, y: p.y + 375, w: 280, fontSize: 24 }),
+      el({ ...lnk, id: `place${i}-link`, name: `Botón Google Maps ${i}`, text: "Google Maps", x: lx - 105, y: 445, w: 200, fontSize: 14 }),
+    ),
+    pair(
+      el({ ...lnk, id: `place${i}-waze`, name: `Botón Waze ${i}`, text: "Waze", variant: "waze", x: 384 + 150, y: p.y + 375, w: 280, fontSize: 24 }),
+      el({ ...lnk, id: `place${i}-waze`, name: `Botón Waze ${i}`, text: "Waze", variant: "waze", x: lx + 105, y: 445, w: 200, fontSize: 14 }),
     ),
   ];
 }
@@ -718,6 +724,24 @@ export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayo
       if (kind === "photo" && !clean.src) continue;
       out[o].push(clean);
       custom++;
+    }
+  }
+  // "Cómo llegar" antes tenía un solo enlace centrado: pasa a la izquierda y
+  // el botón de Waze se ubica a su derecha, en la misma línea.
+  if (section === "location") {
+    for (const o of ["portrait", "landscape"] as Orientation[]) {
+      const list = Array.isArray(src[o]) ? (src[o] as Record<string, unknown>[]) : [];
+      for (const i of [1, 2]) {
+        if (list.some((e) => e && e.id === `place${i}-waze`) || !list.some((e) => e && e.id === `place${i}-link`)) continue;
+        const link = out[o].find((e) => e.id === `place${i}-link`);
+        const waze = out[o].find((e) => e.id === `place${i}-waze`);
+        const def = cfg.defaults[o].find((e) => e.id === `place${i}-link`);
+        if (!link || !waze || !def) continue;
+        const half = (waze.x - (def.x + (recenter ? boardShift(o).dx : 0))) / 2 || 150;
+        if (link.text === "Abrir en Google Maps") link.text = "Google Maps";
+        Object.assign(waze, { x: link.x + half, y: link.y, fontSize: link.fontSize, color: link.color, font: link.font });
+        Object.assign(link, { x: link.x - half, w: waze.w });
+      }
     }
   }
   const ov = (src as { overlay?: unknown }).overlay;

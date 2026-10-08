@@ -74,8 +74,23 @@ export function ElementContent({
     );
   }
   if (el.kind === "link") {
+    // Botón (contorno del color del texto): Google Maps o Waze del lugar `ref`.
+    const href = tokens[`${el.variant === "waze" ? "waze" : "mapa"}${el.ref}`] || "#";
     return (
-      <a href={tokens[`mapa${el.ref}`] || "#"} target="_blank" rel="noopener noreferrer" style={{ color: "inherit" }}>
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          color: "inherit",
+          display: "inline-block",
+          padding: "0.45em 1.3em",
+          border: "0.07em solid currentColor",
+          borderRadius: 999,
+          textDecoration: "none",
+          whiteSpace: "nowrap",
+        }}
+      >
         {fillTokens(el.text, tokens)}
       </a>
     );

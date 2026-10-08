@@ -40,6 +40,14 @@ import {
   Trash2,
   Type,
   Undo2,
+  ZoomIn,
+  ZoomOut,
+  AlignStartVertical,
+  AlignCenterVertical,
+  AlignEndVertical,
+  AlignStartHorizontal,
+  AlignCenterHorizontal,
+  AlignEndHorizontal,
   Unlink,
   X,
 } from "lucide-react";
@@ -97,7 +105,8 @@ type Snap = { layout: TextLayout; styles: TextStyle[] };
 // 0 ninguno). h0 es el alto real al empezar (los textos no guardan alto).
 type Drag = {
   id: string;
-  mode: "move" | "resize" | "rotate";
+  mode: "move" | "resize" | "rotate" | "group";
+  group?: { id: string; x: number; y: number }[];
   sx: number;
   sy: number;
   startX: number;
@@ -190,7 +199,15 @@ export function ArtboardEditor({
   const BOARDS = cfg.boards;
   const [layout, setLayout] = useState(initialLayout);
   const [orientation, setOrientation] = useState<Orientation>("portrait");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Selección: uno o varios objetos (Shift+clic o arrastrando un recuadro).
+  const [sel, setSel] = useState<string[]>([]);
+  const selectedId = sel.length === 1 ? sel[0] : null;
+  const setSelectedId = (id: string | null) => setSel(id ? [id] : []);
+  // Recuadro de selección: en px de pantalla (para saber qué toca) y en px de la mesa (para dibujarlo).
+  const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number; add: boolean; box: { l: number; t: number; w: number; h: number } } | null>(null);
+  // Zoom del lienzo: 1 = la diapositiva entera a la vista.
+  const [zoom, setZoom] = useState(1);
+  const zoomAnchor = useRef<{ x: number; y: number; px: number; py: number; ratio: number } | null>(null);
   const [guides, setGuides] = useState<Guides>({});
   const [area, setArea] = useState({ w: 0, h: 0 });
   const [overflow, setOverflow] = useState<Set<string>>(new Set());
@@ -219,7 +236,8 @@ export function ArtboardEditor({
   const single = section !== "envelope";
   const ext = extentOf(layout, orientation);
   const A = { ...BOARDS[orientation], h: BOARDS[orientation].h * ext };
-  const k = area.w > 0 ? Math.max(0.05, Math.min((area.w - 48) / A.w, (area.h - 32) / A.h)) : 0;
+  const fitK = area.w > 0 ? Math.max(0.05, Math.min((area.w - 48) / A.w, (area.h - 32) / A.h)) : 0;
+  const k = fitK * zoom;
   // Lo que se ve: los textos vinculados toman tipografía y color de su estilo.
   const resolved = useMemo(() => applyStyles(layout, styles), [layout, styles]);
   // Los objetos eliminados no se ven ni se listan (se recuperan desde ⋯).
@@ -443,9 +461,21 @@ export function ArtboardEditor({
     e.stopPropagation();
     e.preventDefault();
     if (editing && editing.id !== el.id) finishEdit();
-    setSelectedId(el.id);
     setPopover(null);
     areaRef.current?.focus({ preventScroll: true });
+    // Shift+clic suma o quita el objeto de la selección.
+    if (mode === "move" && e.shiftKey) {
+      setSel((cur) => (cur.includes(el.id) ? cur.filter((x) => x !== el.id) : [...cur, el.id]));
+      return;
+    }
+    // Arrastrar uno de varios seleccionados los mueve a todos juntos.
+    if (mode === "move" && sel.length > 1 && sel.includes(el.id)) {
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      const group = layout[orientation].filter((x) => sel.includes(x.id) && !x.locked).map((x) => ({ id: x.id, x: x.x, y: x.y }));
+      drag.current = { id: el.id, mode: "group", group, sx: 0, sy: 0, startX: e.clientX, startY: e.clientY, el: { ...el }, h0: 0, edges: { xs: [], ys: [] }, before: layout };
+      return;
+    }
+    setSelectedId(el.id);
     if (el.locked) return; // bloqueado: se selecciona pero no se mueve
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     const node = elRefs.current.get(el.id);
@@ -466,6 +496,17 @@ export function ArtboardEditor({
       const s = snap(d.id, d.el.x + dx, d.el.y + dy, d.el.w);
       setGuides(s.g);
       changes = { x: Math.round(s.x), y: Math.round(s.y) };
+    } else if (d.mode === "group") {
+      const g = new Map(d.group!.map((p) => [p.id, p]));
+      setLayout((prev) => {
+        const next = clone(prev);
+        next[orientation] = next[orientation].map((x) => {
+          const p = g.get(x.id);
+          return p ? { ...x, x: Math.round(p.x + dx), y: Math.round(p.y + dy) } : x;
+        });
+        return next;
+      });
+      return;
     } else if (d.mode === "rotate") {
       changes = { rotation: rotateTo(d, e.clientX, e.clientY, e.shiftKey) };
     } else {
@@ -566,7 +607,10 @@ export function ArtboardEditor({
   }
 
   function onKey(e: React.KeyboardEvent) {
-    if ((e.target as HTMLElement).closest("input,textarea,select,[contenteditable='true']")) return;
+    const t = e.target as HTMLElement;
+    if (t.closest("input,textarea,select,[contenteditable='true'],[role=dialog]")) return;
+    // Enter y espacio sobre un botón lo activan: no son atajos del lienzo.
+    if ((e.key === "Enter" || e.key === " ") && t.closest("button")) return;
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === "z") {
       e.preventDefault();
@@ -582,6 +626,24 @@ export function ArtboardEditor({
     if (e.key === "Escape") {
       setSelectedId(null);
       setPopover(null);
+    }
+    if (mod && e.key.toLowerCase() === "a") {
+      e.preventDefault();
+      setSel(elements.map((x) => x.id));
+      return;
+    }
+    if (sel.length > 1) {
+      const step = e.shiftKey ? 10 : 1;
+      const moves: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+      const m = moves[e.key];
+      if (m) {
+        e.preventDefault();
+        moveGroup(m[0], m[1]);
+      } else if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        removeMany(sel);
+      }
+      return;
     }
     if (!selected) return;
     if ((e.key === "Delete" || e.key === "Backspace") && canRemove(selected)) {
@@ -681,18 +743,129 @@ export function ArtboardEditor({
   // que vienen con la invitación quedan marcados como eliminados y se pueden
   // recuperar desde ⋯.
   function remove(id: string) {
-    const target = layout[orientation].find((e) => e.id === id);
-    if (!target) return;
-    const permanent = isCustom({ id }) || id.startsWith("photo-");
-    if (target.kind === "panel" && !window.confirm(`«${target.name}» tiene contenido (formulario, lista o tarjetas). ¿Eliminarlo del diseño? Se puede recuperar desde el menú ⋯.`)) return;
+    removeMany([id]);
+  }
+
+  function removeMany(ids: string[]) {
+    const targets = layout[orientation].filter((e) => ids.includes(e.id));
+    if (!targets.length) return;
+    const panels = targets.filter((t) => t.kind === "panel");
+    if (panels.length && !window.confirm(`${panels.map((p) => `«${p.name}»`).join(", ")} tiene contenido (formulario, lista o tarjetas). ¿Eliminarlo del diseño? Se puede recuperar desde el menú ⋯.`)) return;
     const next = clone(layout);
-    for (const o of ["portrait", "landscape"] as Orientation[])
-      next[o] = permanent ? next[o].filter((e) => e.id !== id) : next[o].map((e) => (e.id === id ? { ...e, removed: true } : e));
-    if (id.startsWith("photo-")) next.manualPhotos = true; // sale de la diapositiva, sigue en la biblioteca
+    for (const t of targets) {
+      const permanent = isCustom(t) || t.id.startsWith("photo-");
+      for (const o of ["portrait", "landscape"] as Orientation[])
+        next[o] = permanent ? next[o].filter((e) => e.id !== t.id) : next[o].map((e) => (e.id === t.id ? { ...e, removed: true } : e));
+      if (t.id.startsWith("photo-")) next.manualPhotos = true; // sale de la diapositiva, sigue en la biblioteca
+    }
     commit(next, layout);
     setSelectedId(null);
     finishEdit();
   }
+
+  function moveGroup(dx: number, dy: number) {
+    const next = clone(layout);
+    next[orientation] = next[orientation].map((e) => (sel.includes(e.id) && !e.locked ? { ...e, x: e.x + dx, y: e.y + dy } : e));
+    commit(next, layout);
+  }
+
+  // Alinea los seleccionados entre sí (con sus cajas reales, como se ven).
+  function alignGroup(how: "left" | "hcenter" | "right" | "top" | "vcenter" | "bottom") {
+    const b = boardRef.current?.getBoundingClientRect();
+    if (!b || !k) return;
+    const rects = new Map<string, { l: number; t: number; r: number; btm: number }>();
+    for (const id of sel) {
+      const n = elRefs.current.get(id);
+      if (!n) continue;
+      const r = n.getBoundingClientRect();
+      rects.set(id, { l: (r.left - b.left) / k, t: (r.top - b.top) / k, r: (r.right - b.left) / k, btm: (r.bottom - b.top) / k });
+    }
+    const all = [...rects.values()];
+    const L = Math.min(...all.map((r) => r.l)), R = Math.max(...all.map((r) => r.r));
+    const T = Math.min(...all.map((r) => r.t)), Bm = Math.max(...all.map((r) => r.btm));
+    const next = clone(layout);
+    next[orientation] = next[orientation].map((e) => {
+      const r = rects.get(e.id);
+      if (!r || e.locked) return e;
+      const dx = how === "left" ? L - r.l : how === "right" ? R - r.r : how === "hcenter" ? (L + R) / 2 - (r.l + r.r) / 2 : 0;
+      const dy = how === "top" ? T - r.t : how === "bottom" ? Bm - r.btm : how === "vcenter" ? (T + Bm) / 2 - (r.t + r.btm) / 2 : 0;
+      return { ...e, x: Math.round(e.x + dx), y: Math.round(e.y + dy) };
+    });
+    commit(next, layout);
+  }
+
+  /* ---------- Recuadro de selección ---------- */
+
+  function startMarquee(e: RPointerEvent) {
+    setPopover(null);
+    finishEdit();
+    if (!e.shiftKey) setSelectedId(null);
+    if (cover && closed) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setMarquee({ x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, add: e.shiftKey, box: { l: 0, t: 0, w: 0, h: 0 } });
+  }
+  function moveMarquee(e: RPointerEvent) {
+    if (!marquee) return;
+    const b = boardRef.current?.getBoundingClientRect();
+    const box = b && k
+      ? { l: (Math.min(marquee.x0, e.clientX) - b.left) / k, t: (Math.min(marquee.y0, e.clientY) - b.top) / k, w: Math.abs(e.clientX - marquee.x0) / k, h: Math.abs(e.clientY - marquee.y0) / k }
+      : marquee.box;
+    setMarquee({ ...marquee, x1: e.clientX, y1: e.clientY, box });
+  }
+  function endMarquee() {
+    const m = marquee;
+    setMarquee(null);
+    if (!m || (Math.abs(m.x1 - m.x0) < 4 && Math.abs(m.y1 - m.y0) < 4)) return;
+    const l = Math.min(m.x0, m.x1), r = Math.max(m.x0, m.x1), t = Math.min(m.y0, m.y1), btm = Math.max(m.y0, m.y1);
+    const hit = elements
+      .filter((el) => {
+        const n = elRefs.current.get(el.id);
+        if (!n) return false;
+        const b = n.getBoundingClientRect();
+        return b.right > l && b.left < r && b.bottom > t && b.top < btm;
+      })
+      .map((el) => el.id);
+    setSel((cur) => (m.add ? [...new Set([...cur, ...hit])] : hit));
+  }
+
+  /* ---------- Zoom ---------- */
+
+  const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
+  function zoomTo(z: number, at?: { x: number; y: number }) {
+    const next = Math.min(4, Math.max(0.5, z));
+    const el = areaRef.current;
+    if (el && next !== zoom) {
+      const r = el.getBoundingClientRect();
+      const px = at ? at.x - r.left : r.width / 2, py = at ? at.y - r.top : r.height / 2;
+      // Mantiene quieto el punto bajo el cursor (o el centro) al cambiar el zoom.
+      zoomAnchor.current = { x: el.scrollLeft + px, y: el.scrollTop + py, px, py, ratio: next / zoom };
+    }
+    setZoom(next);
+  }
+  const zoomStep = (dir: 1 | -1) => {
+    const i = ZOOMS.findIndex((z) => z >= zoom - 1e-6);
+    zoomTo(dir > 0 ? ZOOMS[Math.min(ZOOMS.length - 1, (ZOOMS[i] > zoom + 1e-6 ? i : i + 1))] : ZOOMS[Math.max(0, i - 1)]);
+  };
+  useLayoutEffect(() => {
+    const a = zoomAnchor.current, el = areaRef.current;
+    if (!a || !el) return;
+    zoomAnchor.current = null;
+    el.scrollLeft = a.x * a.ratio - a.px;
+    el.scrollTop = a.y * a.ratio - a.py;
+  }, [zoom]);
+  // Ctrl + rueda del mouse (o pellizco en el touchpad) hace zoom en el lienzo.
+  useEffect(() => {
+    const el = areaRef.current;
+    if (!el) return;
+    const wheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      zoomTo(zoom * Math.exp(-e.deltaY * 0.0025), { x: e.clientX, y: e.clientY });
+    };
+    el.addEventListener("wheel", wheel, { passive: false });
+    return () => el.removeEventListener("wheel", wheel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- se vuelve a armar en cada cambio de zoom
+  }, [zoom]);
 
   function recover(id: string) {
     const next = clone(layout);
@@ -828,7 +1001,8 @@ export function ArtboardEditor({
   const handle = 10 / (k || 1);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    // Los atajos (Supr, flechas, Ctrl+Z…) funcionan con el foco en cualquier parte del editor.
+    <div className="flex h-full min-h-0 flex-col" onKeyDown={onKey}>
       {/* Barra superior del lienzo */}
       <div className="flex flex-wrap items-center gap-2 border-b border-neutral-200 bg-white px-3 py-2">
         {!single && <div className="flex rounded-md bg-neutral-100 p-0.5" role="tablist" aria-label="Formato">
@@ -848,6 +1022,13 @@ export function ArtboardEditor({
         <div className="flex items-center gap-1">
           <IconButton label="Deshacer (Ctrl+Z)" onClick={undo} disabled={!hist.undo}><Undo2 size={15} /></IconButton>
           <IconButton label="Rehacer (Ctrl+Y)" onClick={redo} disabled={!hist.redo}><Redo2 size={15} /></IconButton>
+        </div>
+        <div className="flex items-center rounded-md border border-neutral-300" role="group" aria-label="Zoom del lienzo">
+          <button type="button" aria-label="Alejar" title="Alejar (Ctrl + rueda)" onClick={() => zoomStep(-1)} disabled={zoom <= 0.5} className="px-1.5 py-1 text-neutral-600 hover:text-neutral-900 disabled:opacity-30"><ZoomOut size={14} /></button>
+          <button type="button" aria-label="Ajustar a la pantalla" title="Ver la diapositiva entera" onClick={() => zoomTo(1)} className="min-w-[3.2rem] border-x border-neutral-300 px-1.5 py-1 text-xs tabular-nums text-neutral-700 hover:bg-neutral-50" data-zoom-label>
+            {Math.round(zoom * 100)}%
+          </button>
+          <button type="button" aria-label="Acercar" title="Acercar (Ctrl + rueda)" onClick={() => zoomStep(1)} disabled={zoom >= 4} className="px-1.5 py-1 text-neutral-600 hover:text-neutral-900 disabled:opacity-30"><ZoomIn size={14} /></button>
         </div>
         {background.overlay && (
           <label className="flex items-center gap-1.5 text-xs text-neutral-600" title="Velo del color de fondo sobre la foto: más alto, la foto se ve más suave y el texto se lee mejor">
@@ -969,6 +1150,20 @@ export function ArtboardEditor({
       <div className="flex min-h-[46px] flex-wrap items-center gap-1.5 border-b border-neutral-200 bg-white px-3 py-1.5">
         {cover && closed ? (
           <p className="text-xs text-neutral-500">{cover.hint}</p>
+        ) : sel.length > 1 ? (
+          <>
+            <span className="mr-1 text-xs font-medium text-neutral-800" data-group-count>{sel.length} objetos seleccionados</span>
+            <span className="text-[11px] text-neutral-500">Alinear:</span>
+            <ToolButton label="Alinear a la izquierda" onClick={() => alignGroup("left")}><AlignStartVertical size={15} /></ToolButton>
+            <ToolButton label="Centrar horizontalmente" onClick={() => alignGroup("hcenter")}><AlignCenterVertical size={15} /></ToolButton>
+            <ToolButton label="Alinear a la derecha" onClick={() => alignGroup("right")}><AlignEndVertical size={15} /></ToolButton>
+            <ToolButton label="Alinear arriba" onClick={() => alignGroup("top")}><AlignStartHorizontal size={15} /></ToolButton>
+            <ToolButton label="Centrar verticalmente" onClick={() => alignGroup("vcenter")}><AlignCenterHorizontal size={15} /></ToolButton>
+            <ToolButton label="Alinear abajo" onClick={() => alignGroup("bottom")}><AlignEndHorizontal size={15} /></ToolButton>
+            <span className="mx-0.5 h-5 w-px bg-neutral-200" aria-hidden />
+            <ToolButton label="Eliminar los seleccionados (Supr)" onClick={() => removeMany(sel)}><Trash2 size={14} /></ToolButton>
+            <span className="ml-1 text-[11px] text-neutral-400">Arrastrá cualquiera para moverlos juntos · Shift+clic suma o quita</span>
+          </>
         ) : selected ? (
           <ContextToolbar
             el={selected}
@@ -1001,7 +1196,7 @@ export function ArtboardEditor({
           />
         ) : (
           <p className="text-xs text-neutral-500">
-            Tocá un texto o un bloque en el lienzo para editarlo. Doble clic en un texto para escribir sobre él.
+            Tocá un objeto para editarlo, Shift+clic o arrastrá un recuadro para elegir varios. Doble clic en un texto para escribir sobre él.
           </p>
         )}
       </div>
@@ -1010,15 +1205,17 @@ export function ArtboardEditor({
       <div
         ref={areaRef}
         tabIndex={0}
-        onKeyDown={onKey}
-        onPointerDown={() => { setSelectedId(null); setPopover(null); finishEdit(); }}
+        onPointerDown={startMarquee}
+        onPointerMove={moveMarquee}
+        onPointerUp={endMarquee}
+        onPointerCancel={() => setMarquee(null)}
         onDragOver={(e) => { if (acceptsDrop(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setDropping(true); } }}
         onDragLeave={(e) => { if (e.currentTarget === e.target) setDropping(false); }}
         onDrop={onDrop}
-        className={`relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-neutral-200/70 outline-none ${dropping ? "ring-4 ring-inset ring-blue-400" : ""}`}
+        className={`relative flex min-h-0 flex-1 overflow-auto bg-neutral-200/70 p-4 outline-none ${dropping ? "ring-4 ring-inset ring-blue-400" : ""}`}
         aria-label="Lienzo: tocá un elemento para seleccionarlo, arrastralo para moverlo, flechas para ajustar"
       >
-        <div className="relative shadow-lg" style={{ width: A.w * k, height: A.h * k, ...bgStyle }}>
+        <div className="relative m-auto shrink-0 shadow-lg" style={{ width: A.w * k, height: A.h * k, ...bgStyle }}>
           {overlay}
           {underlay && (
             <div className="pointer-events-none absolute left-0 top-0" style={{ width: A.w, height: A.h, transform: `scale(${k})`, transformOrigin: "0 0" }}>
@@ -1034,7 +1231,7 @@ export function ArtboardEditor({
             onPointerCancel={endDrag}
           >
             {byZ(elements).map((el) => {
-              const isSel = el.id === selectedId;
+              const isSel = sel.includes(el.id);
               const isEditing = editing?.id === el.id;
               return (
                 <div
@@ -1075,7 +1272,7 @@ export function ArtboardEditor({
                       <ElementContent el={el} tokens={tokens} blocks={blocks} />
                     </div>
                   )}
-                  {isSel && !isEditing && !el.locked &&
+                  {isSel && sel.length === 1 && !isEditing && !el.locked &&
                     ([
                       [-1, -1, "nwse-resize", { left: -handle / 2, top: -handle / 2 }],
                       [1, -1, "nesw-resize", { right: -handle / 2, top: -handle / 2 }],
@@ -1102,7 +1299,7 @@ export function ArtboardEditor({
                         }}
                       />
                     ))}
-                  {isSel && !isEditing && !el.locked && (
+                  {isSel && sel.length === 1 && !isEditing && !el.locked && (
                     <>
                       <span
                         aria-hidden
@@ -1137,6 +1334,13 @@ export function ArtboardEditor({
                 {guides.label.text}
               </div>
             )}
+            {marquee && marquee.box.w > 0 && (
+              <div
+                className="pointer-events-none absolute border border-blue-500 bg-blue-500/10"
+                style={{ left: marquee.box.l, top: marquee.box.t, width: marquee.box.w, height: marquee.box.h, borderWidth: 1 / (k || 1) }}
+                data-marquee
+              />
+            )}
             {cover && closed && (
               <div key={`${orientation}-${replay}`} className="absolute inset-0" onPointerDown={(e) => e.stopPropagation()}>
                 {cover.render({ width: A.w, height: A.h, layout: resolved, onOpened })}
@@ -1151,10 +1355,14 @@ export function ArtboardEditor({
         <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Capas</span>
         {byZ(elements).map((el) => {
           const warn = !el.hidden && (smallestPx(el) < MIN_READABLE_PX || overflow.has(el.id));
-          const isSel = el.id === selectedId;
+          const isSel = sel.includes(el.id);
           return (
             <span key={el.id} className={`inline-flex items-center rounded-full border text-xs ${isSel ? "border-blue-600 bg-blue-50 text-blue-800" : "border-neutral-200 text-neutral-700"}`}>
-              <button type="button" onClick={() => setSelectedId(el.id)} className="flex items-center gap-1 py-0.5 pl-2.5 pr-1">
+              <button
+                type="button"
+                onClick={(e) => (e.shiftKey ? setSel((cur) => (cur.includes(el.id) ? cur.filter((x) => x !== el.id) : [...cur, el.id])) : setSelectedId(el.id))}
+                className="flex items-center gap-1 py-0.5 pl-2.5 pr-1"
+              >
                 {warn && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-label="Revisar" />}
                 {el.locked && <Lock size={10} aria-label="Bloqueado" />}
                 <span className={el.hidden ? "line-through opacity-60" : ""}>{el.name}</span>

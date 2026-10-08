@@ -252,10 +252,13 @@ export default async function ContentEditorPage() {
         <Group title="Mensaje y datos de pago">
           <form action={updateGiftsAction} className="flex flex-col gap-3">
             <Field label="Mensaje"><textarea name="message" defaultValue={w.gifts.message} rows={3} className={inputClass} /></Field>
+            <PayToggle name="yapeOn" label="Mostrar Yape" on={w.gifts.payment.yape.enabled !== false} />
             <Field label="Yape: número"><input name="yapePhone" defaultValue={w.gifts.payment.yape.phone} className={inputClass} /></Field>
             <Field label="Yape: a nombre de"><input name="yapeName" defaultValue={w.gifts.payment.yape.name} className={inputClass} /></Field>
+            <PayToggle name="plinOn" label="Mostrar Plin" on={w.gifts.payment.plin.enabled !== false} />
             <Field label="Plin: número"><input name="plinPhone" defaultValue={w.gifts.payment.plin.phone} className={inputClass} /></Field>
             <Field label="Plin: a nombre de"><input name="plinName" defaultValue={w.gifts.payment.plin.name} className={inputClass} /></Field>
+            <PayToggle name="bankOn" label="Mostrar transferencia bancaria" on={w.gifts.payment.bank.enabled !== false} />
             <Field label="Banco"><input name="bankName" defaultValue={w.gifts.payment.bank.bank} className={inputClass} /></Field>
             <Field label="Titular"><input name="bankHolder" defaultValue={w.gifts.payment.bank.accountHolder} className={inputClass} /></Field>
             <Field label="Número de cuenta"><input name="bankAccount" defaultValue={w.gifts.payment.bank.accountNumber} className={inputClass} /></Field>
@@ -350,5 +353,15 @@ function ListItems({
         </div>
       ))}
     </div>
+  );
+}
+
+// Interruptor de un medio de pago (se guarda con el botón Guardar del formulario).
+function PayToggle({ name, label, on }: { name: string; label: string; on: boolean }) {
+  return (
+    <label className="mt-1 flex items-center gap-2 text-sm font-medium text-neutral-800">
+      <input type="checkbox" name={name} defaultChecked={on} className="h-4 w-4 accent-neutral-900" />
+      {label}
+    </label>
   );
 }

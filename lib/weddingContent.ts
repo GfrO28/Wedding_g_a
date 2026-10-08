@@ -79,9 +79,10 @@ export type WeddingContent = {
   gifts: {
     message: string;
     payment: {
-      yape: { phone: string; name: string };
-      plin: { phone: string; name: string };
-      bank: { bank: string; accountHolder: string; accountNumber: string; cci: string };
+      // enabled: false = no se muestra a los invitados (si falta, se muestra).
+      yape: { phone: string; name: string; enabled?: boolean };
+      plin: { phone: string; name: string; enabled?: boolean };
+      bank: { bank: string; accountHolder: string; accountNumber: string; cci: string; enabled?: boolean };
     };
   };
   zoneImages: Record<ZoneImageKey, string | null>;

@@ -70,9 +70,10 @@ export async function updateTransportationAction(formData: FormData) {
 export async function updateGiftsAction(formData: FormData) {
   await setSetting("contentGiftsMessage", str(formData, "message"));
   await setJSON("contentGiftsPayment", {
-    yape: { phone: str(formData, "yapePhone"), name: str(formData, "yapeName") },
-    plin: { phone: str(formData, "plinPhone"), name: str(formData, "plinName") },
+    yape: { phone: str(formData, "yapePhone"), name: str(formData, "yapeName"), enabled: formData.get("yapeOn") === "on" },
+    plin: { phone: str(formData, "plinPhone"), name: str(formData, "plinName"), enabled: formData.get("plinOn") === "on" },
     bank: {
+      enabled: formData.get("bankOn") === "on",
       bank: str(formData, "bankName"),
       accountHolder: str(formData, "bankHolder"),
       accountNumber: str(formData, "bankAccount"),
