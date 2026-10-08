@@ -248,7 +248,8 @@ export function ArtboardEditor({
   const resolved = useMemo(() => applyStyles(layout, styles), [layout, styles]);
   // Los objetos eliminados no se ven ni se listan (se recuperan desde ⋯).
   const elements = resolved[orientation].filter((e) => !e.removed);
-  const removedEls = layout[orientation].filter((e) => e.removed);
+  // Los recuadros de los pasos no se listan: vuelven al elegir una versión que los usa.
+  const removedEls = layout[orientation].filter((e) => e.removed && !/^step-.+-card$/.test(e.id));
   const selected = elements.find((e) => e.id === selectedId) ?? null;
   const selectedRaw = layout[orientation].find((e) => e.id === selectedId) ?? null;
   const selectedStyle = selectedRaw?.style ? styles.find((s) => s.id === selectedRaw.style) ?? null : null;
@@ -978,7 +979,7 @@ export function ArtboardEditor({
 
   function restoreOriginal() {
     const photos = layout.portrait.filter((e) => e.id.startsWith("photo-")).map((e) => ({ key: e.ref, src: e.src, alt: e.text }));
-    const steps = layout.portrait.filter((e) => /^step-.+-icon$/.test(e.id)).map((e) => ({ key: e.ref, icon: "clock" }));
+    const steps = layout.portrait.filter((e) => /^step-.+-icon$/.test(e.id)).map((e) => ({ key: e.ref, icon: e.variant }));
     const fresh = withDynamic(section, sanitizeLayout(section, null), { photos, steps });
     // Los íconos de los pasos se conservan.
     for (const o of ["portrait", "landscape"] as Orientation[])

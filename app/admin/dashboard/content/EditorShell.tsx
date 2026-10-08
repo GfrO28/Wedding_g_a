@@ -410,7 +410,8 @@ function mergeSteps(current: TextLayout, incoming: TextLayout): TextLayout | nul
       });
     return out;
   }
-  const steps = incoming.portrait.filter((e) => /^step-.+-icon$/.test(e.id)).map((e) => ({ key: e.ref, icon: "clock" }));
+  // Cada paso con el ícono que trae el servidor (sale de los datos del paso).
+  const steps = incoming.portrait.filter((e) => /^step-.+-icon$/.test(e.id)).map((e) => ({ key: e.ref, icon: e.variant }));
   const merged = withDynamic("itinerary", current, { steps });
   // Los íconos de los pasos nuevos vienen del servidor (el que se eligió al cargarlo).
   for (const o of ["portrait", "landscape"] as const)

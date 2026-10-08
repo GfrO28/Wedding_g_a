@@ -833,19 +833,20 @@ function arrangeFor(o: Orientation, arrange: string, steps: StepItem[]): Map<str
     out.set(`step-${k}-icon`, { x: cx, y: cy, w: icon, h: icon, hidden: false });
     out.set(`step-${k}-time`, { x: align.time ?? cx, y: align.time !== undefined ? cy : cy + icon * 0.5 + tfs * 0.85, fontSize: tfs, w: P ? 240 : 160, align: align.time !== undefined ? "right" : "center", hidden: false });
     out.set(`step-${k}-label`, { x: align.label ?? cx, y: align.label !== undefined ? cy : cy + icon * 0.5 + tfs * 1.6 + lfs * 0.6, fontSize: lfs, w: P ? 240 : 160, align: align.label !== undefined ? "left" : "center", hidden: false });
-    out.set(`step-${k}-card`, card ?? { hidden: true });
+    // El recuadro solo existe si la versión lo usa (tarjetas, o círculo en las líneas de tiempo).
+    out.set(`step-${k}-card`, card ? { ...card, removed: false } : { removed: true });
   };
   if (arrange === "vertical") {
     const gap = P ? 150 : 92, side = icon / 2 + (P ? 26 : 16) + (P ? 120 : 80);
     steps.forEach((s, i) => put(s.key, i, W / 2, top + i * gap, { variant: "circle", x: W / 2, y: top + i * gap, w: icon * 1.55, h: icon * 1.55, color: "var(--color-bg)", opacity: 1, hidden: false }, { time: W / 2 - side, label: W / 2 + side }));
-    out.set("timeline", { x: W / 2, y: top + ((n - 1) * gap) / 2, w: P ? 3 : 2, h: Math.max(0, (n - 1) * gap), hidden: n < 2 });
+    out.set("timeline", { x: W / 2, y: top + ((n - 1) * gap) / 2, w: P ? 3 : 2, h: Math.max(0, (n - 1) * gap), hidden: false, removed: n < 2 });
   } else if (arrange === "horizontal") {
     const span = W * 0.8, gap = n > 1 ? Math.min(P ? 220 : 200, span / (n - 1)) : 0;
     steps.forEach((s, i) => {
       const x = W / 2 + (i - (n - 1) / 2) * gap;
       put(s.key, i, x, top, { variant: "circle", x, y: top, w: icon * 1.55, h: icon * 1.55, color: "var(--color-bg)", opacity: 1, hidden: false });
     });
-    out.set("timeline", { x: W / 2, y: top, w: Math.max(0, (n - 1) * gap), h: P ? 3 : 2, hidden: n < 2 });
+    out.set("timeline", { x: W / 2, y: top, w: Math.max(0, (n - 1) * gap), h: P ? 3 : 2, hidden: false, removed: n < 2 });
   } else if (arrange === "cards") {
     const cols = P ? 2 : Math.min(Math.max(n, 1), 4), cw = P ? 310 : 200, ch = P ? 240 : 160, gx = P ? 30 : 20, gy = P ? 30 : 20;
     steps.forEach((s, i) => {
@@ -853,14 +854,14 @@ function arrangeFor(o: Orientation, arrange: string, steps: StepItem[]): Map<str
       const cx = W / 2 + (c - (inRow - 1) / 2) * (cw + gx), cy = top + ch / 2 - icon / 2 + r * (ch + gy);
       put(s.key, i, cx, cy - ch * 0.18, { variant: "outline", x: cx, y: cy, w: cw, h: ch, color: "var(--color-muted)", opacity: 0.5, hidden: false });
     });
-    out.set("timeline", { hidden: true });
+    out.set("timeline", { removed: true });
   } else {
     const cols = P ? 3 : 5, cw = P ? 230 : 170, rh = P ? 250 : 160;
     steps.forEach((s, i) => {
       const c = i % cols, r = Math.floor(i / cols), inRow = Math.min(cols, n - r * cols);
       put(s.key, i, W / 2 + (c - (inRow - 1) / 2) * cw, top + r * rh, null);
     });
-    out.set("timeline", { hidden: true });
+    out.set("timeline", { removed: true });
   }
   return out;
 }
@@ -884,16 +885,41 @@ function withSteps(layout: TextLayout, steps: StepItem[]): TextLayout {
   const out: TextLayout = { ...layout };
   const arrange = layout.arrange ?? "row";
   for (const o of ["portrait", "landscape"] as Orientation[]) {
-    const kept = layout[o].filter((e) => !e.id.startsWith("step-") || keys.has(e.ref || (STEP_ID.exec(e.id)?.[1] ?? "")));
+    // Copias: se ajustan nombres e íconos sin tocar el diseño recibido.
+    const kept = layout[o].filter((e) => !e.id.startsWith("step-") || keys.has(e.ref || (STEP_ID.exec(e.id)?.[1] ?? ""))).map((e) => ({ ...e }));
     const before = new Set(kept.filter((e) => e.id.startsWith("step-")).map((e) => e.ref));
     const changed = steps.some((s) => !before.has(s.key)) || before.size !== steps.length;
     const pos = changed ? arrangeFor(o, arrange, steps) : null;
+    // Diseños de antes: el recuadro y la línea que la versión no usa estaban ocultos.
+    for (const e of kept) {
+      if (e.hidden && !e.removed && (/^step-.+-card$/.test(e.id) || (e.id === "timeline" && (arrange === "row" || arrange === "cards")))) {
+        e.hidden = false;
+        e.removed = true;
+      }
+    }
     steps.forEach((s, i) => {
+      // Un paso nuevo va a continuación del anterior tal como quedó (misma
+      // separación que la versión elegida), con su mismo tamaño y formato.
+      const prev = i > 0 ? steps[i - 1].key : null;
+      const step = (k: string, part: StepPart) => kept.find((x) => x.id === `step-${k}-${part}`);
+      const gap = (() => {
+        if (!prev || !pos) return null;
+        const a = pos.get(`step-${prev}-icon`), b = pos.get(`step-${s.key}-icon`);
+        return a && b && a.x !== undefined && b.x !== undefined ? { dx: b.x - a.x, dy: (b.y ?? 0) - (a.y ?? 0) } : null;
+      })();
       for (const part of ["card", "icon", "time", "label"] as StepPart[]) {
         const id = `step-${s.key}-${part}`;
         let e = kept.find((x) => x.id === id);
         if (!e) {
-          e = { ...stepTemplate(s.key, part), ...(pos?.get(id) ?? {}) };
+          const p = prev ? step(prev, part) : undefined;
+          e =
+            p && gap
+              ? {
+                  ...p, id, ref: s.key, text: stepTemplate(s.key, part).text, x: p.x + gap.dx, y: p.y + gap.dy, locked: false,
+                  // Si en el paso anterior se eliminó el ícono o un texto, el nuevo igual los trae.
+                  removed: part === "card" ? p.removed : false,
+                }
+              : { ...stepTemplate(s.key, part), ...(pos?.get(id) ?? {}) };
           kept.push(e);
         }
         // El ícono sale de los datos del paso (se edita en Contenido o en el lienzo).
