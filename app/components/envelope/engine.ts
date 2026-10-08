@@ -265,6 +265,41 @@ export function frameFor(W: number, H: number, G: Geometry) {
   return { rotated, VW, VH, layout: computeLayout(VW, VH, G) };
 }
 
+// Pantallas exigentes para recomendar resoluciones: celulares grandes (3×),
+// notebook con pantalla de alta densidad (2×) y monitores grandes.
+const RESOLUTION_SCREENS = [
+  { w: 390, h: 844, dpr: 3 },
+  { w: 430, h: 932, dpr: 3 },
+  { w: 1440, h: 900, dpr: 2 },
+  { w: 1920, h: 1080, dpr: 1 },
+  { w: 2560, h: 1440, dpr: 1 },
+];
+export type PieceNeed = { scale: number; ideal: { w: number; h: number }; min: { w: number; h: number } };
+
+// Cuánto se amplía cada pieza (en la peor de esas pantallas) y la resolución que
+// necesita para verse nítida (ideal: sin ampliar; mínimo: ampliada hasta 1,5×).
+export function resolutionNeeds(G: Geometry): Record<"flapLeft" | "flapTop" | "seal", PieceNeed> {
+  const C = ENVELOPE_CONFIG;
+  let side = 0, top = 0, seal = 0;
+  for (const s of RESOLUTION_SCREENS) {
+    const r = frameFor(s.w, s.h, G).layout;
+    side = Math.max(side, r.sSide * s.dpr);
+    top = Math.max(top, r.sTop * s.dpr);
+    const D = Math.min(Math.max(C.seal.minPx, (Math.min(s.w, s.h) / 100) * C.seal.sizeVmin), C.seal.maxPx);
+    seal = Math.max(seal, (D / Math.max(G.seal.bw, G.seal.bh)) * s.dpr);
+  }
+  const need = (iw: number, ih: number, f: number): PieceNeed => ({
+    scale: f,
+    ideal: { w: Math.ceil(iw * f), h: Math.ceil(ih * f) },
+    min: { w: Math.ceil((iw * f) / 1.5), h: Math.ceil((ih * f) / 1.5) },
+  });
+  return {
+    flapLeft: need(G.left.iw, G.left.ih, side),
+    flapTop: need(G.top.iw, G.top.ih, top),
+    seal: need(G.seal.iw, G.seal.ih, seal),
+  };
+}
+
 export function warnResolution(W: number, H: number, G: Geometry, dpr: number) {
   const r = frameFor(W, H, G).layout;
   for (const [file, f, geo] of [
