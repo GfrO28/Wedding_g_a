@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { COLUMN_MAX_WIDTH, type DesktopBackground } from "@/lib/desktopBackground";
-import { BgMedia, isVideo, type BgFrame } from "./BgMedia";
+import { isVideo } from "./BgMedia";
 
 // Una sección de la invitación. Se diseña para celular: en pantallas anchas
 // se ve como una columna centrada y alrededor va el fondo para PC. Qué fondo
@@ -11,15 +11,11 @@ export function Slide({
   className = "",
   bgImage,
   fullBleed = false,
-  overlay = 0.4,
-  frame,
 }: {
   children: ReactNode;
   className?: string;
-  bgImage?: string | null;
+  bgImage?: string | null; // imagen de fondo de la sección (para el fondo desenfocado en PC)
   fullBleed?: boolean;
-  overlay?: number; // velo del color de fondo sobre la foto (0 a 1)
-  frame?: BgFrame; // encuadre del fondo
 }) {
   return (
     <section className="relative flex min-h-dvh flex-col items-center overflow-hidden">
@@ -37,12 +33,6 @@ export function Slide({
         className={`relative flex min-h-dvh w-full flex-col justify-center overflow-hidden bg-[var(--color-bg)] landscape:shadow-[0_0_60px_rgba(0,0,0,0.35)] ${className}`}
         style={{ maxWidth: COLUMN_MAX_WIDTH }}
       >
-        {bgImage && (
-          <>
-            <BgMedia src={bgImage} frame={frame} />
-            <div className="absolute inset-0 bg-[var(--color-bg)]" style={{ opacity: overlay }} />
-          </>
-        )}
         {fullBleed ? (
           // La mesa de la sección define el alto (puede medir más de una pantalla).
           <div className="relative w-full">{children}</div>

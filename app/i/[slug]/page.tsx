@@ -19,6 +19,7 @@ import { RSVPForm } from "@/app/components/RSVPForm";
 import { GuestMessages } from "@/app/components/GuestMessages";
 import { Footer } from "@/app/components/Footer";
 import { CountdownSection } from "@/app/components/CountdownSection";
+import { ArtboardSection } from "@/app/components/ArtboardSection";
 import { DesktopFixedBackground, desktopPageProps } from "@/app/components/Slide";
 import { getDesktopBackground } from "@/lib/desktopBackgroundServer";
 import { getWeddingContent } from "@/lib/weddingContent";
@@ -64,10 +65,14 @@ export default async function GuestInvitationPage({
       {content.zoneEnabled.blessing && <Blessing />}
       {content.zoneEnabled.story && <OurStory />}
       {content.zoneEnabled.event && <EventDetails />}
+      {content.zoneEnabled.dresscode && <ArtboardSection section="dresscode" guestName={guest.fullName} />}
       {content.zoneEnabled.itinerary && <Itinerary />}
       {content.zoneEnabled.location && <Location />}
       {content.zoneEnabled.gallery && <Gallery />}
       {content.zoneEnabled.accommodation && <Accommodation />}
+      {content.zoneEnabled.custom1 && <ArtboardSection section="custom1" guestName={guest.fullName} />}
+      {content.zoneEnabled.custom2 && <ArtboardSection section="custom2" guestName={guest.fullName} />}
+      {content.zoneEnabled.custom3 && <ArtboardSection section="custom3" guestName={guest.fullName} />}
       {content.zoneEnabled.gifts && <Gifts slug={guest.slug} />}
       {content.zoneEnabled.rsvp && (
       <RSVPForm
@@ -75,7 +80,6 @@ export default async function GuestInvitationPage({
         maxAttendees={guest.maxAttendees}
         existing={existingRsvp ?? null}
         layout={rsvpText}
-        bgImage={content.zoneImages.rsvp}
         tokens={tokens}
       />)}
       {content.zoneEnabled.messages && <GuestMessages slug={guest.slug} />}

@@ -15,7 +15,19 @@ function getRemaining(targetISO: string) {
   };
 }
 
-export function Countdown({ targetISO, scaled = false }: { targetISO: string; scaled?: boolean }) {
+// labelFont/labelUpper: tipografía y mayúsculas de las etiquetas (días, hs…);
+// los números usan la tipografía del objeto.
+export function Countdown({
+  targetISO,
+  scaled = false,
+  labelFont,
+  labelUpper = true,
+}: {
+  targetISO: string;
+  scaled?: boolean;
+  labelFont?: string;
+  labelUpper?: boolean;
+}) {
   const [remaining, setRemaining] = useState<ReturnType<
     typeof getRemaining
   > | null>(null);
@@ -51,7 +63,7 @@ export function Countdown({ targetISO, scaled = false }: { targetISO: string; sc
         {units.map((u) => (
           <div key={u.label} style={{ textAlign: "center" }}>
             <div style={{ fontSize: "2em", lineHeight: 1.1, fontWeight: "inherit", fontVariantNumeric: "tabular-nums" }}>{u.value}</div>
-            <div style={{ fontSize: "1em", letterSpacing: "0.12em", textTransform: "uppercase", opacity: 0.7, fontWeight: 400 }}>
+            <div style={{ fontSize: "1em", letterSpacing: labelUpper ? "0.12em" : "0.02em", textTransform: labelUpper ? "uppercase" : "none", opacity: 0.7, fontWeight: 400, fontFamily: labelFont, fontStyle: "normal" }}>
               {u.label}
             </div>
           </div>

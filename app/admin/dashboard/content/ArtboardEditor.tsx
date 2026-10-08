@@ -30,8 +30,10 @@ import {
   Lock,
   LockOpen,
   Minus,
+  MapPin,
   MonitorSmartphone,
   MoreHorizontal,
+  Paintbrush,
   Pencil,
   Plus,
   Redo2,
@@ -59,8 +61,7 @@ import { setItineraryStepIconAction } from "./content-actions";
 import { GALLERY_DRAG_TYPE } from "./GalleryPhotosPanel";
 import { LayersPanel } from "./LayersPanel";
 import { Hint } from "./Hint";
-import { BgMedia, isVideo, type BgFrame } from "@/app/components/BgMedia";
-import { clearZoneBackgroundAction, requestZoneImageUploadAction, saveZoneImageAction } from "./zone-actions";
+import { isVideo } from "@/app/components/BgMedia";
 import {
   applyStyles,
   ARTBOARDS,
@@ -78,8 +79,8 @@ import {
   boardsFor,
   EXTENTS,
   extentOf,
-  overlayOf,
-  bgFrameOf,
+  backdropElement,
+  veilElement,
   FRAMES,
   EFFECTS,
   type EffectKey,
@@ -108,7 +109,13 @@ import {
   type TokenValues,
 } from "@/lib/textLayout";
 
-type Background = { color: string; image?: string | null; overlay?: boolean };
+type Background = { color: string };
+// Formato copiado con «Copiar formato» (se pega tocando otro texto).
+type Format = Pick<TextElement, "font" | "fontSize" | "color" | "weight" | "italic" | "uppercase" | "letterSpacing" | "lineHeight" | "align" | "style" | "labelFont" | "labelUpper">;
+const FORMAT_KEYS = ["font", "fontSize", "color", "weight", "italic", "uppercase", "letterSpacing", "lineHeight", "align", "style", "labelFont", "labelUpper"] as const;
+// Objetos con letra (se les puede cambiar la tipografía y copiar el formato).
+const isTexty = (el: TextElement) => el.kind === "text" || el.kind === "link" || el.kind === "countdown" || (el.kind === "block" && el.id === "countdown");
+const isCountdown = (el: TextElement) => el.kind === "countdown" || (el.kind === "block" && el.id === "countdown");
 type Snap = { layout: TextLayout; styles: TextStyle[] };
 // resize: sx/sy dicen qué borde se mueve (-1 izquierda/arriba, 1 derecha/abajo,
 // 0 ninguno). h0 es el alto real al empezar (los textos no guardan alto).
@@ -127,9 +134,15 @@ type Drag = {
   before: TextLayout;
 };
 type Guides = { x?: number; y?: number; label?: { x: number; y: number; text: string } };
-type Popover = null | "style" | "tokens" | "color" | "advanced" | "menu" | "add";
+type Popover = null | "style" | "tokens" | "color" | "advanced" | "menu" | "add" | "crop";
 // Lo que el panel de la galería le pide al lienzo.
-export type EditorApi = { place: (item: GalleryItem) => void; unplace: (key: string) => void; manual: () => void; restoreOriginal: () => void };
+export type EditorApi = {
+  place: (item: GalleryItem) => void;
+  unplace: (key: string) => void;
+  manual: () => void;
+  restoreOriginal: () => void;
+  patch: (id: string, changes: Partial<TextElement>) => void; // cambio desde «Contenido» (p. ej. el link de un mapa)
+};
 
 // Vista que tapa el lienzo (el sobre cerrado). Mientras se ve, los textos no se editan.
 export type CanvasCover = {
@@ -154,7 +167,7 @@ const clone = (l: TextLayout): TextLayout => JSON.parse(JSON.stringify(l));
 // Lo que se ve igual en celular y PC: el texto, la tipografía, el color, el
 // formato, el estilo, el borde y la versión. La posición, el tamaño, la
 // alineación, el giro y si está oculto son de cada formato.
-const SHARED_PROPS = [...STYLE_PROPS, "text", "style", "frame", "variant", "opacity", "effect"] as const;
+const SHARED_PROPS = [...STYLE_PROPS, "text", "style", "frame", "variant", "opacity", "effect", "fill", "crop", "labelFont", "labelUpper"] as const;
 const otherOf = (o: Orientation): Orientation => (o === "portrait" ? "landscape" : "portrait");
 
 // Aplica en el otro formato la parte compartida de un cambio.
@@ -190,8 +203,8 @@ export function ArtboardEditor({
   apiRef,
   onOpenLibrary,
   imageLibrary = [],
-  bgZone,
-  onBackgroundChange,
+  onAdded,
+  onOpenContent,
 }: {
   section: LayoutSection;
   initialLayout: TextLayout;
@@ -208,8 +221,8 @@ export function ArtboardEditor({
   apiRef?: React.Ref<EditorApi>;
   onOpenLibrary?: () => void; // Galería: "+ Agregar" lleva a la biblioteca de fotos
   imageLibrary?: { src: string; alt: string }[]; // fotos ya subidas, para reutilizar
-  bgZone?: string; // clave del fondo de la sección (si se puede cambiar)
-  onBackgroundChange?: (url: string | null) => void;
+  onAdded?: (el: TextElement) => void; // objeto recién agregado (un mapa abre «Contenido»)
+  onOpenContent?: (id?: string) => void;
 }) {
   const cfg = sectionConfig(section);
   const BOARDS = cfg.boards;
@@ -245,6 +258,10 @@ export function ArtboardEditor({
     inlineRef.current = n;
   }, []);
   const firstRender = useRef(true);
+  // «Copiar formato»: el próximo texto que se toque recibe este formato.
+  const [painter, setPainter] = useState<Format | null>(null);
+  // Clic en un fondo o velo (cubren todo): se elige al soltar si no se arrastró un recuadro.
+  const fillClick = useRef<string | null>(null);
   const [hist, setHist] = useState({ undo: 0, redo: 0 });
   const syncHist = () => setHist({ undo: past.current.length, redo: future.current.length });
 
@@ -299,7 +316,7 @@ export function ArtboardEditor({
     const out = new Set<string>();
     for (const el of elements) {
       const node = elRefs.current.get(el.id);
-      if (!node || el.hidden) continue;
+      if (!node || el.hidden || el.fill) continue;
       const r = node.getBoundingClientRect();
       if (r.left < b.left - 1 || r.top < b.top - 1 || r.right > b.right + 1 || r.bottom > b.bottom + 1) out.add(el.id);
     }
@@ -343,6 +360,52 @@ export function ArtboardEditor({
     syncHist();
   }
 
+  // El mismo cambio en varios objetos a la vez (una sola entrada en el historial).
+  function patchMany(ids: string[], changes: Partial<TextElement> | ((el: TextElement) => Partial<TextElement>)) {
+    const touched = layout[orientation].filter((e) => ids.includes(e.id));
+    if (!touched.length) return;
+    record({ layout, styles });
+    const next = clone(layout);
+    for (const raw of touched) {
+      const c = typeof changes === "function" ? changes(resolved[orientation].find((e) => e.id === raw.id) ?? raw) : changes;
+      const linked = raw.style && !("style" in c) ? styles.find((st) => st.id === raw.style) : undefined;
+      const touchesStyle = Object.keys(c).some((k) => (STYLE_PROPS as readonly string[]).includes(k));
+      const elChanges: Partial<TextElement> = linked && touchesStyle ? { ...pickStyle(linked), ...c, style: null } : { ...c };
+      next[orientation] = next[orientation].map((e) => (e.id === raw.id ? { ...e, ...elChanges } : e));
+      shareChanges(next, orientation, raw.id, elChanges);
+    }
+    setLayout(next);
+    syncHist();
+  }
+
+  // Controles deslizables (encuadre, transparencia): mientras se arrastran
+  // queda una sola entrada en el historial.
+  const liveStart = useRef<TextLayout | null>(null);
+  function livePatch(id: string, changes: Partial<TextElement>) {
+    if (!liveStart.current) liveStart.current = layout;
+    setLayout((prev) => {
+      const next = clone(prev);
+      next[orientation] = next[orientation].map((e) => (e.id === id ? { ...e, ...changes } : e));
+      shareChanges(next, orientation, id, changes);
+      return next;
+    });
+  }
+  function endLive() {
+    if (liveStart.current) record({ layout: liveStart.current, styles });
+    liveStart.current = null;
+  }
+
+  // Pega el formato copiado en un texto.
+  function paintOnto(el: TextElement) {
+    if (!painter || !isTexty(el)) return false;
+    const c: Partial<TextElement> = { ...painter };
+    if (el.kind !== "text") c.style = null; // los estilos son solo de los textos
+    patchMany([el.id], c);
+    setPainter(null);
+    setSelectedId(el.id);
+    return true;
+  }
+
   function restore(snap: Snap) {
     setLayout(snap.layout);
     if (snap.styles !== styles) onStylesChange?.(snap.styles);
@@ -350,6 +413,7 @@ export function ArtboardEditor({
   }
 
   function undo() {
+    if (liveStart.current) endLive(); // un deslizador que se estaba moviendo
     const prev = past.current.pop();
     if (!prev) return;
     future.current.push({ layout, styles });
@@ -444,7 +508,7 @@ export function ArtboardEditor({
     const tol = 6 / k;
     const xs = [A.w / 2], ys = [A.h / 2], edges: number[] = [];
     for (const e of elements) {
-      if (e.id === id || e.hidden) continue;
+      if (e.id === id || e.hidden || e.fill) continue;
       xs.push(e.x);
       ys.push(e.y);
       edges.push(e.x - e.w / 2, e.x + e.w / 2);
@@ -468,7 +532,7 @@ export function ArtboardEditor({
     const b = boardRef.current?.getBoundingClientRect();
     if (b && k) {
       for (const [eid, node] of elRefs.current) {
-        if (skip.has(eid)) continue;
+        if (skip.has(eid) || node.dataset.fill) continue;
         const r = node.getBoundingClientRect();
         if (!r.width && !r.height) continue;
         const l = (r.left - b.left) / k, t = (r.top - b.top) / k, w = r.width / k, h = r.height / k;
@@ -480,10 +544,21 @@ export function ArtboardEditor({
   }
 
   function startDrag(e: RPointerEvent, el: TextElement, mode: Drag["mode"], sx = 0, sy = 0) {
+    if (painter && mode === "move") {
+      e.stopPropagation();
+      e.preventDefault();
+      areaRef.current?.focus({ preventScroll: true });
+      if (!paintOnto(el)) setPainter(null);
+      return;
+    }
+    // Fondo y velo cubren todo: no se arrastran, y desde ahí se puede marcar un recuadro.
+    if (el.fill && mode === "move" && !e.shiftKey) {
+      fillClick.current = el.id;
+      return;
+    }
     e.stopPropagation();
     e.preventDefault();
     if (editing && editing.id !== el.id) finishEdit();
-    setBgPicked(false);
     setPopover(null);
     areaRef.current?.focus({ preventScroll: true });
     // Shift+clic suma o quita el objeto de la selección.
@@ -512,7 +587,7 @@ export function ArtboardEditor({
       return;
     }
     setSelectedId(el.id);
-    if (el.locked) return; // bloqueado: se selecciona pero no se mueve
+    if (el.locked || el.fill) return; // bloqueado (o fondo): se selecciona pero no se mueve
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     const node = elRefs.current.get(el.id);
     drag.current = {
@@ -655,12 +730,17 @@ export function ArtboardEditor({
     if (!d) return;
     if (JSON.stringify(d.before) !== JSON.stringify(layout)) {
       record({ layout: d.before, styles });
+    } else if (d.mode === "group") {
+      // Clic (sin arrastrar) en uno de varios seleccionados: queda solo ese.
+      setSelectedId(d.id);
     }
   }
 
   function onKey(e: React.KeyboardEvent) {
     const t = e.target as HTMLElement;
-    if (t.closest("input,textarea,select,[contenteditable='true'],[role=dialog]")) return;
+    // Con un deslizador enfocado (transparencia, encuadre) sí funcionan Ctrl+Z / Ctrl+Y.
+    const slider = t.matches("input[type=range]") && (e.ctrlKey || e.metaKey);
+    if (!slider && t.closest("input,textarea,select,[contenteditable='true'],[role=dialog]")) return;
     // Enter y espacio sobre un botón lo activan: no son atajos del lienzo.
     if ((e.key === "Enter" || e.key === " ") && t.closest("button")) return;
     const mod = e.ctrlKey || e.metaKey;
@@ -676,6 +756,10 @@ export function ArtboardEditor({
       return;
     }
     if (e.key === "Escape") {
+      if (painter) {
+        setPainter(null);
+        return;
+      }
       setSelectedId(null);
       setPopover(null);
     }
@@ -708,7 +792,7 @@ export function ArtboardEditor({
       duplicate(selected.id);
       return;
     }
-    if (selected.locked) return;
+    if (selected.locked || selected.fill) return;
     if (e.key === "Enter" && (selected.kind === "text" || selected.kind === "link")) {
       e.preventDefault();
       startEdit(selected.id);
@@ -758,6 +842,7 @@ export function ArtboardEditor({
     if (customCount >= MAX_CUSTOM) return;
     const id = newCustomId();
     const next = clone(layout);
+    let added: TextElement | null = null;
     for (const o of ["portrait", "landscape"] as Orientation[]) {
       const B = BOARDS[o], f = SCALE[o];
       // En el formato que estás viendo aparece en el centro de lo visible.
@@ -765,11 +850,37 @@ export function ArtboardEditor({
       const step = (customCount % 6) * 28 * f;
       const y = (o === orientation ? A.h / 2 : (B.h * extentOf(layout, o)) / 2) + step;
       const t = { ...customTemplate(kind, id, B.w / 2 + step, y), ...extra };
-      next[o] = [...next[o], { ...t, w: Math.round(t.w * f), h: Math.max(2, Math.round(t.h * f)), fontSize: Math.round(t.fontSize * f), z: maxZ(next[o]) + 1 }];
+      const item = { ...t, w: Math.round(t.w * f), h: Math.max(2, Math.round(t.h * f)), fontSize: Math.round(t.fontSize * f), z: maxZ(next[o]) + 1 };
+      next[o] = [...next[o], item];
+      if (o === orientation) added = item;
     }
     commit(next, layout);
     setSelectedId(id);
     setPopover(null);
+    // Los atajos (Supr, flechas, Ctrl+Z) siguen funcionando sobre lo nuevo.
+    if (kind !== "map") areaRef.current?.focus({ preventScroll: true });
+    if (added) onAdded?.(added);
+  }
+
+  // Fondo (imagen o video que cubre la sección): va abajo de todo.
+  // Velo: un color con transparencia, justo arriba de los fondos.
+  function addCover(kind: "backdrop" | "veil", src = "") {
+    if (customCount >= MAX_CUSTOM) return;
+    const id = newCustomId();
+    const next = clone(layout);
+    for (const o of ["portrait", "landscape"] as Orientation[]) {
+      const list = next[o];
+      const minZ = Math.min(0, ...list.map((e) => e.z));
+      const backs = list.filter((e) => e.fill && e.kind === "photo").map((e) => e.z);
+      const z = kind === "backdrop" ? minZ - 1 : backs.length ? Math.max(...backs) + 0.5 : minZ - 1;
+      const item = kind === "backdrop" ? backdropElement(id, src, z) : veilElement(id, z);
+      next[o] = [...list, item];
+    }
+    next.bgObjects = true;
+    commit(next, layout);
+    setSelectedId(id);
+    setPopover(null);
+    areaRef.current?.focus({ preventScroll: true });
   }
 
   // Duplicar: los objetos agregados se copian tal cual; un texto fijo se copia
@@ -849,8 +960,8 @@ export function ArtboardEditor({
   /* ---------- Recuadro de selección ---------- */
 
   function startMarquee(e: RPointerEvent) {
-    setBgPicked(false);
     setPopover(null);
+    if (painter) setPainter(null);
     finishEdit();
     if (!e.shiftKey) setSelectedId(null);
     if (cover && closed) return;
@@ -868,10 +979,16 @@ export function ArtboardEditor({
   function endMarquee() {
     const m = marquee;
     setMarquee(null);
-    if (!m || (Math.abs(m.x1 - m.x0) < 4 && Math.abs(m.y1 - m.y0) < 4)) return;
+    const fill = fillClick.current;
+    fillClick.current = null;
+    if (!m || (Math.abs(m.x1 - m.x0) < 4 && Math.abs(m.y1 - m.y0) < 4)) {
+      if (fill && m) setSelectedId(fill);
+      return;
+    }
     const l = Math.min(m.x0, m.x1), r = Math.max(m.x0, m.x1), t = Math.min(m.y0, m.y1), btm = Math.max(m.y0, m.y1);
     const hit = elements
       .filter((el) => {
+        if (el.fill) return false;
         const n = elRefs.current.get(el.id);
         if (!n) return false;
         const b = n.getBoundingClientRect();
@@ -1066,29 +1183,14 @@ export function ArtboardEditor({
     // Fotos nuevas: quedan en la biblioteca hasta que se arrastran al lienzo.
     manual: () => { if (!layout.manualPhotos) setLayout({ ...clone(layout), manualPhotos: true }); },
     restoreOriginal: () => restoreOriginal(),
+    patch: (id, changes) => patchMany([id], changes),
   }));
 
   const bgStyle: CSSProperties = { background: background.color };
-  const bgNode = background.image ? <BgMedia src={background.image} frame={bgFrameOf(layout)} /> : null;
-  const overlay = background.overlay ? (
-    <div className="pointer-events-none absolute inset-0" style={{ background: "var(--color-bg)", opacity: overlayOf(layout) }} />
-  ) : null;
-
-  // Velo sobre la foto de fondo: mientras se arrastra el control queda una sola
-  // entrada en el historial.
-  const overlayDrag = useRef<TextLayout | null>(null);
-  function setLive(next: Partial<TextLayout>) {
-    if (!overlayDrag.current) overlayDrag.current = layout;
-    setLayout({ ...clone(layout), ...next });
-  }
-  function endLive() {
-    if (overlayDrag.current) record({ layout: overlayDrag.current, styles });
-    overlayDrag.current = null;
-  }
-  // El fondo se elige desde la capa "Fondo" (no se mueve con el puntero).
-  const [bgPicked, setBgPicked] = useState(false);
-  const bgSelected = bgPicked && sel.length === 0;
   const handle = 10 / (k || 1);
+  // Varios seleccionados: lo que tienen en común los textos.
+  const selEls = elements.filter((e) => sel.includes(e.id));
+  const selTexts = selEls.filter(isTexty);
 
   return (
     // Los atajos (Supr, flechas, Ctrl+Z…) funcionan con el foco en cualquier parte del editor.
@@ -1190,6 +1292,7 @@ export function ArtboardEditor({
             onToggle={() => setPopover(popover === "add" ? null : "add")}
             full={customCount >= MAX_CUSTOM}
             onAdd={addObject}
+            onAddCover={addCover}
             library={imageLibrary}
             onOpenLibrary={cfg.photos ? () => { setPopover(null); onOpenLibrary?.(); } : undefined}
           />
@@ -1249,7 +1352,6 @@ export function ArtboardEditor({
             for (const o of ["portrait", "landscape"] as Orientation[]) next[o] = next[o].map((e) => (ids.includes(e.id) ? { ...e, locked } : e));
             commit(next, layout);
           }}
-          background={bgZone ? { thumb: background.image ?? null, selected: bgSelected, onSelect: () => { setSel([]); finishEdit(); setBgPicked(true); } } : undefined}
           layers={layout.layers ?? []}
           onArrange={arrangeLayers}
           onCreateLayer={createLayer}
@@ -1274,21 +1376,22 @@ export function ArtboardEditor({
       <div className="absolute inset-x-0 top-0 flex min-h-[46px] flex-wrap items-center gap-1.5 border-b border-neutral-200 bg-white px-3 py-1.5 shadow-[0_1px_0_rgba(0,0,0,0.02)]">
         {cover && closed ? (
           <p className="text-xs text-neutral-500">{cover.hint}</p>
-        ) : bgSelected && bgZone ? (
-          <BgToolbar
-            image={background.image ?? null}
-            frame={bgFrameOf(layout)}
-            overlay={overlayOf(layout)}
-            zone={bgZone}
-            library={imageLibrary}
-            onChange={(url) => onBackgroundChange?.(url)}
-            onFrame={(f) => setLive({ bg: { ...bgFrameOf(layout), ...f } })}
-            onOverlay={(v) => setLive({ overlay: v })}
-            onEnd={endLive}
-          />
+        ) : painter ? (
+          <div className="flex items-center gap-2 text-xs text-blue-800" data-painter-banner>
+            <Paintbrush size={14} /> Tocá el texto al que querés pasarle el formato
+            <button type="button" onClick={() => setPainter(null)} className="rounded-md border border-blue-300 px-2 py-0.5 hover:bg-blue-50">Cancelar (Esc)</button>
+          </div>
         ) : sel.length > 1 ? (
           <>
             <span className="mr-1 text-xs font-medium text-neutral-800" data-group-count>{sel.length} objetos seleccionados</span>
+            {selTexts.length > 0 && (
+              <GroupTextTools
+                texts={selTexts}
+                popover={popover}
+                setPopover={setPopover}
+                onPatch={(c) => patchMany(selTexts.map((e) => e.id), c)}
+              />
+            )}
             <span className="text-[11px] text-neutral-500">Alinear:</span>
             <ToolButton label="Alinear a la izquierda" onClick={() => alignGroup("left")}><AlignStartVertical size={15} /></ToolButton>
             <ToolButton label="Centrar horizontalmente" onClick={() => alignGroup("hcenter")}><AlignCenterVertical size={15} /></ToolButton>
@@ -1329,6 +1432,10 @@ export function ArtboardEditor({
             onFront={() => restack(selected.id, true)}
             onBack={() => restack(selected.id, false)}
             onToggleLock={() => toggleLock(selected.id)}
+            onLive={(c) => livePatch(selected.id, c)}
+            onLiveEnd={endLive}
+            onCopyFormat={isTexty(selected) ? () => setPainter(Object.fromEntries(FORMAT_KEYS.map((k) => [k, selected[k]])) as Format) : undefined}
+            onOpenContent={selected.kind === "map" && isCustom(selected) ? () => onOpenContent?.(selected.id) : undefined}
           />
         ) : (
           <Hint id="canvas" className="w-full"><p className="text-xs text-neutral-500">
@@ -1348,12 +1455,10 @@ export function ArtboardEditor({
         onDragOver={(e) => { if (acceptsDrop(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setDropping(true); } }}
         onDragLeave={(e) => { if (e.currentTarget === e.target) setDropping(false); }}
         onDrop={onDrop}
-        className={`relative flex min-h-0 flex-1 overflow-auto bg-neutral-200/70 p-4 outline-none ${dropping ? "ring-4 ring-inset ring-blue-400" : ""}`}
+        className={`relative flex min-h-0 flex-1 overflow-auto bg-neutral-200/70 p-4 outline-none ${dropping ? "ring-4 ring-inset ring-blue-400" : ""} ${painter ? "cursor-copy" : ""}`}
         aria-label="Lienzo: tocá un elemento para seleccionarlo, arrastralo para moverlo, flechas para ajustar"
       >
         <div className="relative m-auto shrink-0 overflow-hidden shadow-lg" style={{ width: A.w * k, height: A.h * k, ...bgStyle }} data-canvas-bg>
-          {bgNode}
-          {overlay}
           {underlay && (
             <div className="pointer-events-none absolute left-0 top-0" style={{ width: A.w, height: A.h, transform: `scale(${k})`, transformOrigin: "0 0" }}>
               {underlay}
@@ -1375,13 +1480,14 @@ export function ArtboardEditor({
                   key={el.id}
                   data-artboard-el={el.id}
                   data-selected={isSel ? "true" : undefined}
+                  data-fill={el.fill ? "true" : undefined}
                   ref={(n) => { if (n) elRefs.current.set(el.id, n); else elRefs.current.delete(el.id); }}
                   style={{
                     ...(elementStyle(el) as CSSProperties),
-                    cursor: isEditing ? "text" : el.locked ? "default" : "move",
+                    cursor: painter ? (isTexty(el) ? "copy" : "not-allowed") : isEditing ? "text" : el.locked || el.fill ? "default" : "move",
                     opacity: el.hidden ? 0.25 : el.opacity,
                     outline: isSel
-                      ? `${2 / (k || 1)}px solid #2563eb`
+                      ? `${(el.fill ? 4 : 2) / (k || 1)}px solid #2563eb`
                       : overflow.has(el.id)
                         ? `${1.5 / (k || 1)}px dashed #dc2626`
                         : el.kind === "panel"
@@ -1392,7 +1498,7 @@ export function ArtboardEditor({
                   }}
                   onPointerDown={(e) => startDrag(e, el, "move")}
                   onDoubleClick={(e) => { if ((el.kind === "text" || el.kind === "link") && !isEditing) startEdit(el.id, { x: e.clientX, y: e.clientY }); }}
-                  onMouseEnter={(e) => { if (!isSel && !overflow.has(el.id) && el.kind !== "panel") e.currentTarget.style.outlineColor = "rgba(37,99,235,.5)"; }}
+                  onMouseEnter={(e) => { if (!isSel && !overflow.has(el.id) && el.kind !== "panel" && !el.fill) e.currentTarget.style.outlineColor = "rgba(37,99,235,.5)"; }}
                   onMouseLeave={(e) => { if (!isSel && !overflow.has(el.id) && el.kind !== "panel") e.currentTarget.style.outlineColor = "transparent"; }}
                 >
                   {isEditing ? (
@@ -1409,7 +1515,7 @@ export function ArtboardEditor({
                       <ElementContent el={el} tokens={tokens} blocks={blocks} />
                     </div>
                   )}
-                  {isSel && sel.length === 1 && !isEditing && !el.locked &&
+                  {isSel && sel.length === 1 && !isEditing && !el.locked && !el.fill &&
                     ([
                       [-1, -1, "nwse-resize", { left: -handle / 2, top: -handle / 2 }],
                       [1, -1, "nesw-resize", { right: -handle / 2, top: -handle / 2 }],
@@ -1436,7 +1542,7 @@ export function ArtboardEditor({
                         }}
                       />
                     ))}
-                  {isSel && sel.length === 1 && !isEditing && !el.locked && (
+                  {isSel && sel.length === 1 && !isEditing && !el.locked && !el.fill && (
                     <>
                       <span
                         aria-hidden
@@ -1497,7 +1603,6 @@ export function ArtboardEditor({
           tokens={tokens}
           blocks={blocks}
           bgStyle={bgStyle}
-          overlay={<>{bgNode}{overlay}</>}
           section={section}
         />
       )}
@@ -1529,6 +1634,10 @@ function ContextToolbar({
   onBack,
   onToggleLock,
   deleteLabel,
+  onLive,
+  onLiveEnd,
+  onCopyFormat,
+  onOpenContent,
 }: {
   el: TextElement;
   orientation: Orientation;
@@ -1551,8 +1660,13 @@ function ContextToolbar({
   onBack: () => void;
   onToggleLock: () => void;
   deleteLabel?: string;
+  onLive: (c: Partial<TextElement>) => void; // controles deslizables (una entrada en el historial)
+  onLiveEnd: () => void;
+  onCopyFormat?: () => void;
+  onOpenContent?: () => void;
 }) {
   const isText = el.kind === "text";
+  const countdown = isCountdown(el);
   const isPanel = el.kind === "panel";
   const isMedia = isSized(el);
   const canWrite = isText || el.kind === "link";
@@ -1561,37 +1675,43 @@ function ContextToolbar({
   const toggle = (p: Popover) => setPopover(popover === p ? null : p);
   const sizeStep = isPanel ? 1 : 2;
   const [newName, setNewName] = useState("");
-  const colorTool = (
-    <div className="relative" data-popover>
-            <ToolButton label="Color" active={popover === "color"} onClick={() => toggle("color")}>
-              <span className="h-4 w-4 rounded-full border border-neutral-300" style={{ background: el.color }} />
-            </ToolButton>
-            {popover === "color" && (
-              <div className="absolute left-0 top-full z-30 mt-1 w-60 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg">
-                <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-neutral-400">De la paleta</p>
-                <div className="flex flex-col gap-1">
-                  {Object.entries(THEME_COLORS).map(([v, label]) => (
-                    <button key={v} type="button" onClick={() => onPatch({ color: v })} className={`flex items-center gap-2 rounded px-1.5 py-1 text-left text-sm hover:bg-neutral-50 ${el.color === v ? "bg-neutral-100" : ""}`}>
-                      <span className="h-4 w-4 rounded-full border border-neutral-300" style={{ background: v }} /> {label}
-                    </button>
-                  ))}
-                </div>
-                <p className="mb-1.5 mt-3 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Color propio</p>
-                <input
-                  type="color"
-                  aria-label="Elegir color propio"
-                  value={el.color.startsWith("#") ? el.color : "#5c1f2e"}
-                  onChange={(e) => onPatch({ color: e.target.value })}
-                  className="h-8 w-full cursor-pointer rounded border border-neutral-300"
-                />
-              </div>
-            )}
-          </div>
+  const colorTool = <ColorTool color={el.color} open={popover === "color"} onToggle={() => toggle("color")} onPick={(color) => onPatch({ color })} />;
+  // Transparencia: 0% = sólido, 100% = invisible.
+  const transparency = (
+    <RangeTool
+      label="Transparencia"
+      value={Math.round((1 - el.opacity) * 100)}
+      min={0}
+      max={100}
+      step={5}
+      fmt={(v) => `${v}%`}
+      onChange={(v) => onLive({ opacity: Math.round((1 - v / 100) * 100) / 100 })}
+      onEnd={onLiveEnd}
+    />
+  );
+  const fillToggle = (el.kind === "photo" || el.kind === "shape") && (
+    <ToolButton
+      label={el.fill ? "Cubre toda la sección (tocá para volver a una caja)" : "Cubrir toda la sección (como fondo o velo)"}
+      active={el.fill}
+      onClick={() => onPatch({ fill: !el.fill })}
+    >
+      <span className="text-xs">Cubrir sección</span>
+    </ToolButton>
   );
 
   return (
     <>
       <span className="mr-1 text-xs font-medium text-neutral-800">{el.name}</span>
+      {onCopyFormat && (
+        <ToolButton label="Copiar formato: después tocá otro texto para pasarle tipografía, tamaño, color y estilo" onClick={onCopyFormat}>
+          <Paintbrush size={14} />
+        </ToolButton>
+      )}
+      {onOpenContent && (
+        <ToolButton label="Cargar la dirección o el link del mapa (en Contenido)" onClick={onOpenContent}>
+          <MapPin size={14} /> <span className="text-xs">{el.text ? "Cambiar dirección" : "Cargar dirección o link"}</span>
+        </ToolButton>
+      )}
 
       {isText && (
         <div className="relative" data-popover>
@@ -1732,8 +1852,28 @@ function ContextToolbar({
         <>
           <ToolButton label="Negrita" active={el.weight >= 600} onClick={() => onPatch({ weight: el.weight >= 600 ? 400 : 700 })}><Bold size={14} /></ToolButton>
           <ToolButton label="Cursiva" active={el.italic} onClick={() => onPatch({ italic: !el.italic })}><Italic size={14} /></ToolButton>
-          <ToolButton label="Mayúsculas" active={el.uppercase} onClick={() => onPatch({ uppercase: !el.uppercase })}><span className="text-xs font-semibold">Aa</span></ToolButton>
+          {countdown ? (
+            <ToolButton label="Etiquetas en mayúsculas (DÍAS, HS…)" active={el.labelUpper} onClick={() => onPatch({ labelUpper: !el.labelUpper })}><span className="text-xs font-semibold">Aa</span></ToolButton>
+          ) : (
+            <ToolButton label="Mayúsculas" active={el.uppercase} onClick={() => onPatch({ uppercase: !el.uppercase })}><span className="text-xs font-semibold">Aa</span></ToolButton>
+          )}
         </>
+      )}
+
+      {countdown && (
+        <select
+          aria-label="Tipografía de las etiquetas"
+          title="Tipografía de «días, hs, min, seg»"
+          className="h-8 max-w-[12rem] rounded-md border border-neutral-300 px-2 text-sm"
+          value={el.labelFont}
+          onChange={(e) => onPatch({ labelFont: e.target.value as FontKey | "" })}
+          style={el.labelFont ? { fontFamily: FONTS[el.labelFont].css } : undefined}
+        >
+          <option value="">Etiquetas: igual que los números</option>
+          {(Object.keys(FONTS) as FontKey[]).map((f) => (
+            <option key={f} value={f} style={{ fontFamily: FONTS[f].css }}>Etiquetas: {FONTS[f].label}</option>
+          ))}
+        </select>
       )}
 
       <ToolButton
@@ -1746,7 +1886,7 @@ function ContextToolbar({
         </>
       )}
 
-      {el.kind === "photo" && (
+      {el.kind === "photo" && !el.fill && (
         <select
           aria-label="Borde de la foto"
           className="h-8 rounded-md border border-neutral-300 px-2 text-sm"
@@ -1759,7 +1899,7 @@ function ContextToolbar({
         </select>
       )}
 
-      {el.kind === "photo" && (
+      {el.kind === "photo" && !el.fill && (
         <select
           aria-label="Efecto al pasar el mouse"
           title="Efecto al pasar el mouse o tocar la foto"
@@ -1773,8 +1913,29 @@ function ContextToolbar({
         </select>
       )}
 
+      {el.kind === "photo" && (
+        <>
+          <div className="relative" data-popover>
+            <ToolButton label="Encuadre: qué parte de la imagen se ve y el zoom" active={popover === "crop"} onClick={() => toggle("crop")}>
+              <span className="text-xs">Encuadre</span>
+            </ToolButton>
+            {popover === "crop" && (
+              <div className="absolute left-0 top-full z-30 mt-1 flex w-72 flex-col gap-2 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg">
+                <RangeTool label="Horizontal" value={el.crop.x} min={0} max={100} step={1} fmt={(v) => `${v}%`} onChange={(v) => onLive({ crop: { ...el.crop, x: v } })} onEnd={onLiveEnd} wide />
+                <RangeTool label="Vertical" value={el.crop.y} min={0} max={100} step={1} fmt={(v) => `${v}%`} onChange={(v) => onLive({ crop: { ...el.crop, y: v } })} onEnd={onLiveEnd} wide />
+                <RangeTool label="Zoom" value={el.crop.zoom} min={1} max={3} step={0.05} fmt={(v) => `${Math.round(v * 100)}%`} onChange={(v) => onLive({ crop: { ...el.crop, zoom: v } })} onEnd={onLiveEnd} wide />
+              </div>
+            )}
+          </div>
+          {fillToggle}
+          {transparency}
+        </>
+      )}
+
       {el.kind === "shape" && (
         <>
+          {fillToggle}
+          {transparency}
           <select
             aria-label="Tipo de forma"
             className="h-8 rounded-md border border-neutral-300 px-2 text-sm"
@@ -1802,6 +1963,7 @@ function ContextToolbar({
             ))}
           </select>
           {colorTool}
+          {transparency}
         </>
       )}
 
@@ -1817,7 +1979,7 @@ function ContextToolbar({
               <Num label="Rotación (°)" value={el.rotation} onChange={(v) => onPatch({ rotation: v })} />
               <Num label="Posición X" value={el.x} onChange={(v) => onPatch({ x: v })} />
               <Num label="Posición Y" value={el.y} onChange={(v) => onPatch({ y: v })} />
-              <Num label="Opacidad (%)" value={Math.round(el.opacity * 100)} step={5} onChange={(v) => onPatch({ opacity: Math.min(1, Math.max(0.1, v / 100)) })} />
+              <Num label="Opacidad (%)" value={Math.round(el.opacity * 100)} step={5} onChange={(v) => onPatch({ opacity: Math.min(1, Math.max(0, v / 100)) })} />
             </div>
             <button type="button" onClick={() => onPatch({ x: artW / 2 })} className="mt-2 w-full rounded-md border border-neutral-300 px-2.5 py-1 text-xs hover:bg-neutral-50">
               Centrar horizontalmente
@@ -1843,6 +2005,152 @@ function ContextToolbar({
           Letra chica en {orientation === "portrait" ? "celular" : "celular acostado"}
         </span>
       )}
+    </>
+  );
+}
+
+function ColorTool({ color, open, onToggle, onPick, mixed }: { color: string; open: boolean; onToggle: () => void; onPick: (c: string) => void; mixed?: boolean }) {
+  return (
+    <div className="relative" data-popover>
+      <ToolButton label="Color" active={open} onClick={onToggle}>
+        <span
+          className="h-4 w-4 rounded-full border border-neutral-300"
+          style={{ background: mixed ? "conic-gradient(#e11d48, #f59e0b, #16a34a, #2563eb, #e11d48)" : color }}
+        />
+      </ToolButton>
+      {open && (
+        <div className="absolute left-0 top-full z-30 mt-1 w-60 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg">
+          <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-neutral-400">De la paleta</p>
+          <div className="flex flex-col gap-1">
+            {Object.entries(THEME_COLORS).map(([v, label]) => (
+              <button key={v} type="button" onClick={() => onPick(v)} className={`flex items-center gap-2 rounded px-1.5 py-1 text-left text-sm hover:bg-neutral-50 ${!mixed && color === v ? "bg-neutral-100" : ""}`}>
+                <span className="h-4 w-4 rounded-full border border-neutral-300" style={{ background: v }} /> {label}
+              </button>
+            ))}
+          </div>
+          <p className="mb-1.5 mt-3 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Color propio</p>
+          <input
+            type="color"
+            aria-label="Elegir color propio"
+            value={!mixed && color.startsWith("#") ? color : "#5c1f2e"}
+            onChange={(e) => onPick(e.target.value)}
+            className="h-8 w-full cursor-pointer rounded border border-neutral-300"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Control deslizable con su valor. onEnd cierra la entrada del historial.
+function RangeTool({
+  label,
+  value,
+  min,
+  max,
+  step,
+  fmt,
+  onChange,
+  onEnd,
+  wide,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  fmt: (v: number) => string;
+  onChange: (v: number) => void;
+  onEnd: () => void;
+  wide?: boolean;
+}) {
+  return (
+    <label className={`flex items-center gap-1.5 text-xs text-neutral-600 ${wide ? "justify-between" : ""}`}>
+      {label}
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        onPointerUp={onEnd}
+        onKeyUp={onEnd}
+        onBlur={onEnd}
+        className={`${wide ? "flex-1" : "w-20"} accent-neutral-900`}
+      />
+      <span className="w-9 tabular-nums">{fmt(value)}</span>
+    </label>
+  );
+}
+
+// Varios textos seleccionados: se cambia a todos juntos lo que tienen en común
+// (si tienen valores distintos, el control queda en blanco).
+function GroupTextTools({
+  texts,
+  popover,
+  setPopover,
+  onPatch,
+}: {
+  texts: TextElement[];
+  popover: Popover;
+  setPopover: (p: Popover) => void;
+  onPatch: (c: Partial<TextElement> | ((el: TextElement) => Partial<TextElement>)) => void;
+}) {
+  const same = <K extends keyof TextElement>(k: K): TextElement[K] | null => (texts.every((t) => t[k] === texts[0][k]) ? texts[0][k] : null);
+  const font = same("font");
+  const size = same("fontSize");
+  const color = same("color");
+  const bold = texts.every((t) => t.weight >= 600);
+  const italic = texts.every((t) => t.italic);
+  const upper = texts.every((t) => (isCountdown(t) ? t.labelUpper : t.uppercase));
+  const align = same("align");
+  return (
+    <>
+      <span className="text-[11px] text-neutral-500" data-group-texts>{texts.length} {texts.length === 1 ? "texto" : "textos"}:</span>
+      <select
+        aria-label="Tipografía de los seleccionados"
+        className="h-8 max-w-[10rem] rounded-md border border-neutral-300 px-2 text-sm"
+        value={font ?? ""}
+        onChange={(e) => e.target.value && onPatch({ font: e.target.value as FontKey })}
+        style={font ? { fontFamily: FONTS[font].css } : undefined}
+      >
+        {!font && <option value="">Varias tipografías</option>}
+        {(Object.keys(FONTS) as FontKey[]).map((f) => (
+          <option key={f} value={f} style={{ fontFamily: FONTS[f].css }}>{FONTS[f].label}</option>
+        ))}
+      </select>
+      <div className="flex h-8 items-center rounded-md border border-neutral-300">
+        <button type="button" aria-label="Achicar los seleccionados" className="px-1.5 text-neutral-600 hover:text-neutral-900" onClick={() => onPatch((el) => ({ fontSize: Math.max(6, el.fontSize - 2) }))}>
+          <Minus size={13} />
+        </button>
+        <input
+          aria-label="Tamaño de los seleccionados"
+          type="number"
+          placeholder="—"
+          className="h-full w-12 border-x border-neutral-300 text-center text-sm"
+          value={size === null ? "" : Math.round(size * 10) / 10}
+          onChange={(e) => {
+            const v = parseFloat(e.target.value);
+            if (Number.isFinite(v) && v >= 6) onPatch({ fontSize: Math.min(400, v) });
+          }}
+        />
+        <button type="button" aria-label="Agrandar los seleccionados" className="px-1.5 text-neutral-600 hover:text-neutral-900" onClick={() => onPatch((el) => ({ fontSize: Math.min(400, el.fontSize + 2) }))}>
+          <Plus size={13} />
+        </button>
+      </div>
+      <ColorTool color={color ?? ""} mixed={color === null} open={popover === "color"} onToggle={() => setPopover(popover === "color" ? null : "color")} onPick={(c) => onPatch({ color: c })} />
+      <ToolButton label="Negrita" active={bold} onClick={() => onPatch({ weight: bold ? 400 : 700 })}><Bold size={14} /></ToolButton>
+      <ToolButton label="Cursiva" active={italic} onClick={() => onPatch({ italic: !italic })}><Italic size={14} /></ToolButton>
+      <ToolButton label="Mayúsculas" active={upper} onClick={() => onPatch((el) => (isCountdown(el) ? { labelUpper: !upper } : { uppercase: !upper }))}><span className="text-xs font-semibold">Aa</span></ToolButton>
+      <ToolButton
+        label={`Alineación del texto: ${align === "left" ? "izquierda" : align === "right" ? "derecha" : align === "center" ? "centro" : "varias"}`}
+        onClick={() => onPatch({ align: align === "left" ? "center" : align === "center" ? "right" : "left" })}
+      >
+        {align === "left" ? <AlignLeft size={14} /> : align === "right" ? <AlignRight size={14} /> : <AlignCenter size={14} />}
+      </ToolButton>
+      <span className="mx-0.5 h-5 w-px bg-neutral-200" aria-hidden />
     </>
   );
 }
@@ -1909,144 +2217,6 @@ function Num({ label, value, step = 1, onChange }: { label: string; value: numbe
   );
 }
 
-/* ---------- Capa Fondo ---------- */
-
-// Fondo de la sección: imagen o video, encuadre (punto de enfoque y zoom) y velo.
-function BgToolbar({
-  image,
-  frame,
-  overlay,
-  zone,
-  library,
-  onChange,
-  onFrame,
-  onOverlay,
-  onEnd,
-}: {
-  image: string | null;
-  frame: BgFrame;
-  overlay: number;
-  zone: string;
-  library: { src: string; alt: string }[];
-  onChange: (url: string | null) => void;
-  onFrame: (f: Partial<BgFrame>) => void;
-  onOverlay: (v: number) => void;
-  onEnd: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function applyBg(url: string) {
-    setBusy(true);
-    await saveZoneImageAction(zone, url);
-    onChange(url);
-    setBusy(false);
-    setOpen(false);
-  }
-  async function upload(file: File) {
-    setError(null);
-    setBusy(true);
-    try {
-      const req = await requestZoneImageUploadAction(zone, file.name, file.type);
-      if (!req.uploadUrl || !req.publicUrl) return setError(req.error ?? "No se pudo preparar la subida.");
-      const put = await fetch(req.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
-      if (!put.ok) return setError("No se pudo subir el archivo.");
-      await applyBg(req.publicUrl);
-    } catch {
-      setError("No se pudo subir el archivo. Revisá tu conexión.");
-    } finally {
-      setBusy(false);
-    }
-  }
-  const slider = (label: string, value: number, min: number, max: number, step: number, set: (v: number) => void, fmt: (v: number) => string) => (
-    <label className="flex items-center gap-1.5 text-xs text-neutral-600">
-      {label}
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        aria-label={label}
-        value={value}
-        onChange={(e) => set(Number(e.target.value))}
-        onPointerUp={onEnd}
-        onKeyUp={onEnd}
-        onBlur={onEnd}
-        className="w-20 accent-neutral-900"
-      />
-      <span className="w-9 tabular-nums">{fmt(value)}</span>
-    </label>
-  );
-
-  return (
-    <>
-      <span className="mr-1 text-xs font-medium text-neutral-800">Fondo</span>
-      <div className="relative" data-popover>
-        <button type="button" onClick={() => setOpen((o) => !o)} className="flex h-8 items-center gap-1.5 rounded-md border border-neutral-300 px-2.5 text-xs hover:bg-neutral-50">
-          {busy ? <Loader2 size={13} className="animate-spin" /> : null}
-          {image ? (isVideo(image) ? "Video de fondo · cambiar" : "Imagen de fondo · cambiar") : "Poner imagen o video de fondo"}
-        </button>
-        {open && (
-          <div className="absolute left-0 top-full z-30 mt-1 w-80 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg">
-            <label className={`flex cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-neutral-300 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 ${busy ? "pointer-events-none opacity-50" : ""}`}>
-              Subir imagen o video (MP4, WebM)
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
-                className="hidden"
-                aria-label="Subir fondo"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) upload(f);
-                  e.target.value = "";
-                }}
-              />
-            </label>
-            <p className="mt-1 text-[11px] text-neutral-400">Video: corto y liviano (idealmente menos de 10 MB). Se reproduce sin sonido y en bucle.</p>
-            {library.length > 0 && (
-              <>
-                <p className="mb-1 mt-3 text-[11px] text-neutral-500">O reutilizá una foto ya subida:</p>
-                <ul className="grid max-h-36 grid-cols-5 gap-1 overflow-y-auto">
-                  {library.map((p) => (
-                    <li key={p.src}>
-                      <button type="button" onClick={() => applyBg(p.src)} aria-label={`Usar de fondo: ${p.alt || "foto"}`} className="block aspect-square w-full overflow-hidden rounded border border-neutral-200 hover:opacity-80">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={p.src} alt="" className="h-full w-full object-cover" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-            {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
-          </div>
-        )}
-      </div>
-      {image && (
-        <>
-          <button
-            type="button"
-            onClick={async () => {
-              if (!window.confirm("¿Quitar el fondo de esta sección?")) return;
-              await clearZoneBackgroundAction(zone);
-              onChange(null);
-            }}
-            className="h-8 rounded-md px-2 text-xs text-neutral-600 hover:bg-neutral-100"
-          >
-            Quitar
-          </button>
-          <span className="mx-0.5 h-5 w-px bg-neutral-200" aria-hidden />
-          {slider("Horizontal", frame.x, 0, 100, 1, (v) => onFrame({ x: v }), (v) => `${v}%`)}
-          {slider("Vertical", frame.y, 0, 100, 1, (v) => onFrame({ y: v }), (v) => `${v}%`)}
-          {slider("Zoom", frame.zoom, 1, 3, 0.05, (v) => onFrame({ zoom: v }), (v) => `${Math.round(v * 100)}%`)}
-          {slider("Velo", Math.round(overlay * 100), 0, 95, 5, (v) => onOverlay(v / 100), (v) => `${v}%`)}
-        </>
-      )}
-    </>
-  );
-}
-
 /* ---------- + Agregar ---------- */
 
 function AddMenu({
@@ -2054,6 +2224,7 @@ function AddMenu({
   onToggle,
   full,
   onAdd,
+  onAddCover,
   onOpenLibrary,
   library = [],
 }: {
@@ -2061,10 +2232,30 @@ function AddMenu({
   onToggle: () => void;
   full: boolean;
   onAdd: (kind: CustomKind, extra?: Partial<TextElement>) => void;
+  onAddCover: (kind: "backdrop" | "veil", src?: string) => void;
   onOpenLibrary?: () => void;
   library?: { src: string; alt: string }[];
 }) {
   const [busy, setBusy] = useState(false);
+  const [bgPick, setBgPick] = useState(false); // eligiendo la imagen de fondo
+
+  // Fondo: imagen o video que se sube (o una foto ya subida).
+  async function uploadBackdrop(file: File) {
+    setError(null);
+    setBusy(true);
+    try {
+      const req = await requestDesignImageUploadAction(file.name, file.type);
+      if (!req.uploadUrl || !req.publicUrl) return setError(req.error ?? "No se pudo preparar la subida.");
+      const put = await fetch(req.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+      if (!put.ok) return setError("No se pudo subir el archivo. Probá de nuevo.");
+      onAddCover("backdrop", req.publicUrl);
+      setBgPick(false);
+    } catch {
+      setError("No se pudo subir el archivo. Revisá tu conexión y probá de nuevo.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   // Reutilizar una foto ya subida: no se sube de nuevo (la caja toma su proporción).
   function reuse(p: { src: string; alt: string }) {
@@ -2183,7 +2374,77 @@ function AddMenu({
           </p>
           {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
 
+          <p className={head}>Fondo</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              disabled={full}
+              onClick={() => setBgPick((v) => !v)}
+              aria-expanded={bgPick}
+              className="rounded-md border border-neutral-200 px-2.5 py-2 text-left text-sm hover:bg-neutral-50 disabled:opacity-40"
+            >
+              <span className="block font-medium text-neutral-800">Imagen o video</span>
+              <span className="block text-[11px] text-neutral-500">Cubre toda la sección</span>
+            </button>
+            <button
+              type="button"
+              disabled={full}
+              onClick={() => onAddCover("veil")}
+              className="rounded-md border border-neutral-200 px-2.5 py-2 text-left text-sm hover:bg-neutral-50 disabled:opacity-40"
+            >
+              <span className="block font-medium text-neutral-800">Velo de color</span>
+              <span className="block text-[11px] text-neutral-500">Color con transparencia</span>
+            </button>
+          </div>
+          {bgPick && (
+            <div className="mt-1.5 rounded-md border border-neutral-200 p-2" data-backdrop-picker>
+              {library.length > 0 && (
+                <>
+                  <p className="mb-1 text-[11px] text-neutral-500">Usar una foto ya subida:</p>
+                  <ul className="mb-2 grid max-h-28 grid-cols-5 gap-1 overflow-y-auto">
+                    {library.map((p) => (
+                      <li key={p.src}>
+                        <button type="button" onClick={() => { onAddCover("backdrop", p.src); setBgPick(false); }} aria-label={`Fondo: ${p.alt || "foto"}`} className="block aspect-square w-full overflow-hidden rounded border border-neutral-200 hover:opacity-80">
+                          {isVideo(p.src) ? (
+                            <video src={p.src} muted className="h-full w-full object-cover" />
+                          ) : (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={p.src} alt="" className="h-full w-full object-cover" />
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              <label className={`flex cursor-pointer items-center justify-center rounded-md border border-dashed border-neutral-300 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 ${busy ? "pointer-events-none opacity-40" : ""}`}>
+                {busy ? "Subiendo…" : "Subir imagen o video (MP4, WebM)"}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
+                  className="hidden"
+                  aria-label="Subir fondo"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) uploadBackdrop(f);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              <p className="mt-1 text-[11px] text-neutral-400">Video: corto y liviano (idealmente menos de 10 MB), sin sonido y en bucle.</p>
+            </div>
+          )}
+
           <p className={head}>Otros</p>
+          <button
+            type="button"
+            disabled={full}
+            onClick={() => onAdd("map")}
+            className="mb-1.5 flex w-full items-center gap-2 rounded-md border border-neutral-200 px-2.5 py-2 text-left text-sm hover:bg-neutral-50 disabled:opacity-40"
+          >
+            <MapPin size={16} className="text-neutral-500" />
+            <span className="text-neutral-600">Mapa (cargás la dirección o el link en Contenido)</span>
+          </button>
           <button
             type="button"
             disabled={full}
@@ -2372,7 +2633,6 @@ function RealSizeModal({
   tokens,
   blocks,
   bgStyle,
-  overlay,
   section,
 }: {
   onClose: () => void;
@@ -2380,7 +2640,6 @@ function RealSizeModal({
   tokens: TokenValues;
   blocks?: Record<string, ReactNode>;
   bgStyle: CSSProperties;
-  overlay: ReactNode;
   section: LayoutSection;
 }) {
   const BOARDS = boardsFor(sectionConfig(section).boards, layout);
@@ -2430,7 +2689,6 @@ function RealSizeModal({
         <div className="absolute left-0 top-0 overflow-hidden bg-neutral-700" style={{ width: D.w, height: frameH, transform: `scale(${pk})`, transformOrigin: "0 0" }}>
           {colW < D.w && <div className="absolute -inset-10" style={{ ...bgStyle, filter: "blur(28px)", opacity: 0.8 }} />}
           <div className="absolute top-0 overflow-hidden shadow-2xl" style={{ left: (D.w - colW) / 2, width: colW, height: frameH, ...bgStyle }}>
-            {overlay}
             <TextArtboard layout={layout} tokens={tokens} blocks={blocks} boards={BOARDS} forceOrientation={o} />
           </div>
         </div>

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Ornament } from "./ornaments";
 import { Countdown } from "./Countdown";
+import { isVideo } from "./BgMedia";
 import {
   ARTBOARDS,
   byZ,
@@ -14,8 +15,10 @@ import {
   EXTENTS,
   extentOf,
   fillTokens,
+  FONTS,
   frameStyle,
   mapEmbedUrl,
+  mapSourceOf,
   orientationFor,
   panelColorVars,
   panelZoom,
@@ -44,6 +47,12 @@ export function ElementContent({
   onOpenPhoto?: (id: string) => void; // fotos de la galería: ampliar al tocarlas
 }) {
   if (el.kind === "panel") return <PanelBox el={el}>{blocks?.[`${el.id}:${el.variant}`] ?? blocks?.[el.id] ?? null}</PanelBox>;
+  // La cuenta regresiva (agregada o la de la sección): las etiquetas pueden
+  // tener otra tipografía y no ir en mayúsculas.
+  if (el.kind === "countdown" || (el.kind === "block" && el.id === "countdown"))
+    return tokens.fechaISO ? (
+      <Countdown targetISO={tokens.fechaISO} scaled labelFont={el.labelFont ? FONTS[el.labelFont]?.css : undefined} labelUpper={el.labelUpper} />
+    ) : null;
   if (el.kind === "block") return <>{blocks?.[el.id] ?? null}</>;
   if (el.kind === "photo") {
     const zoomable = !!onOpenPhoto && el.id.startsWith("photo-");
@@ -82,7 +91,7 @@ export function ElementContent({
     );
   }
   if (el.kind === "ornament") return <Ornament name={el.variant} color={el.color} />;
-  if (el.kind === "countdown") return tokens.fechaISO ? <Countdown targetISO={tokens.fechaISO} scaled /> : null;
+  if (el.kind === "map" && !el.ref) return <CustomMap el={el} />;
   if (el.kind === "map") {
     const address = tokens[`direccion${el.ref}`];
     return address ? (
@@ -123,21 +132,52 @@ export function ElementContent({
   return <>{fillTokens(el.text, tokens)}</>;
 }
 
+// Mapa agregado desde el editor: la dirección o el link se cargan en «Contenido».
+function CustomMap({ el }: { el: TextElement }) {
+  const m = mapSourceOf(el.text);
+  if (m.embed)
+    return (
+      <iframe
+        title={el.name || "Mapa"}
+        src={m.embed}
+        loading="lazy"
+        style={{ width: "100%", height: "100%", border: 0, borderRadius: 10, display: "block" }}
+      />
+    );
+  const box = "flex h-full flex-col items-center justify-center gap-2 rounded-[10px] bg-[var(--color-border)] p-4 text-center text-[var(--color-muted)]";
+  return m.open ? (
+    <a href={m.open} target="_blank" rel="noopener noreferrer" className={box} style={{ fontSize: Math.max(14, Math.min(el.w, el.h) * 0.08), color: "var(--color-fg)" }}>
+      📍 Ver el mapa
+    </a>
+  ) : (
+    <div className={box} style={{ fontSize: Math.max(14, Math.min(el.w, el.h) * 0.06) }}>
+      Cargá la dirección o el link del mapa en «Contenido»
+    </div>
+  );
+}
+
 function FramedPhoto({ el }: { el: TextElement }) {
   const f = frameStyle(el.frame);
+  const c = el.crop ?? { x: 50, y: 50, zoom: 1 };
+  const media: CSSProperties = {
+    position: "absolute",
+    inset: 0,
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    objectPosition: `${c.x}% ${c.y}%`,
+    ...(c.zoom !== 1 ? { transform: `scale(${c.zoom})`, transformOrigin: `${c.x}% ${c.y}%` } : null),
+    ...(f.img as CSSProperties),
+  };
   return (
     <div style={{ width: "100%", height: "100%", ...(f.box as CSSProperties) }}>
-      <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", background: "var(--color-border)" }}>
-        {el.src && (
+      <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", background: el.fill ? undefined : "var(--color-border)" }}>
+        {el.src && isVideo(el.src) ? (
+          <video src={el.src} autoPlay muted loop playsInline preload="metadata" aria-label={el.text || undefined} style={media} />
+        ) : el.src ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={el.src}
-            alt={el.text}
-            loading="lazy"
-            draggable={false}
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", ...(f.img as CSSProperties) }}
-          />
-        )}
+          <img src={el.src} alt={el.text} loading={el.fill ? "eager" : "lazy"} draggable={false} style={media} />
+        ) : null}
       </div>
     </div>
   );
@@ -243,6 +283,14 @@ export function TextArtboard({
       left = fit.left;
       top = fit.top;
     }
+    // Fondo y velo cubren toda la sección en pantalla (también lo que queda
+    // alrededor de la mesa), no solo la mesa.
+    const cover = {
+      left: `${-left / fitK}px`,
+      top: `${-top / fitK}px`,
+      width: `${size.w / fitK}px`,
+      height: `${(page ? pageHeight! : size.h) / fitK}px`,
+    };
     const boardStyle: CSSProperties = {
       position: "absolute",
       width: A.w,
@@ -257,12 +305,12 @@ export function TextArtboard({
         {byZ(layout[orientation])
           .filter((el) => !el.hidden && !el.removed)
           .map((el, i) => (
-            <div key={el.id} data-el style={elementStyle(el) as CSSProperties}>
+            <div key={el.id} data-el={el.fill ? "fill" : ""} style={{ ...elementStyle(el), ...(el.fill ? cover : null) } as CSSProperties}>
               <div
-                className={animate && inView ? "artboard-in" : undefined}
+                className={animate && inView && !el.fill ? "artboard-in" : undefined}
                 style={{
                   ...(isSized(el) ? { height: "100%" } : null),
-                  ...(animate ? (inView ? { animationDelay: `${Math.min(i, 12) * 0.1}s` } : { opacity: 0 }) : null),
+                  ...(animate && !el.fill ? (inView ? { animationDelay: `${Math.min(i, 12) * 0.1}s` } : { opacity: 0 }) : null),
                 }}
               >
                 <ElementContent el={el} tokens={tokens} blocks={blocks} onOpenPhoto={setLightbox} />
@@ -285,7 +333,7 @@ export function TextArtboard({
     const measure = () => {
       const b = board.getBoundingClientRect();
       let bottom = 0;
-      board.querySelectorAll<HTMLElement>(":scope > [data-el]").forEach((n) => {
+      board.querySelectorAll<HTMLElement>(":scope > [data-el]:not([data-el=fill])").forEach((n) => {
         bottom = Math.max(bottom, (n.getBoundingClientRect().bottom - b.top) / fitK);
       });
       const need = EXTENTS.find((x) => x * baseH >= bottom + 24) ?? EXTENTS[EXTENTS.length - 1];

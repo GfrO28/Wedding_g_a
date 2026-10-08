@@ -91,6 +91,13 @@ export type TextElement = {
   removed: boolean; // eliminado del diseño (los fijos se pueden recuperar)
   effect: EffectKey; // fotos: efecto al pasar el mouse o tocarla
   layer: string; // capa (grupo) a la que pertenece, o "" si está suelto
+  // fill: cubre toda la sección (fondo o velo), sin importar x/y/w/h.
+  fill: boolean;
+  // crop: encuadre de la foto dentro de su caja (punto de enfoque en % y zoom).
+  crop: { x: number; y: number; zoom: number };
+  // Cuenta regresiva: tipografía ("" = la de los números) y mayúsculas de las etiquetas (días, hs…).
+  labelFont: FontKey | "";
+  labelUpper: boolean;
   fontSize: number;
   font: FontKey;
   color: string;
@@ -118,7 +125,8 @@ export type TextLayout = Record<Orientation, TextElement[]> & {
   overlay?: number;
   manualPhotos?: boolean;
   arrange?: string; // Itinerario: acomodo automático de los pasos (ARRANGEMENTS)
-  bg?: { x: number; y: number; zoom: number }; // encuadre del fondo (punto de enfoque en % y zoom)
+  bg?: { x: number; y: number; zoom: number }; // encuadre del fondo (diseños de antes; ver withBackdrop)
+  bgObjects?: boolean; // el fondo y el velo ya son objetos del diseño
   layers?: { id: string; name: string }[]; // capas creadas por quien diseña (agrupan objetos)
 };
 
@@ -152,10 +160,10 @@ export const SHAPES = { rect: "Rectángulo", rounded: "Redondeado", circle: "Cí
 export const ORNAMENT_KEYS = [
   "church", "rings2", "wine", "martini", "beer", "toast", "coffee", "utensils", "cake", "party", "music", "dj", "mic", "dance",
   "camera", "video", "gift", "bell", "mail", "ticket", "car", "bus", "plane", "hotel", "pin", "clock", "sun", "sunset", "moon",
-  "flame", "bird",
+  "flame", "bird", "shirt", "palette",
   "divider", "rings", "heart", "flower", "flower2", "leaf", "sprout", "sparkles", "star", "feather", "gem", "crown",
 ] as const;
-const CUSTOM_KINDS = ["text", "photo", "shape", "ornament", "countdown"] as const;
+const CUSTOM_KINDS = ["text", "photo", "shape", "ornament", "countdown", "map"] as const;
 export type CustomKind = (typeof CUSTOM_KINDS)[number];
 const CUSTOM_ID = /^x-[a-z0-9]{4,16}$/;
 export const MAX_CUSTOM = 40;
@@ -174,6 +182,9 @@ export function customTemplate(kind: CustomKind, id: string, x = 0, y = 0): Text
       return el({ ...common, kind: "ornament", name: "Adorno", text: "", w: 180, h: 180, variant: "flower" });
     case "countdown":
       return el({ ...common, kind: "countdown", name: "Cuenta regresiva", text: "", w: 600, fontSize: 30, weight: 600, color: "var(--color-fg)" });
+    case "map":
+      // text: dirección o link del mapa (se carga en «Contenido»).
+      return el({ ...common, kind: "map", name: "Mapa", text: "", w: 620, h: 360, color: "var(--color-fg)" });
     default:
       return el({ ...common, kind: "text", name: "Texto", text: "Escribí acá", w: 500, color: "var(--color-fg)", lineHeight: 1.3 });
   }
@@ -290,6 +301,37 @@ export const TOKEN_HELP: Record<string, string> = {
 
 export const mapEmbedUrl = (address: string) => `https://maps.google.com/maps?q=${encodeURIComponent(address)}&output=embed`;
 
+const GOOGLE_EMBED = /^https:\/\/(www\.|maps\.)?google\.[a-z.]{2,8}\/maps/i;
+
+// Lo que se carga en un mapa agregado: una dirección, un link de Google Maps o
+// el código de «Compartir → Insertar un mapa». Devuelve qué mostrar en el
+// iframe, o null si no se puede (los links cortos maps.app.goo.gl no se
+// pueden insertar: se muestran como botón para abrir el mapa).
+export function mapSourceOf(input: string): { embed: string | null; open: string | null } {
+  const raw = input.trim();
+  if (!raw) return { embed: null, open: null };
+  const iframe = /<iframe[^>]*\ssrc=["']([^"']+)["']/i.exec(raw);
+  const text = iframe ? iframe[1].replace(/&amp;/g, "&") : raw;
+  if (!/^https?:\/\//i.test(text)) return { embed: mapEmbedUrl(text), open: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(text)}` };
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    return { embed: null, open: null };
+  }
+  if (url.protocol !== "https:") return { embed: null, open: null };
+  const href = url.toString();
+  if (GOOGLE_EMBED.test(href) && (url.pathname.startsWith("/maps/embed") || url.searchParams.get("output") === "embed")) return { embed: href, open: null };
+  if (GOOGLE_EMBED.test(href)) {
+    const at = /@(-?\d+\.\d+),(-?\d+\.\d+)/.exec(url.pathname);
+    const place = /\/place\/([^/]+)/.exec(url.pathname);
+    const q = url.searchParams.get("q") ?? url.searchParams.get("query");
+    const where = q ?? (place ? decodeURIComponent(place[1].replace(/\+/g, " ")) : at ? `${at[1]},${at[2]}` : null);
+    return { embed: where ? mapEmbedUrl(where) : null, open: href };
+  }
+  return { embed: null, open: href };
+}
+
 export function fillTokens(text: string, t: TokenValues) {
   return text.replace(/\{(\w+)\}/g, (m, key: string) => (key in t ? t[key] : m));
 }
@@ -316,6 +358,8 @@ export function elementStyle(el: TextElement): Record<string, string> {
     };
   }
   if (el.opacity < 1) Object.assign(box, { opacity: String(el.opacity) });
+  if (el.fill && (el.kind === "photo" || el.kind === "shape"))
+    return { position: "absolute", left: "0px", top: "0px", width: "100%", height: "100%", ...(el.opacity < 1 ? { opacity: String(el.opacity) } : null) };
   if (el.kind === "photo" || el.kind === "map" || el.kind === "shape" || el.kind === "ornament") return { ...box, height: `${el.h}px` };
   const text = { ...box, ...typeStyle(el), fontSize: `${el.fontSize}px`, whiteSpace: "pre-wrap", overflowWrap: "break-word" };
   return text;
@@ -371,9 +415,10 @@ const base = {
   kind: "text" as const, align: "center" as const, letterSpacing: 0, lineHeight: 1.15,
   weight: 400, italic: false, uppercase: false, rotation: 0, hidden: false, style: null,
   ref: "", src: "", frame: "none" as FrameKey, variant: "", z: 0, opacity: 1, locked: false, removed: false, effect: "none" as EffectKey, layer: "",
+  fill: false, crop: { x: 50, y: 50, zoom: 1 }, labelFont: "" as FontKey | "", labelUpper: true,
 };
 type Spec = Partial<TextElement> & Pick<TextElement, "id" | "name" | "text" | "fontSize" | "font" | "color">;
-const el = (s: Spec & { x?: number; y?: number; w?: number; h?: number }): TextElement => ({ ...base, x: 0, y: 0, w: 600, h: 0, ...s });
+const el = (s: Spec & { x?: number; y?: number; w?: number; h?: number }): TextElement => ({ ...base, crop: { ...base.crop }, x: 0, y: 0, w: 600, h: 0, ...s });
 
 function envelopeLines(cx: number, cy: number): TextElement[] {
   const c = { font: "cormorant" as FontKey, color: "#8A3A47", weight: 300, uppercase: true, w: 720 };
@@ -465,6 +510,41 @@ function placeItems(i: 1 | 2): Pair[] {
     ),
   ];
 }
+
+// Dress Code: título, íconos, el código de vestimenta y una paleta sugerida.
+function dressCodeItems(): Pair[] {
+  const sw = (i: number, color: string) =>
+    pair(
+      el({ kind: "shape", id: `swatch${i}`, name: `Color ${i}`, text: "", variant: "circle", x: 384 + (i - 2.5) * 110, y: 860, w: 84, h: 84, fontSize: 16, font: "inter", color }),
+      el({ kind: "shape", id: `swatch${i}`, name: `Color ${i}`, text: "", variant: "circle", x: 512 + (i - 2.5) * 64, y: 560, w: 48, h: 48, fontSize: 16, font: "inter", color }),
+    );
+  return [
+    T("Dress Code", 300, 170),
+    pair(
+      el({ kind: "ornament", id: "icon", name: "Ícono", text: "", variant: "shirt", x: 384, y: 450, w: 110, h: 110, fontSize: 16, font: "inter", color: "var(--color-accent)" }),
+      el({ kind: "ornament", id: "icon", name: "Ícono", text: "", variant: "shirt", x: 512, y: 270, w: 64, h: 64, fontSize: 16, font: "inter", color: "var(--color-accent)" }),
+    ),
+    P("code", "Vestimenta", "{vestimenta}", { y: 600, fs: 40 }, { y: 360, fs: 22 }),
+    P("note", "Paleta", "Colores sugeridos", { y: 760, fs: 27 }, { y: 490, fs: 15 }),
+    sw(1, "var(--color-accent)"),
+    sw(2, "var(--color-fg)"),
+    sw(3, "var(--color-muted)"),
+    sw(4, "#d9c7b0"),
+  ];
+}
+
+// Secciones personalizadas: arrancan con un título y un texto; el resto se arma con «+ Agregar».
+const customSection = (n: number): SectionConfig => ({
+  label: `Personalizada ${n}`,
+  mode: "artboard",
+  boards: ARTBOARDS,
+  tokens: [...COMMON_TOKENS, "vestimenta"],
+  extendable: true,
+  defaults: layoutOf(
+    T("Sección personalizada", 340, 220),
+    P("text", "Texto", "Escribí acá el contenido de esta sección.", { y: 520, fs: 32 }, { y: 330, fs: 17 }),
+  ),
+});
 
 export const SECTIONS = {
   envelope: {
@@ -564,6 +644,10 @@ export const SECTIONS = {
       P("dressCode", "Código de vestimenta", "Código de vestimenta: {vestimenta}", { y: 960, fs: 28 }, { y: 660, fs: 14 }),
     ),
   },
+  dresscode: {
+    label: "Dress Code", mode: "artboard", boards: ARTBOARDS, tokens: [...COMMON_TOKENS, "vestimenta"], extendable: true,
+    defaults: layoutOf(...dressCodeItems()),
+  },
   itinerary: {
     label: "Itinerario", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, extendable: true, steps: true,
     defaults: layoutOf(
@@ -591,7 +675,13 @@ export const SECTIONS = {
     ),
   },
   messages: { label: "Mensajes", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, extendable: true, defaults: layoutOf(T("Dejanos un mensaje", 110, 70), B({ y: 580, h: 860 }, { y: 425, h: 640, w: 672 })) },
+  custom1: customSection(1),
+  custom2: customSection(2),
+  custom3: customSection(3),
 } satisfies Record<string, SectionConfig>;
+
+// Secciones personalizadas disponibles (se agregan desde «Agregar sección»).
+export const CUSTOM_SECTIONS = ["custom1", "custom2", "custom3"] as const;
 
 export type LayoutSection = keyof typeof SECTIONS;
 export const LAYOUT_SECTIONS = Object.keys(SECTIONS) as LayoutSection[];
@@ -651,11 +741,17 @@ export const photoId = (key: string) => `photo-${key.replace(/[^A-Za-z0-9_-]/g, 
 const photoTemplate = (id: string): TextElement =>
   el({ kind: "photo", id, name: "Foto", text: "", x: 0, y: 0, w: 320, h: 320, fontSize: 16, font: "inter", color: "var(--color-fg)", frame: "rounded", ref: id.slice(6), effect: "lift" });
 
+function cleanCrop(v: unknown, d: TextElement["crop"]): TextElement["crop"] {
+  if (!v || typeof v !== "object") return { ...d };
+  const c = v as Record<string, unknown>;
+  return { x: clamp(c.x, 0, 100, d.x), y: clamp(c.y, 0, 100, d.y), zoom: clamp(c.zoom, 1, 3, d.zoom) };
+}
+
 function cleanElement(d: TextElement, s: Record<string, unknown>, A: Board): TextElement {
   const sized = d.kind === "photo" || d.kind === "map" || d.kind === "shape" || d.kind === "ornament";
   const clean: TextElement = {
     ...d,
-    text: typeof s.text === "string" ? s.text.slice(0, 300) : d.text,
+    text: typeof s.text === "string" ? s.text.slice(0, d.kind === "map" ? 1200 : 300) : d.text,
     x: clamp(s.x, -A.w, 2 * A.w, d.x),
     y: clamp(s.y, -A.h, 5 * A.h, d.y),
     w: clamp(s.w, 20, 2 * A.w, d.w),
@@ -673,13 +769,17 @@ function cleanElement(d: TextElement, s: Record<string, unknown>, A: Board): Tex
     hidden: typeof s.hidden === "boolean" ? s.hidden : d.hidden,
     frame: typeof s.frame === "string" && s.frame in FRAMES ? (s.frame as FrameKey) : d.frame,
     z: clamp(s.z, -1000, 1000, d.z),
-    opacity: clamp(s.opacity, 0.1, 1, d.opacity),
+    opacity: clamp(s.opacity, 0, 1, d.opacity),
     locked: typeof s.locked === "boolean" ? s.locked : d.locked,
     removed: s.removed === true,
     effect: typeof s.effect === "string" && s.effect in EFFECTS ? (s.effect as EffectKey) : d.effect,
     layer: typeof s.layer === "string" && /^l-[a-z0-9]{4,16}$/.test(s.layer) ? s.layer : "",
     src: "",
     style: null,
+    fill: (d.kind === "photo" || d.kind === "shape") && typeof s.fill === "boolean" ? s.fill : d.fill,
+    crop: cleanCrop(s.crop, d.crop),
+    labelFont: typeof s.labelFont === "string" && (s.labelFont === "" || s.labelFont in FONTS) ? (s.labelFont as FontKey | "") : d.labelFont,
+    labelUpper: typeof s.labelUpper === "boolean" ? s.labelUpper : d.labelUpper,
   };
   if (d.kind === "shape" && typeof s.variant === "string" && s.variant in SHAPES) clean.variant = s.variant;
   if (d.kind === "ornament" && (ORNAMENT_KEYS as readonly string[]).includes(s.variant as string)) clean.variant = s.variant as string;
@@ -801,6 +901,7 @@ export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayo
   }
   const ov = (src as { overlay?: unknown }).overlay;
   if (cfg.photos && (src as { manualPhotos?: unknown }).manualPhotos === true) out.manualPhotos = true;
+  if ((src as { bgObjects?: unknown }).bgObjects === true) out.bgObjects = true;
   if (cfg.steps) {
     // Diseños de antes: la versión estaba en el panel "body".
     const old = Array.isArray(src.portrait) ? (src.portrait as Record<string, unknown>[]).find((e) => e && e.id === "body")?.variant : undefined;
@@ -814,6 +915,40 @@ export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayo
     out.extent = { portrait: pick(e.portrait), landscape: pick(e.landscape) };
   }
   return out;
+}
+
+/* ---------- Fondo y velo (objetos que cubren la sección) ---------- */
+
+// Fondo de una sección: una imagen (o video) que cubre todo, al fondo.
+export function backdropElement(id: string, src: string, z: number, crop?: TextElement["crop"]): TextElement {
+  return { ...customTemplate("photo", id), name: "Fondo", src, fill: true, z, crop: crop ? { ...crop } : { x: 50, y: 50, zoom: 1 }, effect: "none", frame: "none" };
+}
+// Velo: un color sólido que cubre todo, con transparencia.
+export function veilElement(id: string, z: number, opacity = DEFAULT_OVERLAY): TextElement {
+  return { ...customTemplate("shape", id), name: "Velo", variant: "rect", color: "var(--color-bg)", fill: true, z, opacity };
+}
+
+// Diseños de antes: el fondo (zoneBg_*) y el velo se dibujaban aparte. Pasan a
+// ser objetos del diseño (abajo de todo), con el mismo encuadre y velo.
+export function withBackdrop(layout: TextLayout, zoneBg: string | null | undefined): TextLayout {
+  if (layout.bgObjects) return layout;
+  const out: TextLayout = { ...layout, bgObjects: true };
+  const src = validSrc(zoneBg ?? "");
+  if (src) {
+    for (const o of ["portrait", "landscape"] as Orientation[]) {
+      const min = Math.min(0, ...layout[o].map((e) => e.z));
+      out[o] = [backdropElement("x-fondo", src, min - 2, layout.bg), veilElement("x-velo", min - 1, overlayOf(layout)), ...layout[o]];
+    }
+  }
+  delete out.bg;
+  delete out.overlay;
+  return out;
+}
+
+// La imagen de fondo de la sección (para el fondo desenfocado en PC).
+export function backdropOf(layout: TextLayout): string | null {
+  const b = byZ(layout.portrait).find((e) => e.kind === "photo" && e.fill && !e.hidden && !e.removed && e.src);
+  return b?.src ?? null;
 }
 
 export type GalleryItem = { key: string; src: string; alt: string };

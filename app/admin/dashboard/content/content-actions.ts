@@ -139,6 +139,11 @@ export async function updateDatesAction(formData: FormData) {
 
 // --- Cómo llegar: dirección (mapa y Waze) y link de Google Maps ---
 
+export async function updateDressCodeAction(formData: FormData) {
+  await setSetting("contentDressCode", str(formData, "dressCode").slice(0, 300));
+  revalidate();
+}
+
 export async function updateMapsAction(formData: FormData) {
   const w = await getWeddingContent();
   await setJSON("contentCeremony", { ...w.ceremony, address: str(formData, "ceremonyAddress"), mapUrl: str(formData, "ceremonyMapUrl") });

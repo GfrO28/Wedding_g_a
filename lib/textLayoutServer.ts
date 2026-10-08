@@ -13,6 +13,7 @@ import {
   sanitizeLayout,
   sectionConfig,
   withDynamic,
+  withBackdrop,
   stepKey,
   type StepItem,
   type ChapterItem,
@@ -51,7 +52,8 @@ export async function getTextLayout(section: LayoutSection): Promise<TextLayout>
     steps: cfg.steps ? await getSteps() : [],
     chapters: cfg.chapters ? await getChapters() : [],
   };
-  const layout = withDynamic(section, sanitizeLayout(section, parse(map[layoutSettingKey(section)])), items);
+  const zoneBg = section === "envelope" || section === "footer" ? null : map[`zoneBg_${section}`];
+  const layout = withBackdrop(withDynamic(section, sanitizeLayout(section, parse(map[layoutSettingKey(section)])), items), zoneBg);
   return applyStyles(layout, sanitizeStyles(parse(map[STYLES_KEY])));
 }
 
@@ -67,9 +69,10 @@ export async function getEditorLayouts(): Promise<{
   const published = {} as Record<LayoutSection, TextLayout>;
   const drafts = {} as Record<LayoutSection, TextLayout>;
   for (const s of LAYOUT_SECTIONS) {
-    published[s] = withDynamic(s, sanitizeLayout(s, parse(map[layoutSettingKey(s)])), items);
+    const zoneBg = s === "envelope" || s === "footer" ? null : map[`zoneBg_${s}`];
+    published[s] = withBackdrop(withDynamic(s, sanitizeLayout(s, parse(map[layoutSettingKey(s)])), items), zoneBg);
     const draft = parse(map[draftLayoutKey(s)]);
-    drafts[s] = draft ? withDynamic(s, sanitizeLayout(s, draft), items) : published[s];
+    drafts[s] = draft ? withBackdrop(withDynamic(s, sanitizeLayout(s, draft), items), zoneBg) : published[s];
   }
   const publishedStyles = sanitizeStyles(parse(map[STYLES_KEY]));
   const draftStyles = parse(map[DRAFT_STYLES_KEY]);

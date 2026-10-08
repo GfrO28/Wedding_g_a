@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, Check, ExternalLink, Loader2, PanelRightClose, PanelRightOpen, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, ExternalLink, Loader2, MapPin, PanelRightClose, PanelRightOpen, Trash2 } from "lucide-react";
 import type { EnvelopeSlot } from "@/lib/envelopeAssets";
-import { applyStyles, LAYOUT_SECTIONS, pickStyle, withDynamic, type LayoutSection, type TextLayout, type TextStyle, type TokenValues } from "@/lib/textLayout";
+import { applyStyles, backdropOf, isCustom, LAYOUT_SECTIONS, mapSourceOf, pickStyle, withDynamic, type LayoutSection, type TextElement, type TextLayout, type TextStyle, type TokenValues } from "@/lib/textLayout";
 import { ArtboardEditor, type CanvasCover, type EditorApi } from "./ArtboardEditor";
 import { GalleryPhotosPanel, type LibraryPhoto } from "./GalleryPhotosPanel";
 import { DesktopBackgroundPanel } from "./DesktopBackgroundPanel";
@@ -22,7 +22,8 @@ export type EditorSection = {
   zone?: string; // clave del interruptor visible/oculta
   enabled?: boolean;
   design?: LayoutSection; // tiene lienzo
-  background?: { color: string; image?: string | null; overlay?: boolean };
+  background?: { color: string };
+  custom?: boolean; // sección personalizada (en blanco)
 };
 
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -63,8 +64,8 @@ export function EditorShell({
   const [contentOpen, setContentOpen] = useState(sections[0].id === "intro");
   const [envelopeAssets, setEnvelopeAssets] = useState(envelope.assets);
   const [galleryPhotos, setGalleryPhotos] = useState(initialGalleryPhotos);
-  // Fondo de cada sección (imagen o video); se cambia desde la capa Fondo.
-  const [bgs, setBgs] = useState<Record<string, string | null>>(() => Object.fromEntries(sections.map((s) => [s.id, s.background?.image ?? null])));
+  // Mapa recién agregado: se abre «Contenido» con su campo listo para escribir.
+  const [focusMap, setFocusMap] = useState<string | null>(null);
   const editorApi = useRef<EditorApi>(null);
   // Fotos que ya están subidas (galería e imágenes usadas en otras secciones):
   // se pueden reutilizar en "+ Agregar" sin volver a subirlas.
@@ -293,6 +294,9 @@ export function EditorShell({
     </section>
   ) : null;
 
+  // Mapas agregados en esta sección: su dirección o link se carga acá.
+  const mapObjects = design ? layouts[design].portrait.filter((e) => e.kind === "map" && isCustom(e)) : [];
+
   const panel =
     current.id === "intro" ? (
       <EnvelopeImagesPanel initialAssets={envelopeAssets} initialCustom={envelope.custom} onAssetsChange={setEnvelopeAssets} textLayout={applyStyles(layouts.envelope, styles)} tokens={tokens} />
@@ -308,7 +312,7 @@ export function EditorShell({
         onUnplace={(key) => editorApi.current?.unplace(key)}
       />
     ) : current.id === "desktop" ? (
-      <DesktopBackgroundPanel initial={desktopBackground} sampleImage={sections.find((x) => x.id === "hero")?.background?.image ?? null} />
+      <DesktopBackgroundPanel initial={desktopBackground} sampleImage={backdropOf(layouts.hero)} />
     ) : current.id === "styles" ? (
       <StylesPanel styles={styles} usage={styleUsage} tokens={tokens} onChange={handleStylesChange} onDelete={deleteStyle} />
     ) : (
@@ -429,13 +433,16 @@ export function EditorShell({
               section={design}
               initialLayout={layouts[design]}
               tokens={tokens}
-              background={
-                isEnvelope
-                  ? { color: ENVELOPE_BG }
-                  : { color: current.background?.color ?? "var(--color-bg)", image: bgs[current.id] ?? null, overlay: Boolean(bgs[current.id]) }
-              }
-              bgZone={BG_ZONES.includes(current.id) ? current.id : undefined}
-              onBackgroundChange={(url) => setBgs((b) => ({ ...b, [current.id]: url }))}
+              background={{ color: isEnvelope ? ENVELOPE_BG : current.background?.color ?? "var(--color-bg)" }}
+              onAdded={(el) => {
+                if (el.kind !== "map") return;
+                setContentOpen(true);
+                setFocusMap(el.id);
+              }}
+              onOpenContent={(id) => {
+                setContentOpen(true);
+                setFocusMap(id ?? null);
+              }}
               underlay={isEnvelope ? <EnvelopeCard /> : undefined}
               cover={envelopeCover}
               blocks={blocks[design]}
@@ -468,6 +475,14 @@ export function EditorShell({
               </button>
             </div>
             {templateCard}
+            {mapObjects.length > 0 && (
+              <MapObjectsPanel
+                maps={mapObjects}
+                focus={focusMap}
+                onFocused={() => setFocusMap(null)}
+                onChange={(id, text) => editorApi.current?.patch(id, { text })}
+              />
+            )}
             {panel}
           </aside>
         )}
@@ -475,9 +490,6 @@ export function EditorShell({
     </div>
   );
 }
-
-// Secciones con fondo propio (imagen o video).
-const BG_ZONES = ["hero", "countdown", "blessing", "story", "event", "itinerary", "location", "gallery", "accommodation", "gifts", "rsvp", "messages"];
 
 const stepKeys = (l: TextLayout) =>
   l.portrait.filter((e) => /^step-.+-icon$/.test(e.id)).map((e) => e.ref).sort().join(",");
@@ -541,41 +553,121 @@ const SECTION_HELP: Record<string, string> = {
   rsvp: "El formulario para confirmar asistencia",
   messages: "Los mensajes de los invitados",
   footer: "Cierre con los nombres y el hashtag",
+  dresscode: "La vestimenta y una paleta de colores sugerida",
 };
 function AddSectionMenu({ sections, onAdd }: { sections: EditorSection[]; onAdd: (s: EditorSection) => void }) {
-  const [open, setOpen] = useState(false);
+  const predefined = sections.filter((s) => !s.custom);
+  // Las personalizadas se agregan de a una (la próxima libre).
+  const nextCustom = sections.find((s) => s.custom);
   return (
     <div className="mt-1">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
+      <select
+        aria-label="Agregar sección"
+        value=""
         disabled={!sections.length}
-        className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-neutral-300 px-2 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
-        title={sections.length ? "Agregar una sección" : "Ya están todas las secciones"}
+        title={sections.length ? "Agregar una sección a la invitación" : "Ya están todas las secciones"}
+        onChange={(e) => {
+          const s = sections.find((x) => x.id === e.target.value);
+          if (s) onAdd(s);
+        }}
+        className="w-full cursor-pointer rounded-md border border-dashed border-neutral-300 bg-white px-2 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
       >
-        <Plus size={14} /> Agregar sección
-      </button>
-      {open && (
-        <ul className="mt-1 flex flex-col gap-0.5 rounded-md border border-neutral-200 bg-white p-1 shadow-sm" aria-label="Secciones para agregar">
-          {sections.map((s) => (
-            <li key={s.id}>
-              <button
-                type="button"
-                onClick={() => {
-                  setOpen(false);
-                  onAdd(s);
-                }}
-                className="w-full rounded px-2 py-1.5 text-left hover:bg-neutral-50"
-              >
-                <span className="block text-sm text-neutral-800">{s.label}</span>
-                <span className="block text-[11px] leading-snug text-neutral-500">{SECTION_HELP[s.id] ?? ""}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+        <option value="">+ Agregar sección…</option>
+        {predefined.length > 0 && (
+          <optgroup label="Predefinidas">
+            {predefined.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}{SECTION_HELP[s.id] ? ` — ${SECTION_HELP[s.id]}` : ""}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        <optgroup label="Personalizada">
+          <option value={nextCustom?.id ?? "__none"} disabled={!nextCustom}>
+            {nextCustom ? "Sección personalizada (en blanco)" : "Sección personalizada (ya usaste las 3)"}
+          </option>
+        </optgroup>
+      </select>
     </div>
+  );
+}
+
+// Dirección o link de cada mapa agregado en la sección.
+function MapObjectsPanel({
+  maps,
+  focus,
+  onFocused,
+  onChange,
+}: {
+  maps: TextElement[];
+  focus: string | null;
+  onFocused: () => void;
+  onChange: (id: string, text: string) => void;
+}) {
+  return (
+    <section className="mb-5 flex flex-col gap-3 rounded-lg border border-blue-200 bg-blue-50/40 p-3" aria-label="Mapas agregados">
+      <h3 className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+        <MapPin size={13} /> Mapas agregados
+      </h3>
+      {maps.map((m, i) => (
+        <MapField key={`${m.id}:${m.text}`} el={m} index={maps.length > 1 ? i + 1 : 0} focus={focus === m.id} onFocused={onFocused} onSave={(t) => onChange(m.id, t)} />
+      ))}
+    </section>
+  );
+}
+
+function MapField({ el, index, focus, onFocused, onSave }: { el: TextElement; index: number; focus: boolean; onFocused: () => void; onSave: (text: string) => void }) {
+  const [value, setValue] = useState(el.text);
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!focus) return;
+    ref.current?.focus();
+    ref.current?.scrollIntoView({ block: "nearest" });
+    onFocused();
+  }, [focus, onFocused]);
+  const src = mapSourceOf(value);
+  const dirty = value.trim() !== el.text.trim();
+  return (
+    <form
+      className="flex flex-col gap-1.5"
+      data-map-field={el.id}
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSave(value.trim());
+      }}
+    >
+      <label className="flex flex-col gap-1">
+        <span className="text-xs text-neutral-600">{index ? `Mapa ${index}: ` : ""}dirección o link de Google Maps</span>
+        <textarea
+          ref={ref}
+          rows={2}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              onSave(value.trim());
+            }
+          }}
+          placeholder="Av. Siempre Viva 742, Lima · o pegá el link de Google Maps"
+          className="w-full resize-y rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm"
+        />
+      </label>
+      <div className="flex items-center gap-2">
+        <button type="submit" disabled={!dirty} className="rounded-md bg-neutral-900 px-3 py-1 text-xs font-medium text-white disabled:opacity-40">
+          Aplicar
+        </button>
+        <span className="text-[11px] leading-snug text-neutral-500">
+          {!value.trim()
+            ? "Tip: en Google Maps → Compartir → «Insertar un mapa», copiá el código y pegalo acá."
+            : src.embed
+              ? "✓ Se ve el mapa."
+              : src.open
+                ? "Este link no se puede mostrar adentro (se verá un botón «Ver el mapa»). Para ver el mapa, pegá la dirección o el código de «Insertar un mapa»."
+                : "No se reconoce el link."}
+        </span>
+      </div>
+    </form>
   );
 }
 

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { FadeIn } from "./FadeIn";
 import { Slide } from "./Slide";
 import { TextArtboard } from "./TextArtboard";
-import { overlayOf, type TextLayout, type TokenValues } from "@/lib/textLayout";
+import { backdropOf, type TextLayout, type TokenValues } from "@/lib/textLayout";
 import { submitRsvpAction } from "@/app/i/[slug]/actions";
 
 type Existing = {
@@ -21,9 +21,7 @@ export function RSVPForm({
   existing,
   layout,
   tokens,
-  bgImage = null,
 }: {
-  bgImage?: string | null;
   layout: TextLayout;
   tokens: TokenValues;
   slug: string;
@@ -36,7 +34,7 @@ export function RSVPForm({
   const shown = useMemo(() => withVisibility(layout, submitted), [layout, submitted]);
 
   return (
-    <Slide bgImage={bgImage} overlay={overlayOf(layout)} frame={layout.bg} fullBleed>
+    <Slide bgImage={backdropOf(layout)} fullBleed>
       <TextArtboard page
         layout={shown}
         tokens={tokens}

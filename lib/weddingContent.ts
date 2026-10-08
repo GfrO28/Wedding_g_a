@@ -65,8 +65,13 @@ export const ZONE_TOGGLE_KEYS = [
   "gallery",
   "music",
   "gifts",
+  "dresscode",
+  "custom1",
+  "custom2",
+  "custom3",
 ] as const;
 export type ZoneToggleKey = (typeof ZONE_TOGGLE_KEYS)[number];
+const OPT_IN_ZONES: readonly string[] = ["countdown", "dresscode", "custom1", "custom2", "custom3"];
 
 export type WeddingContent = {
   partner1: string;
@@ -161,8 +166,8 @@ export async function getWeddingContent(): Promise<WeddingContent> {
       ZONE_IMAGE_KEYS.map((key) => [key, map[`zoneBg_${key}`] ?? null]),
     ) as Record<ZoneImageKey, string | null>,
     zoneEnabled: Object.fromEntries(
-      // La cuenta regresiva es una sección nueva: arranca sin agregar.
-      ZONE_TOGGLE_KEYS.map((key) => [key, key === "countdown" ? map[`zoneEnabled_${key}`] === "true" : map[`zoneEnabled_${key}`] !== "false"]),
+      // Las secciones nuevas (cuenta regresiva, Dress Code, personalizadas) arrancan sin agregar.
+      ZONE_TOGGLE_KEYS.map((key) => [key, OPT_IN_ZONES.includes(key) ? map[`zoneEnabled_${key}`] === "true" : map[`zoneEnabled_${key}`] !== "false"]),
     ) as Record<ZoneToggleKey, boolean>,
   };
 }

@@ -132,10 +132,10 @@ export async function resetEnvelopeImageAction(slot: string) {
   revalidate();
 }
 
-// Imágenes agregadas al diseño con "+ Agregar" (JPG, PNG o WebP).
+// Imágenes (y videos de fondo) agregados al diseño con "+ Agregar".
 export async function requestDesignImageUploadAction(filename: string, contentType: string): Promise<UploadRequest> {
-  if (!ALLOWED_IMAGE_TYPES.includes(contentType)) {
-    return { error: "Subí una imagen JPG, PNG o WebP.", uploadUrl: null, publicUrl: null };
+  if (!ZONE_BG_TYPES.includes(contentType)) {
+    return { error: "Subí una imagen (JPG, PNG o WebP) o un video (MP4 o WebM).", uploadUrl: null, publicUrl: null };
   }
   const key = `design/${crypto.randomUUID()}-${safeName(filename)}`;
   const uploadUrl = await getUploadUrl(key, contentType);

@@ -2,7 +2,7 @@ import { desc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { giftContributions, giftItems } from "@/lib/db/schema";
 import { getWeddingContent } from "@/lib/weddingContent";
-import { overlayOf, usedVariants } from "@/lib/textLayout";
+import { backdropOf, usedVariants } from "@/lib/textLayout";
 import { FadeIn } from "./FadeIn";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
 import { CopyButton } from "./CopyButton";
@@ -38,7 +38,7 @@ export async function Gifts({ slug }: { slug: string }) {
   );
 
   return (
-    <Slide bgImage={WEDDING.zoneImages.gifts} overlay={overlayOf(layout)} frame={layout.bg} fullBleed>
+    <Slide bgImage={backdropOf(layout)} fullBleed>
       <TextArtboard page layout={layout} tokens={tokens} animate blocks={blocks} />
     </Slide>
   );

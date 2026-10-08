@@ -9,13 +9,13 @@ import { getEditorLayouts, getTokenValues } from "@/lib/textLayoutServer";
 import { getDesktopBackground } from "@/lib/desktopBackgroundServer";
 import {
   updateDatesAction,
+  updateDressCodeAction,
   updateGiftsAction,
   updateMapsAction,
 } from "./content-actions";
 import { MusicUploader } from "./MusicUploader";
 import { ThemeEditor } from "../ThemeEditor";
 import { EditorShell, type EditorSection } from "./EditorShell";
-import { Countdown } from "@/app/components/Countdown";
 import { Divider } from "@/app/components/Divider";
 import { VARIANTS } from "@/lib/textLayout";
 import { AccommodationBody } from "@/app/components/Accommodation";
@@ -40,22 +40,27 @@ export default async function ContentEditorPage() {
     getApprovedMessages(),
   ]);
 
-  const bg = (image?: string | null) => ({ color: "var(--color-bg)", image: image ?? null, overlay: Boolean(image) });
+  // El fondo de cada sección es un objeto del diseño (ver withBackdrop).
+  const bg = () => ({ color: "var(--color-bg)" });
 
   const sections: EditorSection[] = [
     { id: "intro", label: "Sobre de apertura", group: "sections", zone: "intro", enabled: w.zoneEnabled.intro, design: "envelope", background: { color: "#EFE8DD" } },
-    { id: "hero", label: "Portada", group: "sections", zone: "hero", enabled: w.zoneEnabled.hero, design: "hero", background: bg(w.zoneImages.hero) },
-    { id: "countdown", label: "Cuenta regresiva", group: "sections", zone: "countdown", enabled: w.zoneEnabled.countdown, design: "countdown", background: bg(w.zoneImages.countdown) },
-    { id: "blessing", label: "Frase y padres", group: "sections", zone: "blessing", enabled: w.zoneEnabled.blessing, design: "blessing", background: bg(w.zoneImages.blessing) },
-    { id: "story", label: "Nuestra historia", group: "sections", zone: "story", enabled: w.zoneEnabled.story, design: "story", background: bg(w.zoneImages.story) },
-    { id: "event", label: "El evento", group: "sections", zone: "event", enabled: w.zoneEnabled.event, design: "event", background: bg(w.zoneImages.event) },
-    { id: "itinerary", label: "Itinerario", group: "sections", zone: "itinerary", enabled: w.zoneEnabled.itinerary, design: "itinerary", background: bg(w.zoneImages.itinerary) },
-    { id: "location", label: "Cómo llegar", group: "sections", zone: "location", enabled: w.zoneEnabled.location, design: "location", background: bg(w.zoneImages.location) },
-    { id: "gallery", label: "Galería", group: "sections", zone: "gallery", enabled: w.zoneEnabled.gallery, design: "gallery", background: bg(w.zoneImages.gallery) },
-    { id: "accommodation", label: "Alojamiento", group: "sections", zone: "accommodation", enabled: w.zoneEnabled.accommodation, design: "accommodation", background: bg(w.zoneImages.accommodation) },
-    { id: "gifts", label: "Regalos", group: "sections", zone: "gifts", enabled: w.zoneEnabled.gifts, design: "gifts", background: bg(w.zoneImages.gifts) },
-    { id: "rsvp", label: "Confirmación", group: "sections", zone: "rsvp", enabled: w.zoneEnabled.rsvp, design: "rsvp", background: bg(w.zoneImages.rsvp) },
-    { id: "messages", label: "Mensajes", group: "sections", zone: "messages", enabled: w.zoneEnabled.messages, design: "messages", background: bg(w.zoneImages.messages) },
+    { id: "hero", label: "Portada", group: "sections", zone: "hero", enabled: w.zoneEnabled.hero, design: "hero", background: bg() },
+    { id: "countdown", label: "Cuenta regresiva", group: "sections", zone: "countdown", enabled: w.zoneEnabled.countdown, design: "countdown", background: bg() },
+    { id: "blessing", label: "Frase y padres", group: "sections", zone: "blessing", enabled: w.zoneEnabled.blessing, design: "blessing", background: bg() },
+    { id: "story", label: "Nuestra historia", group: "sections", zone: "story", enabled: w.zoneEnabled.story, design: "story", background: bg() },
+    { id: "event", label: "El evento", group: "sections", zone: "event", enabled: w.zoneEnabled.event, design: "event", background: bg() },
+    { id: "dresscode", label: "Dress Code", group: "sections", zone: "dresscode", enabled: w.zoneEnabled.dresscode, design: "dresscode", background: bg() },
+    { id: "itinerary", label: "Itinerario", group: "sections", zone: "itinerary", enabled: w.zoneEnabled.itinerary, design: "itinerary", background: bg() },
+    { id: "location", label: "Cómo llegar", group: "sections", zone: "location", enabled: w.zoneEnabled.location, design: "location", background: bg() },
+    { id: "gallery", label: "Galería", group: "sections", zone: "gallery", enabled: w.zoneEnabled.gallery, design: "gallery", background: bg() },
+    { id: "accommodation", label: "Alojamiento", group: "sections", zone: "accommodation", enabled: w.zoneEnabled.accommodation, design: "accommodation", background: bg() },
+    { id: "custom1", label: "Personalizada 1", group: "sections", zone: "custom1", enabled: w.zoneEnabled.custom1, design: "custom1", background: bg(), custom: true },
+    { id: "custom2", label: "Personalizada 2", group: "sections", zone: "custom2", enabled: w.zoneEnabled.custom2, design: "custom2", background: bg(), custom: true },
+    { id: "custom3", label: "Personalizada 3", group: "sections", zone: "custom3", enabled: w.zoneEnabled.custom3, design: "custom3", background: bg(), custom: true },
+    { id: "gifts", label: "Regalos", group: "sections", zone: "gifts", enabled: w.zoneEnabled.gifts, design: "gifts", background: bg() },
+    { id: "rsvp", label: "Confirmación", group: "sections", zone: "rsvp", enabled: w.zoneEnabled.rsvp, design: "rsvp", background: bg() },
+    { id: "messages", label: "Mensajes", group: "sections", zone: "messages", enabled: w.zoneEnabled.messages, design: "messages", background: bg() },
     { id: "footer", label: "Pie de página", group: "sections", zone: "footer", enabled: w.zoneEnabled.footer, design: "footer", background: bg() },
     { id: "music", label: "Música", group: "general", zone: "music", enabled: w.zoneEnabled.music },
     { id: "palette", label: "Paleta de colores", group: "general" },
@@ -64,8 +69,6 @@ export default async function ContentEditorPage() {
   ];
 
   const blocks: Record<string, Record<string, ReactNode>> = {
-    hero: { countdown: <Countdown targetISO={w.weddingDateISO} scaled /> },
-    countdown: { countdown: <Countdown targetISO={w.weddingDateISO} scaled /> },
     blessing: { divider: <Divider scaled /> },
     accommodation: { body: <AccommodationBody hotels={w.accommodation} /> },
     gifts: Object.fromEntries(
@@ -93,7 +96,7 @@ export default async function ContentEditorPage() {
           </form>
           <Hint id="dates"><p className="text-xs text-neutral-500">La fecha de la boda alimenta la cuenta regresiva y el texto con la fecha.</p></Hint>
         </Group>
-        <Hint id="bg-layer"><p className="text-xs text-neutral-500">El fondo (imagen o video) se cambia en la capa <b>Fondo</b>, abajo del panel de Capas.</p></Hint>
+        <BgHint />
       </Stack>
     ),
     countdown: (
@@ -104,7 +107,7 @@ export default async function ContentEditorPage() {
     blessing: (
       <Stack>
         <Hint id="canvas-texts"><p className="text-sm text-neutral-500">Los textos se editan sobre el lienzo: doble clic en un texto para escribir.</p></Hint>
-        <Hint id="bg-layer"><p className="text-xs text-neutral-500">El fondo (imagen o video) se cambia en la capa <b>Fondo</b>, abajo del panel de Capas.</p></Hint>
+        <BgHint />
       </Stack>
     ),
     story: (
@@ -122,13 +125,13 @@ export default async function ContentEditorPage() {
       <Stack>
         <Hint id="canvas-texts"><p className="text-sm text-neutral-500">Los textos se editan sobre el lienzo: doble clic en un texto para escribir.</p></Hint>
         <Hint id="event-maps"><p className="text-xs text-neutral-500">Las direcciones y los links de los mapas se cargan en «Cómo llegar».</p></Hint>
-        <Hint id="bg-layer"><p className="text-xs text-neutral-500">El fondo (imagen o video) se cambia en la capa <b>Fondo</b>, abajo del panel de Capas.</p></Hint>
+        <BgHint />
       </Stack>
     ),
     itinerary: (
       <Stack>
         <Group title="Pasos"><ItineraryStepsEditor steps={w.itinerary} /></Group>
-        <Hint id="bg-layer"><p className="text-xs text-neutral-500">El fondo (imagen o video) se cambia en la capa <b>Fondo</b>, abajo del panel de Capas.</p></Hint>
+        <BgHint />
       </Stack>
     ),
     location: (
@@ -144,14 +147,14 @@ export default async function ContentEditorPage() {
             <SaveButton />
           </form>
         </Group>
-        <Hint id="bg-layer"><p className="text-xs text-neutral-500">El fondo (imagen o video) se cambia en la capa <b>Fondo</b>, abajo del panel de Capas.</p></Hint>
+        <BgHint />
       </Stack>
     ),
     accommodation: (
       <Stack>
         <Group title="Hoteles"><HotelsEditor hotels={w.accommodation} /></Group>
         <Hint id="canvas-texts"><p className="text-sm text-neutral-500">Los textos se editan sobre el lienzo: doble clic en un texto para escribir.</p></Hint>
-        <Hint id="bg-layer"><p className="text-xs text-neutral-500">El fondo (imagen o video) se cambia en la capa <b>Fondo</b>, abajo del panel de Capas.</p></Hint>
+        <BgHint />
       </Stack>
     ),
     gifts: (
@@ -174,8 +177,31 @@ export default async function ContentEditorPage() {
           </form>
         </Group>
         <Hint id="gifts"><p className="text-xs text-neutral-500">El mensaje se edita sobre el lienzo. La lista de regalos (reservas y fondos) se administra desde el panel principal.</p></Hint>
-        <Hint id="bg-layer"><p className="text-xs text-neutral-500">El fondo (imagen o video) se cambia en la capa <b>Fondo</b>, abajo del panel de Capas.</p></Hint>
+        <BgHint />
       </Stack>
+    ),
+    dresscode: (
+      <Stack>
+        <Group title="Código de vestimenta">
+          <form action={updateDressCodeAction} className="flex flex-col gap-3">
+            <Field label="Qué vestimenta piden (se muestra en Dress Code y en El evento)">
+              <input name="dressCode" defaultValue={w.dressCode} className={inputClass} placeholder="Formal / Etiqueta / Cocktail…" maxLength={300} />
+            </Field>
+            <SaveButton />
+          </form>
+        </Group>
+        <Hint id="dresscode"><p className="text-xs text-neutral-500">Los círculos son la paleta sugerida: tocá uno en el lienzo para cambiarle el color. Podés sumar más con «+ Agregar → Formas».</p></Hint>
+        <BgHint />
+      </Stack>
+    ),
+    ...Object.fromEntries(
+      (["custom1", "custom2", "custom3"] as const).map((id) => [
+        id,
+        <Stack key={id}>
+          <Hint id="custom-section"><p className="text-sm text-neutral-500">Una sección en blanco para lo que quieras: agregá textos, imágenes, mapas, formas o íconos con «+ Agregar».</p></Hint>
+          <BgHint />
+        </Stack>,
+      ]),
     ),
     rsvp: <p className="text-sm text-neutral-500">Las respuestas de los invitados se ven en el panel principal.</p>,
     messages: <p className="text-sm text-neutral-500">Los mensajes de los invitados se aprueban desde el panel principal.</p>,
@@ -201,6 +227,16 @@ export default async function ContentEditorPage() {
 }
 
 const inputClass = "w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm";
+
+function BgHint() {
+  return (
+    <Hint id="bg-object">
+      <p className="text-xs text-neutral-500">
+        El fondo y el velo son objetos: agregalos con <b>+ Agregar → Fondo</b> y ordenalos en Capas. El velo es un color con transparencia encima de la imagen.
+      </p>
+    </Hint>
+  );
+}
 
 function Stack({ children }: { children: ReactNode }) {
   return <div className="flex flex-col gap-5">{children}</div>;

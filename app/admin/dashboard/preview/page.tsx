@@ -11,6 +11,7 @@ import { RSVPForm } from "@/app/components/RSVPForm";
 import { GuestMessages } from "@/app/components/GuestMessages";
 import { Footer } from "@/app/components/Footer";
 import { CountdownSection } from "@/app/components/CountdownSection";
+import { ArtboardSection } from "@/app/components/ArtboardSection";
 
 import { getWeddingContent } from "@/lib/weddingContent";
 import { DesktopFixedBackground, desktopPageProps } from "@/app/components/Slide";
@@ -39,13 +40,17 @@ export default async function PreviewPage() {
       {content.zoneEnabled.blessing && <Blessing />}
       {content.zoneEnabled.story && <OurStory />}
       {content.zoneEnabled.event && <EventDetails />}
+      {content.zoneEnabled.dresscode && <ArtboardSection section="dresscode" guestName={"Invitado de ejemplo"} />}
       {content.zoneEnabled.itinerary && <Itinerary />}
       {content.zoneEnabled.location && <Location />}
       {content.zoneEnabled.gallery && <Gallery />}
       {content.zoneEnabled.accommodation && <Accommodation />}
+      {content.zoneEnabled.custom1 && <ArtboardSection section="custom1" guestName={"Invitado de ejemplo"} />}
+      {content.zoneEnabled.custom2 && <ArtboardSection section="custom2" guestName={"Invitado de ejemplo"} />}
+      {content.zoneEnabled.custom3 && <ArtboardSection section="custom3" guestName={"Invitado de ejemplo"} />}
       {content.zoneEnabled.gifts && <Gifts slug="preview" />}
       {content.zoneEnabled.rsvp && (
-      <RSVPForm slug="preview" maxAttendees={2} existing={null} layout={rsvpText} tokens={tokens} bgImage={content.zoneImages.rsvp} />)}
+      <RSVPForm slug="preview" maxAttendees={2} existing={null} layout={rsvpText} tokens={tokens} />)}
       {content.zoneEnabled.messages && <GuestMessages slug="preview" />}
       {content.zoneEnabled.footer && <Footer />}
     </main>

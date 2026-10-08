@@ -1,6 +1,6 @@
 import { getWeddingContent, type Hotel } from "@/lib/weddingContent";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
-import { overlayOf } from "@/lib/textLayout";
+import { backdropOf } from "@/lib/textLayout";
 import { FadeIn } from "./FadeIn";
 import { Slide } from "./Slide";
 import { TextArtboard } from "./TextArtboard";
@@ -10,7 +10,7 @@ export async function Accommodation() {
   if (WEDDING.accommodation.length < 1) return null;
 
   return (
-    <Slide bgImage={WEDDING.zoneImages.accommodation} overlay={overlayOf(layout)} frame={layout.bg} fullBleed>
+    <Slide bgImage={backdropOf(layout)} fullBleed>
       <TextArtboard page layout={layout} tokens={tokens} animate blocks={{ body: <AccommodationBody hotels={WEDDING.accommodation} /> }} />
     </Slide>
   );

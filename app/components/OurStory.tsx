@@ -1,6 +1,6 @@
 import { getWeddingContent } from "@/lib/weddingContent";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
-import { overlayOf } from "@/lib/textLayout";
+import { backdropOf } from "@/lib/textLayout";
 import { Slide } from "./Slide";
 import { TextArtboard } from "./TextArtboard";
 
@@ -9,7 +9,7 @@ export async function OurStory() {
   const [WEDDING, layout, tokens] = await Promise.all([getWeddingContent(), getTextLayout("story"), getTokenValues("")]);
   if (WEDDING.story.length < 1) return null;
   return (
-    <Slide bgImage={WEDDING.zoneImages.story} overlay={overlayOf(layout)} frame={layout.bg} fullBleed>
+    <Slide bgImage={backdropOf(layout)} fullBleed>
       <TextArtboard page layout={layout} tokens={tokens} animate />
     </Slide>
   );
