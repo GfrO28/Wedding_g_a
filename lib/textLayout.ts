@@ -91,10 +91,6 @@ export type TextElement = {
   removed: boolean; // eliminado del diseño (los fijos se pueden recuperar)
   effect: EffectKey; // fotos: efecto al pasar el mouse o tocarla
   layer: string; // capa (grupo) a la que pertenece, o "" si está suelto
-  // fill: cubre toda la sección (fondo o velo), sin importar x/y/w/h.
-  fill: boolean;
-  // crop: encuadre de la foto dentro de su caja (punto de enfoque en % y zoom).
-  crop: { x: number; y: number; zoom: number };
   // Cuenta regresiva: tipografía ("" = la de los números) y mayúsculas de las etiquetas (días, hs…).
   labelFont: FontKey | "";
   labelUpper: boolean;
@@ -358,8 +354,6 @@ export function elementStyle(el: TextElement): Record<string, string> {
     };
   }
   if (el.opacity < 1) Object.assign(box, { opacity: String(el.opacity) });
-  if (el.fill && (el.kind === "photo" || el.kind === "shape"))
-    return { position: "absolute", left: "0px", top: "0px", width: "100%", height: "100%", ...(el.opacity < 1 ? { opacity: String(el.opacity) } : null) };
   if (el.kind === "photo" || el.kind === "map" || el.kind === "shape" || el.kind === "ornament") return { ...box, height: `${el.h}px` };
   const text = { ...box, ...typeStyle(el), fontSize: `${el.fontSize}px`, whiteSpace: "pre-wrap", overflowWrap: "break-word" };
   return text;
@@ -415,10 +409,10 @@ const base = {
   kind: "text" as const, align: "center" as const, letterSpacing: 0, lineHeight: 1.15,
   weight: 400, italic: false, uppercase: false, rotation: 0, hidden: false, style: null,
   ref: "", src: "", frame: "none" as FrameKey, variant: "", z: 0, opacity: 1, locked: false, removed: false, effect: "none" as EffectKey, layer: "",
-  fill: false, crop: { x: 50, y: 50, zoom: 1 }, labelFont: "" as FontKey | "", labelUpper: true,
+  labelFont: "" as FontKey | "", labelUpper: true,
 };
 type Spec = Partial<TextElement> & Pick<TextElement, "id" | "name" | "text" | "fontSize" | "font" | "color">;
-const el = (s: Spec & { x?: number; y?: number; w?: number; h?: number }): TextElement => ({ ...base, crop: { ...base.crop }, x: 0, y: 0, w: 600, h: 0, ...s });
+const el = (s: Spec & { x?: number; y?: number; w?: number; h?: number }): TextElement => ({ ...base, x: 0, y: 0, w: 600, h: 0, ...s });
 
 function envelopeLines(cx: number, cy: number): TextElement[] {
   const c = { font: "cormorant" as FontKey, color: "#8A3A47", weight: 300, uppercase: true, w: 720 };
@@ -741,12 +735,6 @@ export const photoId = (key: string) => `photo-${key.replace(/[^A-Za-z0-9_-]/g, 
 const photoTemplate = (id: string): TextElement =>
   el({ kind: "photo", id, name: "Foto", text: "", x: 0, y: 0, w: 320, h: 320, fontSize: 16, font: "inter", color: "var(--color-fg)", frame: "rounded", ref: id.slice(6), effect: "lift" });
 
-function cleanCrop(v: unknown, d: TextElement["crop"]): TextElement["crop"] {
-  if (!v || typeof v !== "object") return { ...d };
-  const c = v as Record<string, unknown>;
-  return { x: clamp(c.x, 0, 100, d.x), y: clamp(c.y, 0, 100, d.y), zoom: clamp(c.zoom, 1, 3, d.zoom) };
-}
-
 function cleanElement(d: TextElement, s: Record<string, unknown>, A: Board): TextElement {
   const sized = d.kind === "photo" || d.kind === "map" || d.kind === "shape" || d.kind === "ornament";
   const clean: TextElement = {
@@ -776,8 +764,6 @@ function cleanElement(d: TextElement, s: Record<string, unknown>, A: Board): Tex
     layer: typeof s.layer === "string" && /^l-[a-z0-9]{4,16}$/.test(s.layer) ? s.layer : "",
     src: "",
     style: null,
-    fill: (d.kind === "photo" || d.kind === "shape") && typeof s.fill === "boolean" ? s.fill : d.fill,
-    crop: cleanCrop(s.crop, d.crop),
     labelFont: typeof s.labelFont === "string" && (s.labelFont === "" || s.labelFont in FONTS) ? (s.labelFont as FontKey | "") : d.labelFont,
     labelUpper: typeof s.labelUpper === "boolean" ? s.labelUpper : d.labelUpper,
   };
@@ -851,6 +837,7 @@ export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayo
     }
     // Objetos agregados: textos, imágenes, formas y adornos.
     let custom = 0;
+    const fillA = { w: A.w, h: A.h * storedExtent(o) };
     for (const s of list) {
       if (custom >= MAX_CUSTOM) break;
       if (!s || typeof s.id !== "string" || !CUSTOM_ID.test(s.id) || out[o].some((e) => e.id === s.id)) continue;
@@ -862,6 +849,7 @@ export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayo
       if (kind === "shape") clean.variant = typeof s.variant === "string" && s.variant in SHAPES ? s.variant : "rect";
       if (kind === "ornament") clean.variant = (ORNAMENT_KEYS as readonly string[]).includes(s.variant as string) ? (s.variant as string) : "flower";
       if (kind === "photo" && !clean.src) continue;
+      if (s.fill === true && (kind === "photo" || kind === "shape")) Object.assign(clean, coverBox(fillA), { locked: true });
       out[o].push(clean);
       custom++;
     }
@@ -917,15 +905,25 @@ export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayo
   return out;
 }
 
-/* ---------- Fondo y velo (objetos que cubren la sección) ---------- */
+/* ---------- Fondo y velo ---------- */
 
-// Fondo de una sección: una imagen (o video) que cubre todo, al fondo.
-export function backdropElement(id: string, src: string, z: number, crop?: TextElement["crop"]): TextElement {
-  return { ...customTemplate("photo", id), name: "Fondo", src, fill: true, z, crop: crop ? { ...crop } : { x: 50, y: 50, zoom: 1 }, effect: "none", frame: "none" };
+// Caja del tamaño de la diapositiva entera (A = ancho y alto de la mesa).
+export const coverBox = (A: { w: number; h: number }) => ({ x: A.w / 2, y: A.h / 2, w: A.w, h: A.h, rotation: 0 });
+
+// Si una imagen o forma tapa toda la diapositiva, en pantalla se estira hasta
+// los bordes de la sección (así no quedan franjas arriba y abajo).
+export function coversBoard(el: TextElement, A: { w: number; h: number }) {
+  if ((el.kind !== "photo" && el.kind !== "shape") || el.rotation) return false;
+  return el.x - el.w / 2 <= 1 && el.y - el.h / 2 <= 1 && el.x + el.w / 2 >= A.w - 1 && el.y + el.h / 2 >= A.h - 1;
 }
-// Velo: un color sólido que cubre todo, con transparencia.
-export function veilElement(id: string, z: number, opacity = DEFAULT_OVERLAY): TextElement {
-  return { ...customTemplate("shape", id), name: "Velo", variant: "rect", color: "var(--color-bg)", fill: true, z, opacity };
+
+// Fondo: una imagen común del tamaño de la diapositiva, bloqueada y abajo de todo.
+export function backdropElement(id: string, src: string, z: number, A: { w: number; h: number }): TextElement {
+  return { ...customTemplate("photo", id), ...coverBox(A), name: "Fondo", src, z, locked: true, effect: "none", frame: "none" };
+}
+// Velo: un rectángulo común del color de fondo, con transparencia.
+export function veilElement(id: string, z: number, A: { w: number; h: number }, opacity = DEFAULT_OVERLAY): TextElement {
+  return { ...customTemplate("shape", id), ...coverBox(A), name: "Velo", variant: "rect", color: "var(--color-bg)", z, opacity, locked: true };
 }
 
 // Diseños de antes: el fondo (zoneBg_*) y el velo se dibujaban aparte. Pasan a
@@ -937,7 +935,8 @@ export function withBackdrop(layout: TextLayout, zoneBg: string | null | undefin
   if (src) {
     for (const o of ["portrait", "landscape"] as Orientation[]) {
       const min = Math.min(0, ...layout[o].map((e) => e.z));
-      out[o] = [backdropElement("x-fondo", src, min - 2, layout.bg), veilElement("x-velo", min - 1, overlayOf(layout)), ...layout[o]];
+      const A = { w: ARTBOARDS[o].w, h: ARTBOARDS[o].h * extentOf(layout, o) };
+      out[o] = [backdropElement("x-fondo", src, min - 2, A), veilElement("x-velo", min - 1, A, overlayOf(layout)), ...layout[o]];
     }
   }
   delete out.bg;
@@ -947,7 +946,8 @@ export function withBackdrop(layout: TextLayout, zoneBg: string | null | undefin
 
 // La imagen de fondo de la sección (para el fondo desenfocado en PC).
 export function backdropOf(layout: TextLayout): string | null {
-  const b = byZ(layout.portrait).find((e) => e.kind === "photo" && e.fill && !e.hidden && !e.removed && e.src);
+  const A = { w: ARTBOARDS.portrait.w, h: ARTBOARDS.portrait.h * extentOf(layout, "portrait") };
+  const b = byZ(layout.portrait).find((e) => e.kind === "photo" && !e.hidden && !e.removed && e.src && coversBoard(e, A));
   return b?.src ?? null;
 }
 

@@ -11,6 +11,7 @@ import {
   byZ,
   artboardFit,
   boardsFor,
+  coversBoard,
   elementStyle,
   EXTENTS,
   extentOf,
@@ -158,25 +159,15 @@ function CustomMap({ el }: { el: TextElement }) {
 
 function FramedPhoto({ el }: { el: TextElement }) {
   const f = frameStyle(el.frame);
-  const c = el.crop ?? { x: 50, y: 50, zoom: 1 };
-  const media: CSSProperties = {
-    position: "absolute",
-    inset: 0,
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-    objectPosition: `${c.x}% ${c.y}%`,
-    ...(c.zoom !== 1 ? { transform: `scale(${c.zoom})`, transformOrigin: `${c.x}% ${c.y}%` } : null),
-    ...(f.img as CSSProperties),
-  };
+  const media: CSSProperties = { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", ...(f.img as CSSProperties) };
   return (
     <div style={{ width: "100%", height: "100%", ...(f.box as CSSProperties) }}>
-      <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", background: el.fill ? undefined : "var(--color-border)" }}>
+      <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", background: el.src ? undefined : "var(--color-border)" }}>
         {el.src && isVideo(el.src) ? (
           <video src={el.src} autoPlay muted loop playsInline preload="metadata" aria-label={el.text || undefined} style={media} />
         ) : el.src ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={el.src} alt={el.text} loading={el.fill ? "eager" : "lazy"} draggable={false} style={media} />
+          <img src={el.src} alt={el.text} loading="lazy" draggable={false} style={media} />
         ) : null}
       </div>
     </div>
@@ -283,13 +274,14 @@ export function TextArtboard({
       left = fit.left;
       top = fit.top;
     }
-    // Fondo y velo cubren toda la sección en pantalla (también lo que queda
-    // alrededor de la mesa), no solo la mesa.
+    // Lo que tapa toda la diapositiva (fondo, velo) se estira hasta los bordes
+    // de la sección en pantalla: no quedan franjas alrededor de la mesa.
     const cover = {
       left: `${-left / fitK}px`,
       top: `${-top / fitK}px`,
       width: `${size.w / fitK}px`,
       height: `${(page ? pageHeight! : size.h) / fitK}px`,
+      transform: "none",
     };
     const boardStyle: CSSProperties = {
       position: "absolute",
@@ -304,19 +296,22 @@ export function TextArtboard({
       <div ref={boardRef} style={boardStyle}>
         {byZ(layout[orientation])
           .filter((el) => !el.hidden && !el.removed)
-          .map((el, i) => (
-            <div key={el.id} data-el={el.fill ? "fill" : ""} style={{ ...elementStyle(el), ...(el.fill ? cover : null) } as CSSProperties}>
+          .map((el, i) => {
+            const full = coversBoard(el, A);
+            return (
+            <div key={el.id} data-el={full ? "fill" : ""} style={{ ...elementStyle(el), ...(full ? cover : null) } as CSSProperties}>
               <div
-                className={animate && inView && !el.fill ? "artboard-in" : undefined}
+                className={animate && inView && !full ? "artboard-in" : undefined}
                 style={{
                   ...(isSized(el) ? { height: "100%" } : null),
-                  ...(animate && !el.fill ? (inView ? { animationDelay: `${Math.min(i, 12) * 0.1}s` } : { opacity: 0 }) : null),
+                  ...(animate && !full ? (inView ? { animationDelay: `${Math.min(i, 12) * 0.1}s` } : { opacity: 0 }) : null),
                 }}
               >
                 <ElementContent el={el} tokens={tokens} blocks={blocks} onOpenPhoto={setLightbox} />
               </div>
             </div>
-          ))}
+            );
+          })}
       </div>
     );
     // Fotos de la galería en orden de lectura (de arriba abajo, de izquierda a derecha).

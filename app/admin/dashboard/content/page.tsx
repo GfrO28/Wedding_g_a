@@ -230,9 +230,9 @@ const inputClass = "w-full rounded-md border border-neutral-300 px-2 py-1.5 text
 
 function BgHint() {
   return (
-    <Hint id="bg-object">
+    <Hint id="bg-image">
       <p className="text-xs text-neutral-500">
-        El fondo y el velo son objetos: agregalos con <b>+ Agregar → Fondo</b> y ordenalos en Capas. El velo es un color con transparencia encima de la imagen.
+        El fondo es una imagen: <b>+ Agregar → Imagen</b> con «Usar de fondo». El velo es una forma: <b>+ Agregar → Formas → Velo</b>, y le ajustás la transparencia. Los dos quedan bloqueados; se desbloquean en Capas.
       </p>
     </Hint>
   );

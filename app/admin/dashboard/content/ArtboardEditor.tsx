@@ -81,6 +81,7 @@ import {
   extentOf,
   backdropElement,
   veilElement,
+  coversBoard,
   FRAMES,
   EFFECTS,
   type EffectKey,
@@ -134,7 +135,7 @@ type Drag = {
   before: TextLayout;
 };
 type Guides = { x?: number; y?: number; label?: { x: number; y: number; text: string } };
-type Popover = null | "style" | "tokens" | "color" | "advanced" | "menu" | "add" | "crop";
+type Popover = null | "style" | "tokens" | "color" | "advanced" | "menu" | "add";
 // Lo que el panel de la galería le pide al lienzo.
 export type EditorApi = {
   place: (item: GalleryItem) => void;
@@ -167,7 +168,7 @@ const clone = (l: TextLayout): TextLayout => JSON.parse(JSON.stringify(l));
 // Lo que se ve igual en celular y PC: el texto, la tipografía, el color, el
 // formato, el estilo, el borde y la versión. La posición, el tamaño, la
 // alineación, el giro y si está oculto son de cada formato.
-const SHARED_PROPS = [...STYLE_PROPS, "text", "style", "frame", "variant", "opacity", "effect", "fill", "crop", "labelFont", "labelUpper"] as const;
+const SHARED_PROPS = [...STYLE_PROPS, "text", "style", "frame", "variant", "opacity", "effect", "labelFont", "labelUpper"] as const;
 const otherOf = (o: Orientation): Orientation => (o === "portrait" ? "landscape" : "portrait");
 
 // Aplica en el otro formato la parte compartida de un cambio.
@@ -258,9 +259,12 @@ export function ArtboardEditor({
     inlineRef.current = n;
   }, []);
   const firstRender = useRef(true);
+  // Tapa toda la diapositiva (fondo o velo): no cuenta para el imán ni el recuadro de selección.
+  const covers = (el: TextElement) => coversBoard(el, A);
   // «Copiar formato»: el próximo texto que se toque recibe este formato.
   const [painter, setPainter] = useState<Format | null>(null);
-  // Clic en un fondo o velo (cubren todo): se elige al soltar si no se arrastró un recuadro.
+  // Clic en un objeto bloqueado (como el fondo): se elige al soltar si no se
+  // arrastró un recuadro de selección desde ahí.
   const fillClick = useRef<string | null>(null);
   const [hist, setHist] = useState({ undo: 0, redo: 0 });
   const syncHist = () => setHist({ undo: past.current.length, redo: future.current.length });
@@ -316,7 +320,7 @@ export function ArtboardEditor({
     const out = new Set<string>();
     for (const el of elements) {
       const node = elRefs.current.get(el.id);
-      if (!node || el.hidden || el.fill) continue;
+      if (!node || el.hidden || covers(el)) continue;
       const r = node.getBoundingClientRect();
       if (r.left < b.left - 1 || r.top < b.top - 1 || r.right > b.right + 1 || r.bottom > b.bottom + 1) out.add(el.id);
     }
@@ -508,7 +512,7 @@ export function ArtboardEditor({
     const tol = 6 / k;
     const xs = [A.w / 2], ys = [A.h / 2], edges: number[] = [];
     for (const e of elements) {
-      if (e.id === id || e.hidden || e.fill) continue;
+      if (e.id === id || e.hidden || covers(e)) continue;
       xs.push(e.x);
       ys.push(e.y);
       edges.push(e.x - e.w / 2, e.x + e.w / 2);
@@ -551,8 +555,8 @@ export function ArtboardEditor({
       if (!paintOnto(el)) setPainter(null);
       return;
     }
-    // Fondo y velo cubren todo: no se arrastran, y desde ahí se puede marcar un recuadro.
-    if (el.fill && mode === "move" && !e.shiftKey) {
+    // Bloqueado (p. ej. el fondo): no se arrastra, y desde ahí se puede marcar un recuadro.
+    if (el.locked && mode === "move" && !e.shiftKey) {
       fillClick.current = el.id;
       return;
     }
@@ -587,7 +591,7 @@ export function ArtboardEditor({
       return;
     }
     setSelectedId(el.id);
-    if (el.locked || el.fill) return; // bloqueado (o fondo): se selecciona pero no se mueve
+    if (el.locked) return; // bloqueado: se selecciona pero no se mueve
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     const node = elRefs.current.get(el.id);
     drag.current = {
@@ -792,7 +796,7 @@ export function ArtboardEditor({
       duplicate(selected.id);
       return;
     }
-    if (selected.locked || selected.fill) return;
+    if (selected.locked) return;
     if (e.key === "Enter" && (selected.kind === "text" || selected.kind === "link")) {
       e.preventDefault();
       startEdit(selected.id);
@@ -862,18 +866,19 @@ export function ArtboardEditor({
     if (added) onAdded?.(added);
   }
 
-  // Fondo (imagen o video que cubre la sección): va abajo de todo.
-  // Velo: un color con transparencia, justo arriba de los fondos.
+  // Fondo: una imagen del tamaño de la diapositiva, abajo de todo y bloqueada.
+  // Velo: un rectángulo del color de fondo con transparencia, arriba de los fondos.
   function addCover(kind: "backdrop" | "veil", src = "") {
     if (customCount >= MAX_CUSTOM) return;
     const id = newCustomId();
     const next = clone(layout);
     for (const o of ["portrait", "landscape"] as Orientation[]) {
       const list = next[o];
+      const Ao = { w: BOARDS[o].w, h: BOARDS[o].h * extentOf(layout, o) };
       const minZ = Math.min(0, ...list.map((e) => e.z));
-      const backs = list.filter((e) => e.fill && e.kind === "photo").map((e) => e.z);
+      const backs = list.filter((e) => e.kind === "photo" && coversBoard(e, Ao)).map((e) => e.z);
       const z = kind === "backdrop" ? minZ - 1 : backs.length ? Math.max(...backs) + 0.5 : minZ - 1;
-      const item = kind === "backdrop" ? backdropElement(id, src, z) : veilElement(id, z);
+      const item = kind === "backdrop" ? backdropElement(id, src, z, Ao) : veilElement(id, z, Ao);
       next[o] = [...list, item];
     }
     next.bgObjects = true;
@@ -988,7 +993,7 @@ export function ArtboardEditor({
     const l = Math.min(m.x0, m.x1), r = Math.max(m.x0, m.x1), t = Math.min(m.y0, m.y1), btm = Math.max(m.y0, m.y1);
     const hit = elements
       .filter((el) => {
-        if (el.fill) return false;
+        if (covers(el)) return false;
         const n = elRefs.current.get(el.id);
         if (!n) return false;
         const b = n.getBoundingClientRect();
@@ -1480,14 +1485,14 @@ export function ArtboardEditor({
                   key={el.id}
                   data-artboard-el={el.id}
                   data-selected={isSel ? "true" : undefined}
-                  data-fill={el.fill ? "true" : undefined}
+                  data-fill={covers(el) ? "true" : undefined}
                   ref={(n) => { if (n) elRefs.current.set(el.id, n); else elRefs.current.delete(el.id); }}
                   style={{
                     ...(elementStyle(el) as CSSProperties),
-                    cursor: painter ? (isTexty(el) ? "copy" : "not-allowed") : isEditing ? "text" : el.locked || el.fill ? "default" : "move",
+                    cursor: painter ? (isTexty(el) ? "copy" : "not-allowed") : isEditing ? "text" : el.locked ? "default" : "move",
                     opacity: el.hidden ? 0.25 : el.opacity,
                     outline: isSel
-                      ? `${(el.fill ? 4 : 2) / (k || 1)}px solid #2563eb`
+                      ? `${(covers(el) ? 4 : 2) / (k || 1)}px solid #2563eb`
                       : overflow.has(el.id)
                         ? `${1.5 / (k || 1)}px dashed #dc2626`
                         : el.kind === "panel"
@@ -1498,7 +1503,7 @@ export function ArtboardEditor({
                   }}
                   onPointerDown={(e) => startDrag(e, el, "move")}
                   onDoubleClick={(e) => { if ((el.kind === "text" || el.kind === "link") && !isEditing) startEdit(el.id, { x: e.clientX, y: e.clientY }); }}
-                  onMouseEnter={(e) => { if (!isSel && !overflow.has(el.id) && el.kind !== "panel" && !el.fill) e.currentTarget.style.outlineColor = "rgba(37,99,235,.5)"; }}
+                  onMouseEnter={(e) => { if (!isSel && !overflow.has(el.id) && el.kind !== "panel" && !covers(el)) e.currentTarget.style.outlineColor = "rgba(37,99,235,.5)"; }}
                   onMouseLeave={(e) => { if (!isSel && !overflow.has(el.id) && el.kind !== "panel") e.currentTarget.style.outlineColor = "transparent"; }}
                 >
                   {isEditing ? (
@@ -1515,7 +1520,7 @@ export function ArtboardEditor({
                       <ElementContent el={el} tokens={tokens} blocks={blocks} />
                     </div>
                   )}
-                  {isSel && sel.length === 1 && !isEditing && !el.locked && !el.fill &&
+                  {isSel && sel.length === 1 && !isEditing && !el.locked &&
                     ([
                       [-1, -1, "nwse-resize", { left: -handle / 2, top: -handle / 2 }],
                       [1, -1, "nesw-resize", { right: -handle / 2, top: -handle / 2 }],
@@ -1542,7 +1547,7 @@ export function ArtboardEditor({
                         }}
                       />
                     ))}
-                  {isSel && sel.length === 1 && !isEditing && !el.locked && !el.fill && (
+                  {isSel && sel.length === 1 && !isEditing && !el.locked && (
                     <>
                       <span
                         aria-hidden
@@ -1689,15 +1694,7 @@ function ContextToolbar({
       onEnd={onLiveEnd}
     />
   );
-  const fillToggle = (el.kind === "photo" || el.kind === "shape") && (
-    <ToolButton
-      label={el.fill ? "Cubre toda la sección (tocá para volver a una caja)" : "Cubrir toda la sección (como fondo o velo)"}
-      active={el.fill}
-      onClick={() => onPatch({ fill: !el.fill })}
-    >
-      <span className="text-xs">Cubrir sección</span>
-    </ToolButton>
-  );
+
 
   return (
     <>
@@ -1886,7 +1883,7 @@ function ContextToolbar({
         </>
       )}
 
-      {el.kind === "photo" && !el.fill && (
+      {el.kind === "photo" && (
         <select
           aria-label="Borde de la foto"
           className="h-8 rounded-md border border-neutral-300 px-2 text-sm"
@@ -1899,7 +1896,7 @@ function ContextToolbar({
         </select>
       )}
 
-      {el.kind === "photo" && !el.fill && (
+      {el.kind === "photo" && (
         <select
           aria-label="Efecto al pasar el mouse"
           title="Efecto al pasar el mouse o tocar la foto"
@@ -1913,28 +1910,10 @@ function ContextToolbar({
         </select>
       )}
 
-      {el.kind === "photo" && (
-        <>
-          <div className="relative" data-popover>
-            <ToolButton label="Encuadre: qué parte de la imagen se ve y el zoom" active={popover === "crop"} onClick={() => toggle("crop")}>
-              <span className="text-xs">Encuadre</span>
-            </ToolButton>
-            {popover === "crop" && (
-              <div className="absolute left-0 top-full z-30 mt-1 flex w-72 flex-col gap-2 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg">
-                <RangeTool label="Horizontal" value={el.crop.x} min={0} max={100} step={1} fmt={(v) => `${v}%`} onChange={(v) => onLive({ crop: { ...el.crop, x: v } })} onEnd={onLiveEnd} wide />
-                <RangeTool label="Vertical" value={el.crop.y} min={0} max={100} step={1} fmt={(v) => `${v}%`} onChange={(v) => onLive({ crop: { ...el.crop, y: v } })} onEnd={onLiveEnd} wide />
-                <RangeTool label="Zoom" value={el.crop.zoom} min={1} max={3} step={0.05} fmt={(v) => `${Math.round(v * 100)}%`} onChange={(v) => onLive({ crop: { ...el.crop, zoom: v } })} onEnd={onLiveEnd} wide />
-              </div>
-            )}
-          </div>
-          {fillToggle}
-          {transparency}
-        </>
-      )}
+      {el.kind === "photo" && transparency}
 
       {el.kind === "shape" && (
         <>
-          {fillToggle}
           {transparency}
           <select
             aria-label="Tipo de forma"
@@ -2219,6 +2198,18 @@ function Num({ label, value, step = 1, onChange }: { label: string; value: numbe
 
 /* ---------- + Agregar ---------- */
 
+const ADD_TABS = [
+  { key: "text", label: "Texto" },
+  { key: "image", label: "Imagen" },
+  { key: "shape", label: "Formas" },
+  { key: "icon", label: "Íconos" },
+  { key: "other", label: "Más" },
+] as const;
+type AddTab = (typeof ADD_TABS)[number]["key"];
+
+// Menú compacto por pestañas. El fondo es una imagen más (con «Usar de fondo»
+// ocupa la diapositiva, va atrás de todo y queda bloqueada) y el velo es un
+// rectángulo con transparencia (en Formas).
 function AddMenu({
   open,
   onToggle,
@@ -2236,36 +2227,33 @@ function AddMenu({
   onOpenLibrary?: () => void;
   library?: { src: string; alt: string }[];
 }) {
+  const [tab, setTab] = useState<AddTab>("text");
+  const [asBackground, setAsBackground] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [bgPick, setBgPick] = useState(false); // eligiendo la imagen de fondo
-
-  // Fondo: imagen o video que se sube (o una foto ya subida).
-  async function uploadBackdrop(file: File) {
-    setError(null);
-    setBusy(true);
-    try {
-      const req = await requestDesignImageUploadAction(file.name, file.type);
-      if (!req.uploadUrl || !req.publicUrl) return setError(req.error ?? "No se pudo preparar la subida.");
-      const put = await fetch(req.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
-      if (!put.ok) return setError("No se pudo subir el archivo. Probá de nuevo.");
-      onAddCover("backdrop", req.publicUrl);
-      setBgPick(false);
-    } catch {
-      setError("No se pudo subir el archivo. Revisá tu conexión y probá de nuevo.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // Reutilizar una foto ya subida: no se sube de nuevo (la caja toma su proporción).
-  function reuse(p: { src: string; alt: string }) {
-    const img = new Image();
-    const done = (ratio: number) => onAdd("photo", { src: p.src, w: 360, h: Math.round(Math.min(3, Math.max(0.2, ratio)) * 360), text: p.alt });
-    img.onload = () => done(img.naturalHeight / img.naturalWidth || 1);
-    img.onerror = () => done(1);
-    img.src = p.src;
-  }
   const [error, setError] = useState<string | null>(null);
+
+  // Proporción de la imagen (o del video) para que la caja no la deforme.
+  const ratioOf = (src: string) =>
+    new Promise<number>((resolve) => {
+      const done = (w: number, h: number) => resolve(w && h ? Math.min(3, Math.max(0.2, h / w)) : 1);
+      if (isVideo(src)) {
+        const v = document.createElement("video");
+        v.onloadedmetadata = () => done(v.videoWidth, v.videoHeight);
+        v.onerror = () => resolve(1);
+        v.src = src;
+      } else {
+        const img = new Image();
+        img.onload = () => done(img.naturalWidth, img.naturalHeight);
+        img.onerror = () => resolve(1);
+        img.src = src;
+      }
+    });
+
+  async function place(src: string, alt: string, localSrc = src) {
+    if (asBackground) return onAddCover("backdrop", src);
+    const w = 360;
+    onAdd("photo", { src, w, h: Math.round((await ratioOf(localSrc)) * w), text: alt });
+  }
 
   async function upload(file: File) {
     setError(null);
@@ -2274,25 +2262,17 @@ function AddMenu({
       const req = await requestDesignImageUploadAction(file.name, file.type);
       if (!req.uploadUrl || !req.publicUrl) return setError(req.error ?? "No se pudo preparar la subida.");
       const put = await fetch(req.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
-      if (!put.ok) return setError("No se pudo subir la imagen. Probá de nuevo.");
-      // La caja toma la proporción de la imagen.
-      const ratio = await new Promise<number>((resolve) => {
-        const img = new Image();
-        img.onload = () => resolve(img.naturalHeight / img.naturalWidth || 1);
-        img.onerror = () => resolve(1);
-        img.src = URL.createObjectURL(file);
-      });
-      const w = 360;
-      onAdd("photo", { src: req.publicUrl, w, h: Math.round(Math.min(3, Math.max(0.2, ratio)) * w), text: file.name.replace(/\.[^.]+$/, "") });
+      if (!put.ok) return setError("No se pudo subir el archivo. Probá de nuevo.");
+      await place(req.publicUrl, file.name.replace(/\.[^.]+$/, ""), URL.createObjectURL(file));
     } catch {
-      setError("No se pudo subir la imagen. Revisá tu conexión y probá de nuevo.");
+      setError("No se pudo subir el archivo. Revisá tu conexión y probá de nuevo.");
     } finally {
       setBusy(false);
     }
   }
 
-  const head = "mb-1.5 mt-3 text-[11px] font-medium uppercase tracking-wide text-neutral-400 first:mt-0";
-  const tile = "flex items-center justify-center rounded-md border border-neutral-200 hover:border-neutral-400 hover:bg-neutral-50";
+  const tile = "flex items-center justify-center rounded-md border border-neutral-200 hover:border-neutral-400 hover:bg-neutral-50 disabled:opacity-40";
+  const row = "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-neutral-50 disabled:opacity-40";
 
   return (
     <div className="relative" data-popover>
@@ -2305,191 +2285,154 @@ function AddMenu({
         {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Agregar
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-30 mt-1 w-80 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg" role="menu" aria-label="Agregar al diseño">
-          {full && <p className="mb-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">Llegaste al máximo de objetos en esta sección.</p>}
-          <p className={head}>Texto</p>
-          <div className="flex flex-col gap-1">
-            <button type="button" disabled={full} onClick={() => onAdd("text", { text: "Título", fontSize: 59, style: "titulos", font: "playfair" })} className="rounded px-2 py-1 text-left font-serif text-xl hover:bg-neutral-50 disabled:opacity-40">
-              Agregar un título
-            </button>
-            <button type="button" disabled={full} onClick={() => onAdd("text", { text: "Subtítulo", fontSize: 35, style: "detalle", color: "var(--color-muted)" })} className="rounded px-2 py-1 text-left text-base hover:bg-neutral-50 disabled:opacity-40">
-              Agregar un subtítulo
-            </button>
-            <button type="button" disabled={full} onClick={() => onAdd("text", { text: "Escribí acá tu texto", fontSize: 28, style: "parrafo", color: "var(--color-muted)", lineHeight: 1.45 })} className="rounded px-2 py-1 text-left text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-40">
-              Agregar un párrafo
-            </button>
+        <div className="absolute left-0 top-full z-30 mt-1 w-80 rounded-lg border border-neutral-200 bg-white shadow-lg" role="menu" aria-label="Agregar al diseño">
+          <div className="flex border-b border-neutral-100 px-1 pt-1" role="tablist" aria-label="Qué agregar">
+            {ADD_TABS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.key}
+                onClick={() => setTab(t.key)}
+                className={`flex-1 border-b-2 px-1 pb-1.5 pt-1 text-xs font-medium ${tab === t.key ? "border-blue-600 text-blue-700" : "border-transparent text-neutral-500 hover:text-neutral-800"}`}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
+          <div className="max-h-72 overflow-y-auto p-2">
+            {full && <p className="mb-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">Llegaste al máximo de objetos en esta sección.</p>}
 
-          <p className={head}>Imagen</p>
-          {onOpenLibrary ? (
-            <button
-              type="button"
-              onClick={onOpenLibrary}
-              className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-neutral-300 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
-            >
-              Elegir de las fotos de la galería
-            </button>
-          ) : (
-          <>
-          {library.length > 0 && (
-            <>
-              <p className="mb-1 text-[11px] text-neutral-500">Fotos ya subidas (se reutilizan, no se suben de nuevo):</p>
-              <ul className="mb-2 grid max-h-36 grid-cols-5 gap-1 overflow-y-auto" aria-label="Fotos ya subidas">
-                {library.map((p) => (
-                  <li key={p.src}>
-                    <button
-                      type="button"
-                      disabled={full}
-                      onClick={() => reuse(p)}
-                      aria-label={`Usar foto ya subida: ${p.alt || "foto"}`}
-                      className="block aspect-square w-full overflow-hidden rounded border border-neutral-200 hover:opacity-80 disabled:opacity-40"
+            {tab === "text" && (
+              <div className="flex flex-col">
+                <button type="button" disabled={full} onClick={() => onAdd("text", { text: "Título", fontSize: 59, style: "titulos", font: "playfair" })} className={`${row} font-serif text-lg`}>
+                  Título
+                </button>
+                <button type="button" disabled={full} onClick={() => onAdd("text", { text: "Subtítulo", fontSize: 35, style: "detalle", color: "var(--color-muted)" })} className={`${row} text-sm`}>
+                  Subtítulo
+                </button>
+                <button type="button" disabled={full} onClick={() => onAdd("text", { text: "Escribí acá tu texto", fontSize: 28, style: "parrafo", color: "var(--color-muted)", lineHeight: 1.45 })} className={`${row} text-xs text-neutral-600`}>
+                  Párrafo
+                </button>
+              </div>
+            )}
+
+            {tab === "image" && (
+              <div className="flex flex-col gap-2">
+                {onOpenLibrary && (
+                  <button type="button" onClick={onOpenLibrary} className="rounded-md border border-dashed border-neutral-300 px-2 py-1.5 text-xs text-neutral-700 hover:bg-neutral-50">
+                    Fotos de la galería (se arrastran desde el panel)
+                  </button>
+                )}
+                <label className="flex items-center gap-2 text-xs text-neutral-700" title="Ocupa toda la diapositiva, va atrás de todo y queda bloqueada">
+                  <input type="checkbox" checked={asBackground} onChange={(e) => setAsBackground(e.target.checked)} className="h-3.5 w-3.5 accent-blue-600" />
+                  Usar de fondo (ocupa toda la diapositiva)
+                </label>
+                <ul className="grid grid-cols-5 gap-1" aria-label="Fotos ya subidas">
+                  <li>
+                    <label
+                      title="Subir imagen (JPG, PNG con transparencia, WebP) o video (MP4, WebM)"
+                      className={`${tile} aspect-square cursor-pointer border-dashed text-neutral-500 ${full || busy ? "pointer-events-none opacity-40" : ""}`}
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={p.src} alt="" className="h-full w-full object-cover" />
-                    </button>
+                      {busy ? <Loader2 size={16} className="animate-spin" /> : <Plus size={18} />}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,video/mp4,video/webm"
+                        className="hidden"
+                        aria-label="Subir imagen"
+                        disabled={full || busy}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) upload(f);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
                   </li>
+                  {library.map((p) => (
+                    <li key={p.src}>
+                      <button
+                        type="button"
+                        disabled={full}
+                        onClick={() => place(p.src, p.alt)}
+                        aria-label={`Usar foto ya subida: ${p.alt || "foto"}`}
+                        className="block aspect-square w-full overflow-hidden rounded border border-neutral-200 bg-[repeating-conic-gradient(#eee_0_25%,#fff_0_50%)] bg-[length:10px_10px] hover:opacity-80 disabled:opacity-40"
+                      >
+                        {isVideo(p.src) ? (
+                          <video src={p.src} muted className="h-full w-full object-cover" />
+                        ) : (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={p.src} alt="" className="h-full w-full object-cover" />
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-[11px] leading-snug text-neutral-400">El primer cuadro sube una imagen nueva (PNG con transparencia incluido) o un video corto. Las demás ya están subidas.</p>
+                {error && <p className="text-xs text-red-600">{error}</p>}
+              </div>
+            )}
+
+            {tab === "shape" && (
+              <div className="grid grid-cols-6 gap-1">
+                {(Object.keys(SHAPES) as (keyof typeof SHAPES)[]).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    title={SHAPES[k]}
+                    aria-label={`Forma: ${SHAPES[k]}`}
+                    disabled={full}
+                    onClick={() => onAdd("shape", k === "line" ? { variant: k, w: 400, h: 4, opacity: 1 } : { variant: k })}
+                    className={`${tile} h-11`}
+                  >
+                    <span
+                      className={`block ${k === "outline" ? "border-2 border-neutral-500" : "bg-neutral-500"}`}
+                      style={k === "line" ? { width: 24, height: 2 } : { width: 20, height: 20, borderRadius: k === "circle" ? "50%" : k === "rounded" || k === "outline" ? 5 : 0 }}
+                    />
+                  </button>
                 ))}
-              </ul>
-            </>
-          )}
-          <label className={`flex cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-neutral-300 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 ${full || busy ? "pointer-events-none opacity-40" : ""}`}>
-            {busy ? "Subiendo…" : "Subir una imagen nueva (JPG, PNG o WebP)"}
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="hidden"
-              aria-label="Subir imagen"
-              disabled={full || busy}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) upload(file);
-                e.target.value = "";
-              }}
-            />
-          </label>
-          </>
-          )}
-          <p className="mt-1 text-[11px] text-neutral-400">
-            {onOpenLibrary ? "Las fotos se suben en el panel de la galería y se arrastran al lienzo." : "Después podés darle borde Polaroid o vintage."}
-          </p>
-          {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+                <button
+                  type="button"
+                  title="Velo: rectángulo del color de fondo, con transparencia, que ocupa toda la diapositiva"
+                  aria-label="Velo"
+                  disabled={full}
+                  onClick={() => onAddCover("veil")}
+                  className={`${tile} h-11 text-[10px] text-neutral-600`}
+                >
+                  <span className="flex h-5 w-5 items-center justify-center rounded-sm bg-neutral-500/40">Velo</span>
+                </button>
+              </div>
+            )}
 
-          <p className={head}>Fondo</p>
-          <div className="grid grid-cols-2 gap-1.5">
-            <button
-              type="button"
-              disabled={full}
-              onClick={() => setBgPick((v) => !v)}
-              aria-expanded={bgPick}
-              className="rounded-md border border-neutral-200 px-2.5 py-2 text-left text-sm hover:bg-neutral-50 disabled:opacity-40"
-            >
-              <span className="block font-medium text-neutral-800">Imagen o video</span>
-              <span className="block text-[11px] text-neutral-500">Cubre toda la sección</span>
-            </button>
-            <button
-              type="button"
-              disabled={full}
-              onClick={() => onAddCover("veil")}
-              className="rounded-md border border-neutral-200 px-2.5 py-2 text-left text-sm hover:bg-neutral-50 disabled:opacity-40"
-            >
-              <span className="block font-medium text-neutral-800">Velo de color</span>
-              <span className="block text-[11px] text-neutral-500">Color con transparencia</span>
-            </button>
-          </div>
-          {bgPick && (
-            <div className="mt-1.5 rounded-md border border-neutral-200 p-2" data-backdrop-picker>
-              {library.length > 0 && (
-                <>
-                  <p className="mb-1 text-[11px] text-neutral-500">Usar una foto ya subida:</p>
-                  <ul className="mb-2 grid max-h-28 grid-cols-5 gap-1 overflow-y-auto">
-                    {library.map((p) => (
-                      <li key={p.src}>
-                        <button type="button" onClick={() => { onAddCover("backdrop", p.src); setBgPick(false); }} aria-label={`Fondo: ${p.alt || "foto"}`} className="block aspect-square w-full overflow-hidden rounded border border-neutral-200 hover:opacity-80">
-                          {isVideo(p.src) ? (
-                            <video src={p.src} muted className="h-full w-full object-cover" />
-                          ) : (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={p.src} alt="" className="h-full w-full object-cover" />
-                          )}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-              <label className={`flex cursor-pointer items-center justify-center rounded-md border border-dashed border-neutral-300 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 ${busy ? "pointer-events-none opacity-40" : ""}`}>
-                {busy ? "Subiendo…" : "Subir imagen o video (MP4, WebM)"}
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
-                  className="hidden"
-                  aria-label="Subir fondo"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) uploadBackdrop(f);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-              <p className="mt-1 text-[11px] text-neutral-400">Video: corto y liviano (idealmente menos de 10 MB), sin sonido y en bucle.</p>
-            </div>
-          )}
+            {tab === "icon" && (
+              <div className="grid grid-cols-7 gap-1">
+                {ORNAMENT_KEYS.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    title={ORNAMENT_LABELS[k]}
+                    aria-label={`Adorno: ${ORNAMENT_LABELS[k]}`}
+                    disabled={full}
+                    onClick={() => onAdd("ornament", k === "divider" ? { variant: k, w: 420, h: 40 } : { variant: k })}
+                    className={`${tile} h-9 p-2 text-neutral-600`}
+                  >
+                    <Ornament name={k} color="currentColor" />
+                  </button>
+                ))}
+              </div>
+            )}
 
-          <p className={head}>Otros</p>
-          <button
-            type="button"
-            disabled={full}
-            onClick={() => onAdd("map")}
-            className="mb-1.5 flex w-full items-center gap-2 rounded-md border border-neutral-200 px-2.5 py-2 text-left text-sm hover:bg-neutral-50 disabled:opacity-40"
-          >
-            <MapPin size={16} className="text-neutral-500" />
-            <span className="text-neutral-600">Mapa (cargás la dirección o el link en Contenido)</span>
-          </button>
-          <button
-            type="button"
-            disabled={full}
-            onClick={() => onAdd("countdown")}
-            className="flex w-full items-center gap-2 rounded-md border border-neutral-200 px-2.5 py-2 text-left text-sm hover:bg-neutral-50 disabled:opacity-40"
-          >
-            <span className="font-semibold tabular-nums">12 : 05 : 30</span>
-            <span className="text-neutral-600">Cuenta regresiva a la boda</span>
-          </button>
-
-          <p className={head}>Formas</p>
-          <div className="grid grid-cols-4 gap-1.5">
-            {(Object.keys(SHAPES) as (keyof typeof SHAPES)[]).map((k) => (
-              <button
-                key={k}
-                type="button"
-                title={SHAPES[k]}
-                aria-label={`Forma: ${SHAPES[k]}`}
-                disabled={full}
-                onClick={() => onAdd("shape", k === "line" ? { variant: k, w: 400, h: 4, opacity: 1 } : { variant: k })}
-                className={`${tile} h-12 disabled:opacity-40`}
-              >
-                <span
-                  className="block bg-neutral-500"
-                  style={k === "line" ? { width: 28, height: 2 } : { width: 24, height: 24, borderRadius: k === "circle" ? "50%" : k === "rounded" ? 6 : 0 }}
-                />
-              </button>
-            ))}
-          </div>
-
-          <p className={head}>Adornos</p>
-          <div className="grid grid-cols-5 gap-1.5">
-            {ORNAMENT_KEYS.map((k) => (
-              <button
-                key={k}
-                type="button"
-                title={ORNAMENT_LABELS[k]}
-                aria-label={`Adorno: ${ORNAMENT_LABELS[k]}`}
-                disabled={full}
-                onClick={() => onAdd("ornament", k === "divider" ? { variant: k, w: 420, h: 40 } : { variant: k })}
-                className={`${tile} h-12 p-2.5 text-neutral-600 disabled:opacity-40`}
-              >
-                <Ornament name={k} color="currentColor" />
-              </button>
-            ))}
+            {tab === "other" && (
+              <div className="flex flex-col">
+                <button type="button" disabled={full} onClick={() => onAdd("map")} className={`${row} text-sm`}>
+                  <MapPin size={15} className="text-neutral-500" /> Mapa
+                  <span className="ml-auto text-[11px] text-neutral-400">dirección en Contenido</span>
+                </button>
+                <button type="button" disabled={full} onClick={() => onAdd("countdown")} className={`${row} text-sm`}>
+                  <span className="text-xs font-semibold tabular-nums text-neutral-500">12:05</span> Cuenta regresiva
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
