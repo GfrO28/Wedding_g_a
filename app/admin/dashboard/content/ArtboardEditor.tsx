@@ -1165,8 +1165,39 @@ export function ArtboardEditor({
         </div>
       </div>
 
-      {/* Barra contextual */}
-      <div className="flex min-h-[46px] flex-wrap items-center gap-1.5 border-b border-neutral-200 bg-white px-3 py-1.5">
+      <div className="flex min-h-0 flex-1">
+      {layersOpen && (
+        <LayersPanel
+          elements={elements}
+          selected={sel}
+          warnings={new Set(elements.filter((el) => !el.hidden && (smallestPx(el) < MIN_READABLE_PX || overflow.has(el.id))).map((el) => el.id))}
+          onSelect={(id, additive) => (additive ? setSel((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id])) : setSelectedId(id))}
+          onSelectMany={(ids) => setSel(ids)}
+          onToggleHidden={(id) => {
+            const el = layout[orientation].find((x) => x.id === id);
+            if (el) patch(id, { hidden: !el.hidden });
+          }}
+          onSetHidden={(ids, hidden) => {
+            const next = clone(layout);
+            next[orientation] = next[orientation].map((e) => (ids.includes(e.id) ? { ...e, hidden } : e));
+            commit(next, layout);
+          }}
+          onToggleLock={toggleLock}
+          onReorder={(topFirst) => {
+            // El primero de la lista queda adelante de todo.
+            const z = new Map(topFirst.map((id, i) => [id, topFirst.length - i]));
+            const next = clone(layout);
+            next[orientation] = next[orientation].map((e) => (z.has(e.id) ? { ...e, z: z.get(e.id)! } : e));
+            commit(next, layout);
+          }}
+        />
+      )}
+      <div className="flex min-w-0 flex-1 flex-col">
+      {/* Barra contextual: alto fijo. Si no entra en una línea, la segunda se
+          apoya sobre el lienzo en vez de empujarlo (así un doble clic no cae
+          en otro lugar). */}
+      <div className="relative z-20 h-[46px] shrink-0">
+      <div className="absolute inset-x-0 top-0 flex min-h-[46px] flex-wrap items-center gap-1.5 border-b border-neutral-200 bg-white px-3 py-1.5 shadow-[0_1px_0_rgba(0,0,0,0.02)]">
         {cover && closed ? (
           <p className="text-xs text-neutral-500">{cover.hint}</p>
         ) : sel.length > 1 ? (
@@ -1219,34 +1250,7 @@ export function ArtboardEditor({
           </p>
         )}
       </div>
-
-      <div className="flex min-h-0 flex-1">
-      {layersOpen && (
-        <LayersPanel
-          elements={elements}
-          selected={sel}
-          warnings={new Set(elements.filter((el) => !el.hidden && (smallestPx(el) < MIN_READABLE_PX || overflow.has(el.id))).map((el) => el.id))}
-          onSelect={(id, additive) => (additive ? setSel((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id])) : setSelectedId(id))}
-          onSelectMany={(ids) => setSel(ids)}
-          onToggleHidden={(id) => {
-            const el = layout[orientation].find((x) => x.id === id);
-            if (el) patch(id, { hidden: !el.hidden });
-          }}
-          onSetHidden={(ids, hidden) => {
-            const next = clone(layout);
-            next[orientation] = next[orientation].map((e) => (ids.includes(e.id) ? { ...e, hidden } : e));
-            commit(next, layout);
-          }}
-          onToggleLock={toggleLock}
-          onReorder={(topFirst) => {
-            // El primero de la lista queda adelante de todo.
-            const z = new Map(topFirst.map((id, i) => [id, topFirst.length - i]));
-            const next = clone(layout);
-            next[orientation] = next[orientation].map((e) => (z.has(e.id) ? { ...e, z: z.get(e.id)! } : e));
-            commit(next, layout);
-          }}
-        />
-      )}
+      </div>
       {/* Lienzo */}
       <div
         ref={areaRef}
@@ -1396,6 +1400,7 @@ export function ArtboardEditor({
         </div>
       </div>
 
+      </div>
       </div>
 
       {realSize && (

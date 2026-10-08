@@ -892,7 +892,7 @@ function withSteps(layout: TextLayout, steps: StepItem[]): TextLayout {
     const pos = changed ? arrangeFor(o, arrange, steps) : null;
     // Diseños de antes: el recuadro y la línea que la versión no usa estaban ocultos.
     for (const e of kept) {
-      if (e.hidden && !e.removed && (/^step-.+-card$/.test(e.id) || (e.id === "timeline" && (arrange === "row" || arrange === "cards")))) {
+      if (e.hidden && !e.removed && /^step-.+-card$/.test(e.id)) {
         e.hidden = false;
         e.removed = true;
       }
@@ -927,11 +927,8 @@ function withSteps(layout: TextLayout, steps: StepItem[]): TextLayout {
         e.name = `Paso ${i + 1} · ${{ card: "recuadro", icon: "ícono", time: "hora", label: "nombre" }[part]}`;
       }
     });
-    // La línea de tiempo acompaña la cantidad de pasos.
-    if (pos?.has("timeline")) {
-      const t = kept.findIndex((x) => x.id === "timeline");
-      if (t >= 0) kept[t] = { ...kept[t], ...pos.get("timeline") };
-    }
+    // La línea de tiempo no se toca al agregar o borrar pasos: es como la dejó
+    // quien diseña (se acomoda solo al elegir una versión).
     out[o] = kept;
   }
   return out;
