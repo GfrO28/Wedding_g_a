@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, Check, ChevronDown, ChevronUp, ExternalLink, Loader2, MapPin, PanelRightClose, PanelRightOpen, Trash2 } from "lucide-react";
-import { ENVELOPE_DESIGNS, type EnvelopeDesign, type EnvelopeSlot } from "@/lib/envelopeAssets";
+import { ENVELOPE_DESIGNS, type EnvelopeDesign, type EnvelopeSlot, type VideoEnvelopeAssets } from "@/lib/envelopeAssets";
+import { VideoEnvelopeImagesPanel, videoEnvelopeImages } from "./VideoEnvelopeImagesPanel";
 import { FramedEnvelope } from "@/app/components/FramedEnvelope";
 import { applyStyles, backdropOf, ENVELOPE_VIDEO_BG, isCustom, LAYOUT_SECTIONS, mapSourceOf, pickStyle, withDynamic, type LayoutSection, type TextElement, type TextLayout, type TextStyle, type TokenValues } from "@/lib/textLayout";
 import { ArtboardEditor, type CanvasCover, type Clip, type EditorApi } from "./ArtboardEditor";
@@ -48,7 +49,7 @@ export function EditorShell({
   drafts: Record<LayoutSection, TextLayout>;
   styles: { published: TextStyle[]; draft: TextStyle[] };
   tokens: TokenValues;
-  envelope: { assets: Record<EnvelopeSlot, string>; custom: Record<EnvelopeSlot, boolean>; design: EnvelopeDesign };
+  envelope: { assets: Record<EnvelopeSlot, string>; custom: Record<EnvelopeSlot, boolean>; design: EnvelopeDesign; video: VideoEnvelopeAssets };
   galleryPhotos: LibraryPhoto[];
   desktopBackground: DesktopBackground;
 }) {
@@ -68,6 +69,8 @@ export function EditorShell({
   const [envelopeAssets, setEnvelopeAssets] = useState(envelope.assets);
   // Versión del sobre: cada una tiene su propio lienzo.
   const [envDesign, setEnvDesign] = useState<EnvelopeDesign>(envelope.design);
+  const [videoAssets, setVideoAssets] = useState(envelope.video);
+  const monogram = `${tokens.inicial1 ?? ""}${tokens.inicial2 ?? ""}`;
   const designOf = (s: EditorSection): LayoutSection | undefined => (s.id === "intro" && envDesign === "video" ? "envelopeVideo" : s.design);
   const [galleryPhotos, setGalleryPhotos] = useState(initialGalleryPhotos);
   // Mapa recién agregado: se abre «Contenido» con su campo listo para escribir.
@@ -361,7 +364,13 @@ export function EditorShell({
 
   const panel =
     current.id === "intro" && envDesign === "video" ? (
-      <p className="text-xs text-neutral-500">El sello del sobre es la imagen «Sello» del sobre clásico (se cambia eligiendo la versión Clásico).</p>
+      <VideoEnvelopeImagesPanel
+        assets={videoAssets}
+        onChange={setVideoAssets}
+        color={layouts.envelopeVideo.portrait.find((e) => e.id === "envelope")?.color ?? "#d8c2a3"}
+        classicSeal={envelopeAssets.seal}
+        monogram={monogram}
+      />
     ) : current.id === "intro" ? (
       <EnvelopeImagesPanel initialAssets={envelopeAssets} initialCustom={envelope.custom} onAssetsChange={setEnvelopeAssets} textLayout={applyStyles(layouts.envelope, styles)} tokens={tokens} />
     ) : current.id === "gallery" ? (
@@ -526,7 +535,7 @@ export function EditorShell({
               cover={envelopeCover}
               blocks={
                 design === "envelopeVideo"
-                  ? { envelope: (el) => <FramedEnvelope color={el.color} seal={envelopeAssets.seal} monogram={`${tokens.inicial1 ?? ""}${tokens.inicial2 ?? ""}`} /> }
+                  ? { envelope: (el) => <FramedEnvelope color={el.color} seal={envelopeAssets.seal} monogram={monogram} images={videoEnvelopeImages(videoAssets)} /> }
                   : blocks[design]
               }
               onChange={onDesignChange}

@@ -4,18 +4,25 @@ import { FONTS } from "@/lib/textLayout";
 // Sobre horizontal (versión «Sobre con video»): papel del color elegido, solapa,
 // bolsillo y sello. Al abrirse se va el sello, la solapa gira hacia atrás y
 // sube una tarjeta con las iniciales. Todo se mide en % del ancho.
+// images: frente, solapa, tarjeta y sello propios (si falta alguno, esa pieza
+// se dibuja con el color del papel).
+export type FramedEnvelopeImages = Partial<Record<"front" | "flap" | "card" | "seal", string>>;
+const fillImg: CSSProperties = { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "fill", display: "block" };
+
 export function FramedEnvelope({
   color,
   seal,
   monogram,
   opened = false,
   onOpen,
+  images = {},
 }: {
   color: string;
   seal: string;
   monogram: string;
   opened?: boolean;
   onOpen?: () => void;
+  images?: FramedEnvelopeImages;
 }) {
   const shade = (pct: number) => `color-mix(in srgb, ${color} ${100 - pct}%, #000)`;
   const layer: CSSProperties = { position: "absolute", inset: 0 };
@@ -51,18 +58,29 @@ export function FramedEnvelope({
           alignItems: "center",
           justifyContent: "center",
           zIndex: 2,
+          overflow: "hidden",
           transform: opened ? "translateY(-58%)" : "none",
           transition: "transform 0.9s cubic-bezier(.2,.8,.2,1) 0.75s",
         }}
       >
-        <span style={{ fontFamily: FONTS.greatvibes.css, fontSize: "15cqw", lineHeight: 1, color: "#7a5a3a", marginTop: "-18%" }}>{monogram}</span>
+        {images.card ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={images.card} alt="" draggable={false} style={{ ...fillImg, objectFit: "cover" }} />
+        ) : (
+          <span style={{ fontFamily: FONTS.greatvibes.css, fontSize: "15cqw", lineHeight: 1, color: "#7a5a3a", marginTop: "-18%" }}>{monogram}</span>
+        )}
       </div>
       {/* Bolsillo (frente) */}
-      <svg viewBox="0 0 160 100" preserveAspectRatio="none" aria-hidden style={{ ...layer, width: "100%", height: "100%", zIndex: 3 }}>
-        <polygon points="0,0 80,56 0,100" fill={shade(5)} />
-        <polygon points="160,0 80,56 160,100" fill={shade(5)} />
-        <polygon points="0,100 80,47 160,100" fill={color} />
-      </svg>
+      {images.front ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={images.front} alt="" draggable={false} aria-hidden style={{ ...fillImg, zIndex: 3 }} />
+      ) : (
+        <svg viewBox="0 0 160 100" preserveAspectRatio="none" aria-hidden style={{ ...layer, width: "100%", height: "100%", zIndex: 3 }}>
+          <polygon points="0,0 80,56 0,100" fill={shade(5)} />
+          <polygon points="160,0 80,56 160,100" fill={shade(5)} />
+          <polygon points="0,100 80,47 160,100" fill={color} />
+        </svg>
+      )}
       {/* Solapa: gira hacia atrás y pasa detrás de la tarjeta */}
       <div
         aria-hidden
@@ -79,14 +97,19 @@ export function FramedEnvelope({
           filter: "drop-shadow(0 0.6cqw 0.8cqw rgba(0,0,0,.25))",
         }}
       >
-        <svg viewBox="0 0 160 60" preserveAspectRatio="none" style={{ width: "100%", height: "100%", display: "block" }}>
-          <polygon points="0,0 160,0 80,60" fill={shade(9)} />
-        </svg>
+        {images.flap ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={images.flap} alt="" draggable={false} style={fillImg} />
+        ) : (
+          <svg viewBox="0 0 160 60" preserveAspectRatio="none" style={{ width: "100%", height: "100%", display: "block" }}>
+            <polygon points="0,0 160,0 80,60" fill={shade(9)} />
+          </svg>
+        )}
       </div>
       {/* Sello */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={seal}
+        src={images.seal || seal}
         alt=""
         draggable={false}
         className="fenv-seal"

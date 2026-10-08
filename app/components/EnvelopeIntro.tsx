@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { EnvelopeAssets } from "./envelope/engine";
 import { ENVELOPE_VIDEO_BG, type TextLayout, type TokenValues } from "@/lib/textLayout";
-import type { EnvelopeDesign } from "@/lib/envelopeAssets";
+import type { EnvelopeDesign, VideoEnvelopeAssets } from "@/lib/envelopeAssets";
 import { TextArtboard } from "./TextArtboard";
-import { FramedEnvelope } from "./FramedEnvelope";
+import { FramedEnvelope, type FramedEnvelopeImages } from "./FramedEnvelope";
 
 export const PLAY_MUSIC_EVENT = "invitation:play-music";
 
@@ -14,6 +14,7 @@ export const PLAY_MUSIC_EVENT = "invitation:play-music";
 export function EnvelopeIntro({
   design = "classic",
   videoLayout,
+  videoAssets,
   ...props
 }: {
   assets: EnvelopeAssets;
@@ -21,8 +22,10 @@ export function EnvelopeIntro({
   tokens: TokenValues;
   design?: EnvelopeDesign;
   videoLayout?: TextLayout;
+  videoAssets?: VideoEnvelopeAssets;
 }) {
-  if (design === "video" && videoLayout) return <VideoIntro layout={videoLayout} tokens={props.tokens} seal={props.assets.seal} />;
+  if (design === "video" && videoLayout)
+    return <VideoIntro layout={videoLayout} tokens={props.tokens} seal={props.assets.seal} images={videoAssets ? { front: videoAssets.vFront, flap: videoAssets.vFlap, card: videoAssets.vCard, seal: videoAssets.vSeal } : undefined} />;
   return <ClassicIntro {...props} />;
 }
 
@@ -30,7 +33,7 @@ export function EnvelopeIntro({
 const OPEN_MS = 1900;
 const FADE_MS = 800;
 
-function VideoIntro({ layout, tokens, seal }: { layout: TextLayout; tokens: TokenValues; seal: string }) {
+function VideoIntro({ layout, tokens, seal, images }: { layout: TextLayout; tokens: TokenValues; seal: string; images?: FramedEnvelopeImages }) {
   const [stage, setStage] = useState<"closed" | "opening" | "leaving" | "done">("closed");
   // ?skipIntro=1 saltea la intro (en el servidor no se sabe: se muestra).
   const skip = useSyncExternalStore(
@@ -75,7 +78,7 @@ function VideoIntro({ layout, tokens, seal }: { layout: TextLayout; tokens: Toke
         dim={stage === "closed" ? undefined : ["hint"]}
         blocks={{
           envelope: (el) => (
-            <FramedEnvelope color={el.color} seal={seal} monogram={`${tokens.inicial1 ?? ""}${tokens.inicial2 ?? ""}`} opened={stage !== "closed"} onOpen={open} />
+            <FramedEnvelope color={el.color} seal={seal} monogram={`${tokens.inicial1 ?? ""}${tokens.inicial2 ?? ""}`} opened={stage !== "closed"} onOpen={open} images={images} />
           ),
         }}
       />

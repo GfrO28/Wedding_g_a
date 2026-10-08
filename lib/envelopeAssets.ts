@@ -9,7 +9,14 @@ export const DEFAULT_ENVELOPE_ASSETS: Record<EnvelopeSlot, string> = {
   seal: "/assets/envelope/sello.png",
 };
 
-export const envelopeSettingKey = (slot: EnvelopeSlot) => `envelope_${slot}`;
+export const envelopeSettingKey = (slot: EnvelopeSlot | VideoEnvelopeSlot) => `envelope_${slot}`;
+
+// Imágenes del sobre con video (opcionales: sin imagen, la pieza se dibuja
+// con el color del papel). Se usan directo desde R2: no hace falta leer sus píxeles.
+export const VIDEO_ENVELOPE_SLOTS = ["vFront", "vFlap", "vCard", "vSeal"] as const;
+export type VideoEnvelopeSlot = (typeof VIDEO_ENVELOPE_SLOTS)[number];
+export type VideoEnvelopeAssets = Record<VideoEnvelopeSlot, string>;
+export const isVideoEnvelopeSlot = (v: string): v is VideoEnvelopeSlot => (VIDEO_ENVELOPE_SLOTS as readonly string[]).includes(v);
 
 // Versión del sobre de apertura: clásico (a pantalla completa) o con video de fondo.
 export const ENVELOPE_DESIGNS = { classic: "Clásico", video: "Con video de fondo" } as const;
