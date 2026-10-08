@@ -233,17 +233,8 @@ const toForm = (data: Record<string, string>) => {
 
 type Chapter = { id: string; year: string; title: string; text: string; image: string; layout: string; imageFocus: string };
 
-export function StoryChaptersEditor({
-  chapters,
-  library: initialLibrary,
-  layouts,
-  focuses,
-}: {
-  chapters: Chapter[];
-  library: LibraryImage[];
-  layouts: { value: string; label: string }[];
-  focuses: { value: string; label: string }[];
-}) {
+// La ubicación y el tamaño de la foto y los textos se acomodan en el lienzo.
+export function StoryChaptersEditor({ chapters, library: initialLibrary }: { chapters: Chapter[]; library: LibraryImage[] }) {
   const [library, setLibrary] = useState(initialLibrary);
   const addToLibrary = (img: LibraryImage) => setLibrary((l) => [img, ...l]);
   return (
@@ -274,20 +265,6 @@ export function StoryChaptersEditor({
           <div className="flex flex-col gap-0.5">
             <span className={label}>Foto</span>
             <ImagePicker value={d.image} onChange={(image) => set({ ...d, image })} library={library} onLibraryAdd={addToLibrary} />
-          </div>
-          <div className="flex gap-2">
-            <label className="flex flex-1 flex-col gap-0.5">
-              <span className={label}>Disposición</span>
-              <select aria-label="Disposición" value={d.layout} onChange={(e) => set({ ...d, layout: e.target.value })} className={input}>
-                {layouts.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-              </select>
-            </label>
-            <label className="flex flex-1 flex-col gap-0.5">
-              <span className={label}>Encuadre</span>
-              <select aria-label="Encuadre" value={d.imageFocus} onChange={(e) => set({ ...d, imageFocus: e.target.value })} className={input}>
-                {focuses.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
-              </select>
-            </label>
           </div>
         </>
       )}

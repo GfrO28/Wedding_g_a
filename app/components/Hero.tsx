@@ -13,7 +13,7 @@ export async function Hero({ guestName }: { guestName: string }) {
   ]);
 
   return (
-    <Slide className="bg-[var(--color-bg)]" bgImage={WEDDING.zoneImages.hero} overlay={overlayOf(layout)} fullBleed>
+    <Slide className="bg-[var(--color-bg)]" bgImage={WEDDING.zoneImages.hero} overlay={overlayOf(layout)} frame={layout.bg} fullBleed>
       <TextArtboard page
         layout={layout}
         tokens={tokens}

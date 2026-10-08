@@ -2,6 +2,8 @@ import { db } from "@/lib/db";
 import { guestMessages } from "@/lib/db/schema";
 import { desc, eq } from "drizzle-orm";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
+import { getWeddingContent } from "@/lib/weddingContent";
+import { overlayOf } from "@/lib/textLayout";
 import { FadeIn } from "./FadeIn";
 import { Slide } from "./Slide";
 import { TextArtboard } from "./TextArtboard";
@@ -17,10 +19,10 @@ export async function getApprovedMessages() {
 }
 
 export async function GuestMessages({ slug }: { slug: string }) {
-  const [messages, layout, tokens] = await Promise.all([getApprovedMessages(), getTextLayout("messages"), getTokenValues("")]);
+  const [messages, layout, tokens, WEDDING] = await Promise.all([getApprovedMessages(), getTextLayout("messages"), getTokenValues(""), getWeddingContent()]);
 
   return (
-    <Slide fullBleed>
+    <Slide bgImage={WEDDING.zoneImages.messages} overlay={overlayOf(layout)} frame={layout.bg} fullBleed>
       <TextArtboard page layout={layout} tokens={tokens} animate blocks={{ body: <MessagesBody messages={messages} slug={slug} /> }} />
     </Slide>
   );

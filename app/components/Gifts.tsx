@@ -38,7 +38,7 @@ export async function Gifts({ slug }: { slug: string }) {
   );
 
   return (
-    <Slide bgImage={WEDDING.zoneImages.gifts} overlay={overlayOf(layout)} fullBleed>
+    <Slide bgImage={WEDDING.zoneImages.gifts} overlay={overlayOf(layout)} frame={layout.bg} fullBleed>
       <TextArtboard page layout={layout} tokens={tokens} animate blocks={blocks} />
     </Slide>
   );

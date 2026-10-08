@@ -58,6 +58,9 @@ import { requestDesignImageUploadAction } from "./zone-actions";
 import { setItineraryStepIconAction } from "./content-actions";
 import { GALLERY_DRAG_TYPE } from "./GalleryPhotosPanel";
 import { LayersPanel } from "./LayersPanel";
+import { Hint } from "./Hint";
+import { BgMedia, isVideo, type BgFrame } from "@/app/components/BgMedia";
+import { clearZoneBackgroundAction, requestZoneImageUploadAction, saveZoneImageAction } from "./zone-actions";
 import {
   applyStyles,
   ARTBOARDS,
@@ -76,6 +79,7 @@ import {
   EXTENTS,
   extentOf,
   overlayOf,
+  bgFrameOf,
   FRAMES,
   EFFECTS,
   type EffectKey,
@@ -112,6 +116,7 @@ type Drag = {
   id: string;
   mode: "move" | "resize" | "rotate" | "group";
   group?: { id: string; x: number; y: number }[];
+  box?: { l: number; t: number; r: number; b: number }; // caja del grupo al empezar (px de la mesa)
   sx: number;
   sy: number;
   startX: number;
@@ -124,7 +129,7 @@ type Drag = {
 type Guides = { x?: number; y?: number; label?: { x: number; y: number; text: string } };
 type Popover = null | "style" | "tokens" | "color" | "advanced" | "menu" | "add";
 // Lo que el panel de la galería le pide al lienzo.
-export type EditorApi = { place: (item: GalleryItem) => void; unplace: (key: string) => void; manual: () => void };
+export type EditorApi = { place: (item: GalleryItem) => void; unplace: (key: string) => void; manual: () => void; restoreOriginal: () => void };
 
 // Vista que tapa el lienzo (el sobre cerrado). Mientras se ve, los textos no se editan.
 export type CanvasCover = {
@@ -185,6 +190,8 @@ export function ArtboardEditor({
   apiRef,
   onOpenLibrary,
   imageLibrary = [],
+  bgZone,
+  onBackgroundChange,
 }: {
   section: LayoutSection;
   initialLayout: TextLayout;
@@ -201,6 +208,8 @@ export function ArtboardEditor({
   apiRef?: React.Ref<EditorApi>;
   onOpenLibrary?: () => void; // Galería: "+ Agregar" lleva a la biblioteca de fotos
   imageLibrary?: { src: string; alt: string }[]; // fotos ya subidas, para reutilizar
+  bgZone?: string; // clave del fondo de la sección (si se puede cambiar)
+  onBackgroundChange?: (url: string | null) => void;
 }) {
   const cfg = sectionConfig(section);
   const BOARDS = cfg.boards;
@@ -453,12 +462,13 @@ export function ArtboardEditor({
   }
 
   // Bordes y centros de lo demás (y de la mesa), para el imán al cambiar el tamaño.
-  function edgesExcept(id: string) {
+  function edgesExcept(id: string | string[]) {
+    const skip = new Set(Array.isArray(id) ? id : [id]);
     const xs = [0, A.w / 2, A.w], ys = [0, A.h / 2, A.h];
     const b = boardRef.current?.getBoundingClientRect();
     if (b && k) {
       for (const [eid, node] of elRefs.current) {
-        if (eid === id) continue;
+        if (skip.has(eid)) continue;
         const r = node.getBoundingClientRect();
         if (!r.width && !r.height) continue;
         const l = (r.left - b.left) / k, t = (r.top - b.top) / k, w = r.width / k, h = r.height / k;
@@ -473,6 +483,7 @@ export function ArtboardEditor({
     e.stopPropagation();
     e.preventDefault();
     if (editing && editing.id !== el.id) finishEdit();
+    setBgPicked(false);
     setPopover(null);
     areaRef.current?.focus({ preventScroll: true });
     // Shift+clic suma o quita el objeto de la selección.
@@ -484,7 +495,20 @@ export function ArtboardEditor({
     if (mode === "move" && sel.length > 1 && sel.includes(el.id)) {
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
       const group = layout[orientation].filter((x) => sel.includes(x.id) && !x.locked).map((x) => ({ id: x.id, x: x.x, y: x.y }));
-      drag.current = { id: el.id, mode: "group", group, sx: 0, sy: 0, startX: e.clientX, startY: e.clientY, el: { ...el }, h0: 0, edges: { xs: [], ys: [] }, before: layout };
+      // Caja que envuelve al grupo, para alinearla con el resto (imán).
+      const bb = boardRef.current?.getBoundingClientRect();
+      let box: Drag["box"];
+      if (bb && k) {
+        const rs = sel.map((id) => elRefs.current.get(id)?.getBoundingClientRect()).filter((r): r is DOMRect => !!r);
+        if (rs.length)
+          box = {
+            l: (Math.min(...rs.map((r) => r.left)) - bb.left) / k,
+            t: (Math.min(...rs.map((r) => r.top)) - bb.top) / k,
+            r: (Math.max(...rs.map((r) => r.right)) - bb.left) / k,
+            b: (Math.max(...rs.map((r) => r.bottom)) - bb.top) / k,
+          };
+      }
+      drag.current = { id: el.id, mode: "group", group, box, sx: 0, sy: 0, startX: e.clientX, startY: e.clientY, el: { ...el }, h0: 0, edges: edgesExcept(sel), before: layout };
       return;
     }
     setSelectedId(el.id);
@@ -509,12 +533,28 @@ export function ArtboardEditor({
       setGuides(s.g);
       changes = { x: Math.round(s.x), y: Math.round(s.y) };
     } else if (d.mode === "group") {
+      // Imán: el borde o el centro del grupo se pega a bordes y centros cercanos.
+      let gx = dx, gy = dy;
+      const guide: Guides = {};
+      if (d.box) {
+        const tol = 6 / k;
+        const near = (vals: number[], list: number[]) => {
+          for (const v of vals) for (const c of list) if (Math.abs(v - c) < tol) return { v, c };
+          return null;
+        };
+        const { l, t, r, b } = d.box;
+        const sx = near([l + dx, (l + r) / 2 + dx, r + dx], d.edges.xs);
+        if (sx) { gx = dx + (sx.c - sx.v); guide.x = sx.c; }
+        const sy = near([t + dy, (t + b) / 2 + dy, b + dy], d.edges.ys);
+        if (sy) { gy = dy + (sy.c - sy.v); guide.y = sy.c; }
+      }
+      setGuides(guide);
       const g = new Map(d.group!.map((p) => [p.id, p]));
       setLayout((prev) => {
         const next = clone(prev);
         next[orientation] = next[orientation].map((x) => {
           const p = g.get(x.id);
-          return p ? { ...x, x: Math.round(p.x + dx), y: Math.round(p.y + dy) } : x;
+          return p ? { ...x, x: Math.round(p.x + gx), y: Math.round(p.y + gy) } : x;
         });
         return next;
       });
@@ -809,6 +849,7 @@ export function ArtboardEditor({
   /* ---------- Recuadro de selección ---------- */
 
   function startMarquee(e: RPointerEvent) {
+    setBgPicked(false);
     setPopover(null);
     finishEdit();
     if (!e.shiftKey) setSelectedId(null);
@@ -887,6 +928,37 @@ export function ArtboardEditor({
     setPopover(null);
   }
 
+  /* ---------- Capas propias ---------- */
+
+  // Aplica un orden (de adelante hacia atrás) y la capa de cada objeto. El orden
+  // es de este formato; la capa vale para celular y PC.
+  function arrangeLayers(topFirst: { id: string; layer: string }[], extra?: (l: TextLayout) => void) {
+    const z = new Map(topFirst.map((r, i) => [r.id, topFirst.length - i]));
+    const layerOf = new Map(topFirst.map((r) => [r.id, r.layer]));
+    const next = clone(layout);
+    next[orientation] = next[orientation].map((e) => (z.has(e.id) ? { ...e, z: z.get(e.id)!, layer: layerOf.get(e.id)! } : e));
+    const other: Orientation = orientation === "portrait" ? "landscape" : "portrait";
+    next[other] = next[other].map((e) => (layerOf.has(e.id) ? { ...e, layer: layerOf.get(e.id)! } : e));
+    extra?.(next);
+    commit(next, layout);
+  }
+
+  // Capa nueva; si hay objetos seleccionados, quedan adentro (juntos, donde
+  // estaba el de más adelante).
+  function createLayer() {
+    const id = `l-${Math.random().toString(36).slice(2, 10)}`;
+    const name = `Capa ${(layout.layers?.length ?? 0) + 1}`;
+    const ordered = [...elements].sort((a, b) => b.z - a.z).map((e) => ({ id: e.id, layer: e.layer }));
+    const picked = ordered.filter((r) => sel.includes(r.id));
+    const rest = ordered.filter((r) => !sel.includes(r.id));
+    const at = picked.length ? ordered.findIndex((r) => r.id === picked[0].id) - 0 : 0;
+    const before = ordered.slice(0, at).filter((r) => !sel.includes(r.id)).length;
+    rest.splice(before, 0, ...picked.map((r) => ({ ...r, layer: id })));
+    arrangeLayers(rest, (l) => {
+      l.layers = [...(l.layers ?? []), { id, name }];
+    });
+  }
+
   function restack(id: string, front: boolean) {
     const list = layout[orientation];
     const z = front ? maxZ(list) + 1 : Math.min(0, ...list.map((e) => e.z)) - 1;
@@ -935,12 +1007,6 @@ export function ArtboardEditor({
     if (selectedId === id) setSelectedId(null);
   }
 
-  useImperativeHandle(apiRef, () => ({
-    place: (item) => placePhoto(item),
-    unplace: unplacePhoto,
-    // Fotos nuevas: quedan en la biblioteca hasta que se arrastran al lienzo.
-    manual: () => { if (!layout.manualPhotos) setLayout({ ...clone(layout), manualPhotos: true }); },
-  }));
 
   const [dropping, setDropping] = useState(false);
   const acceptsDrop = (e: React.DragEvent) => !!cfg.photos && e.dataTransfer.types.includes(GALLERY_DRAG_TYPE);
@@ -982,7 +1048,10 @@ export function ArtboardEditor({
   function restoreOriginal() {
     const photos = layout.portrait.filter((e) => e.id.startsWith("photo-")).map((e) => ({ key: e.ref, src: e.src, alt: e.text }));
     const steps = layout.portrait.filter((e) => /^step-.+-icon$/.test(e.id)).map((e) => ({ key: e.ref, icon: e.variant }));
-    const fresh = withDynamic(section, sanitizeLayout(section, null), { photos, steps });
+    const chapters = layout.portrait
+      .filter((e) => /^chap-.+-title$/.test(e.id))
+      .map((t) => ({ key: t.ref, image: layout.portrait.find((e) => e.id === `chap-${t.ref}-photo`)?.src ?? "", alt: "" }));
+    const fresh = withDynamic(section, sanitizeLayout(section, null), { photos, steps, chapters });
     // Los íconos de los pasos se conservan.
     for (const o of ["portrait", "landscape"] as Orientation[])
       fresh[o] = fresh[o].map((e) => (e.id.endsWith("-icon") && e.id.startsWith("step-") ? { ...e, variant: layout[o].find((x) => x.id === e.id)?.variant ?? e.variant } : e));
@@ -991,10 +1060,16 @@ export function ArtboardEditor({
     setPopover(null);
   }
 
-  const bgStyle: CSSProperties = {
-    background: background.color,
-    ...(background.image ? { backgroundImage: `url(${background.image})`, backgroundSize: "cover", backgroundPosition: "center" } : null),
-  };
+  useImperativeHandle(apiRef, () => ({
+    place: (item) => placePhoto(item),
+    unplace: unplacePhoto,
+    // Fotos nuevas: quedan en la biblioteca hasta que se arrastran al lienzo.
+    manual: () => { if (!layout.manualPhotos) setLayout({ ...clone(layout), manualPhotos: true }); },
+    restoreOriginal: () => restoreOriginal(),
+  }));
+
+  const bgStyle: CSSProperties = { background: background.color };
+  const bgNode = background.image ? <BgMedia src={background.image} frame={bgFrameOf(layout)} /> : null;
   const overlay = background.overlay ? (
     <div className="pointer-events-none absolute inset-0" style={{ background: "var(--color-bg)", opacity: overlayOf(layout) }} />
   ) : null;
@@ -1002,14 +1077,17 @@ export function ArtboardEditor({
   // Velo sobre la foto de fondo: mientras se arrastra el control queda una sola
   // entrada en el historial.
   const overlayDrag = useRef<TextLayout | null>(null);
-  function setOverlay(v: number) {
+  function setLive(next: Partial<TextLayout>) {
     if (!overlayDrag.current) overlayDrag.current = layout;
-    setLayout({ ...clone(layout), overlay: v });
+    setLayout({ ...clone(layout), ...next });
   }
-  function endOverlay() {
+  function endLive() {
     if (overlayDrag.current) record({ layout: overlayDrag.current, styles });
     overlayDrag.current = null;
   }
+  // El fondo se elige desde la capa "Fondo" (no se mueve con el puntero).
+  const [bgPicked, setBgPicked] = useState(false);
+  const bgSelected = bgPicked && sel.length === 0;
   const handle = 10 / (k || 1);
 
   return (
@@ -1051,25 +1129,6 @@ export function ArtboardEditor({
           </button>
           <button type="button" aria-label="Acercar" title="Acercar (Ctrl + rueda)" onClick={() => zoomStep(1)} disabled={zoom >= 4} className="px-1.5 py-1 text-neutral-600 hover:text-neutral-900 disabled:opacity-30"><ZoomIn size={14} /></button>
         </div>
-        {background.overlay && (
-          <label className="flex items-center gap-1.5 text-xs text-neutral-600" title="Velo del color de fondo sobre la foto: más alto, la foto se ve más suave y el texto se lee mejor">
-            Velo
-            <input
-              type="range"
-              min={0}
-              max={95}
-              step={5}
-              aria-label="Opacidad del velo sobre la foto de fondo"
-              value={Math.round(overlayOf(layout) * 100)}
-              onChange={(e) => setOverlay(Number(e.target.value) / 100)}
-              onPointerUp={endOverlay}
-              onKeyUp={endOverlay}
-              onBlur={endOverlay}
-              className="w-24 accent-neutral-900"
-            />
-            <span className="w-8 tabular-nums">{Math.round(overlayOf(layout) * 100)}%</span>
-          </label>
-        )}
         {cfg.extendable && (
           <select
             aria-label="Alto de la sección"
@@ -1161,7 +1220,6 @@ export function ArtboardEditor({
                     ))}
                   </div>
                 )}
-                <MenuItem onClick={restoreOriginal}>Volver al diseño original de esta sección</MenuItem>
               </div>
             )}
           </div>
@@ -1186,11 +1244,24 @@ export function ArtboardEditor({
             commit(next, layout);
           }}
           onToggleLock={toggleLock}
-          onReorder={(topFirst) => {
-            // El primero de la lista queda adelante de todo.
-            const z = new Map(topFirst.map((id, i) => [id, topFirst.length - i]));
+          onSetLocked={(ids, locked) => {
             const next = clone(layout);
-            next[orientation] = next[orientation].map((e) => (z.has(e.id) ? { ...e, z: z.get(e.id)! } : e));
+            for (const o of ["portrait", "landscape"] as Orientation[]) next[o] = next[o].map((e) => (ids.includes(e.id) ? { ...e, locked } : e));
+            commit(next, layout);
+          }}
+          background={bgZone ? { thumb: background.image ?? null, selected: bgSelected, onSelect: () => { setSel([]); finishEdit(); setBgPicked(true); } } : undefined}
+          layers={layout.layers ?? []}
+          onArrange={arrangeLayers}
+          onCreateLayer={createLayer}
+          onRenameLayer={(id, name) => {
+            const next = clone(layout);
+            next.layers = (next.layers ?? []).map((l) => (l.id === id ? { ...l, name: name.trim().slice(0, 40) || l.name } : l));
+            commit(next, layout);
+          }}
+          onDeleteLayer={(id) => {
+            const next = clone(layout);
+            next.layers = (next.layers ?? []).filter((l) => l.id !== id);
+            for (const o of ["portrait", "landscape"] as Orientation[]) next[o] = next[o].map((e) => (e.layer === id ? { ...e, layer: "" } : e));
             commit(next, layout);
           }}
         />
@@ -1203,6 +1274,18 @@ export function ArtboardEditor({
       <div className="absolute inset-x-0 top-0 flex min-h-[46px] flex-wrap items-center gap-1.5 border-b border-neutral-200 bg-white px-3 py-1.5 shadow-[0_1px_0_rgba(0,0,0,0.02)]">
         {cover && closed ? (
           <p className="text-xs text-neutral-500">{cover.hint}</p>
+        ) : bgSelected && bgZone ? (
+          <BgToolbar
+            image={background.image ?? null}
+            frame={bgFrameOf(layout)}
+            overlay={overlayOf(layout)}
+            zone={bgZone}
+            library={imageLibrary}
+            onChange={(url) => onBackgroundChange?.(url)}
+            onFrame={(f) => setLive({ bg: { ...bgFrameOf(layout), ...f } })}
+            onOverlay={(v) => setLive({ overlay: v })}
+            onEnd={endLive}
+          />
         ) : sel.length > 1 ? (
           <>
             <span className="mr-1 text-xs font-medium text-neutral-800" data-group-count>{sel.length} objetos seleccionados</span>
@@ -1215,7 +1298,7 @@ export function ArtboardEditor({
             <ToolButton label="Alinear abajo" onClick={() => alignGroup("bottom")}><AlignEndHorizontal size={15} /></ToolButton>
             <span className="mx-0.5 h-5 w-px bg-neutral-200" aria-hidden />
             <ToolButton label="Eliminar los seleccionados (Supr)" onClick={() => removeMany(sel)}><Trash2 size={14} /></ToolButton>
-            <span className="ml-1 text-[11px] text-neutral-400">Arrastrá cualquiera para moverlos juntos · Shift+clic suma o quita</span>
+            <Hint id="group" className="ml-1"><span className="text-[11px] text-neutral-400">Arrastrá cualquiera para moverlos juntos · Shift+clic suma o quita</span></Hint>
           </>
         ) : selected ? (
           <ContextToolbar
@@ -1248,9 +1331,9 @@ export function ArtboardEditor({
             onToggleLock={() => toggleLock(selected.id)}
           />
         ) : (
-          <p className="text-xs text-neutral-500">
+          <Hint id="canvas" className="w-full"><p className="text-xs text-neutral-500">
             Tocá un objeto para editarlo, Shift+clic o arrastrá un recuadro para elegir varios. Doble clic en un texto para escribir sobre él.
-          </p>
+          </p></Hint>
         )}
       </div>
       </div>
@@ -1268,7 +1351,8 @@ export function ArtboardEditor({
         className={`relative flex min-h-0 flex-1 overflow-auto bg-neutral-200/70 p-4 outline-none ${dropping ? "ring-4 ring-inset ring-blue-400" : ""}`}
         aria-label="Lienzo: tocá un elemento para seleccionarlo, arrastralo para moverlo, flechas para ajustar"
       >
-        <div className="relative m-auto shrink-0 shadow-lg" style={{ width: A.w * k, height: A.h * k, ...bgStyle }}>
+        <div className="relative m-auto shrink-0 overflow-hidden shadow-lg" style={{ width: A.w * k, height: A.h * k, ...bgStyle }} data-canvas-bg>
+          {bgNode}
           {overlay}
           {underlay && (
             <div className="pointer-events-none absolute left-0 top-0" style={{ width: A.w, height: A.h, transform: `scale(${k})`, transformOrigin: "0 0" }}>
@@ -1413,7 +1497,7 @@ export function ArtboardEditor({
           tokens={tokens}
           blocks={blocks}
           bgStyle={bgStyle}
-          overlay={overlay}
+          overlay={<>{bgNode}{overlay}</>}
           section={section}
         />
       )}
@@ -1825,6 +1909,144 @@ function Num({ label, value, step = 1, onChange }: { label: string; value: numbe
   );
 }
 
+/* ---------- Capa Fondo ---------- */
+
+// Fondo de la sección: imagen o video, encuadre (punto de enfoque y zoom) y velo.
+function BgToolbar({
+  image,
+  frame,
+  overlay,
+  zone,
+  library,
+  onChange,
+  onFrame,
+  onOverlay,
+  onEnd,
+}: {
+  image: string | null;
+  frame: BgFrame;
+  overlay: number;
+  zone: string;
+  library: { src: string; alt: string }[];
+  onChange: (url: string | null) => void;
+  onFrame: (f: Partial<BgFrame>) => void;
+  onOverlay: (v: number) => void;
+  onEnd: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function applyBg(url: string) {
+    setBusy(true);
+    await saveZoneImageAction(zone, url);
+    onChange(url);
+    setBusy(false);
+    setOpen(false);
+  }
+  async function upload(file: File) {
+    setError(null);
+    setBusy(true);
+    try {
+      const req = await requestZoneImageUploadAction(zone, file.name, file.type);
+      if (!req.uploadUrl || !req.publicUrl) return setError(req.error ?? "No se pudo preparar la subida.");
+      const put = await fetch(req.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+      if (!put.ok) return setError("No se pudo subir el archivo.");
+      await applyBg(req.publicUrl);
+    } catch {
+      setError("No se pudo subir el archivo. Revisá tu conexión.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  const slider = (label: string, value: number, min: number, max: number, step: number, set: (v: number) => void, fmt: (v: number) => string) => (
+    <label className="flex items-center gap-1.5 text-xs text-neutral-600">
+      {label}
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        aria-label={label}
+        value={value}
+        onChange={(e) => set(Number(e.target.value))}
+        onPointerUp={onEnd}
+        onKeyUp={onEnd}
+        onBlur={onEnd}
+        className="w-20 accent-neutral-900"
+      />
+      <span className="w-9 tabular-nums">{fmt(value)}</span>
+    </label>
+  );
+
+  return (
+    <>
+      <span className="mr-1 text-xs font-medium text-neutral-800">Fondo</span>
+      <div className="relative" data-popover>
+        <button type="button" onClick={() => setOpen((o) => !o)} className="flex h-8 items-center gap-1.5 rounded-md border border-neutral-300 px-2.5 text-xs hover:bg-neutral-50">
+          {busy ? <Loader2 size={13} className="animate-spin" /> : null}
+          {image ? (isVideo(image) ? "Video de fondo · cambiar" : "Imagen de fondo · cambiar") : "Poner imagen o video de fondo"}
+        </button>
+        {open && (
+          <div className="absolute left-0 top-full z-30 mt-1 w-80 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg">
+            <label className={`flex cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-neutral-300 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 ${busy ? "pointer-events-none opacity-50" : ""}`}>
+              Subir imagen o video (MP4, WebM)
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
+                className="hidden"
+                aria-label="Subir fondo"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) upload(f);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            <p className="mt-1 text-[11px] text-neutral-400">Video: corto y liviano (idealmente menos de 10 MB). Se reproduce sin sonido y en bucle.</p>
+            {library.length > 0 && (
+              <>
+                <p className="mb-1 mt-3 text-[11px] text-neutral-500">O reutilizá una foto ya subida:</p>
+                <ul className="grid max-h-36 grid-cols-5 gap-1 overflow-y-auto">
+                  {library.map((p) => (
+                    <li key={p.src}>
+                      <button type="button" onClick={() => applyBg(p.src)} aria-label={`Usar de fondo: ${p.alt || "foto"}`} className="block aspect-square w-full overflow-hidden rounded border border-neutral-200 hover:opacity-80">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={p.src} alt="" className="h-full w-full object-cover" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+          </div>
+        )}
+      </div>
+      {image && (
+        <>
+          <button
+            type="button"
+            onClick={async () => {
+              if (!window.confirm("¿Quitar el fondo de esta sección?")) return;
+              await clearZoneBackgroundAction(zone);
+              onChange(null);
+            }}
+            className="h-8 rounded-md px-2 text-xs text-neutral-600 hover:bg-neutral-100"
+          >
+            Quitar
+          </button>
+          <span className="mx-0.5 h-5 w-px bg-neutral-200" aria-hidden />
+          {slider("Horizontal", frame.x, 0, 100, 1, (v) => onFrame({ x: v }), (v) => `${v}%`)}
+          {slider("Vertical", frame.y, 0, 100, 1, (v) => onFrame({ y: v }), (v) => `${v}%`)}
+          {slider("Zoom", frame.zoom, 1, 3, 0.05, (v) => onFrame({ zoom: v }), (v) => `${Math.round(v * 100)}%`)}
+          {slider("Velo", Math.round(overlay * 100), 0, 95, 5, (v) => onOverlay(v / 100), (v) => `${v}%`)}
+        </>
+      )}
+    </>
+  );
+}
+
 /* ---------- + Agregar ---------- */
 
 function AddMenu({
@@ -1961,6 +2183,17 @@ function AddMenu({
           </p>
           {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
 
+          <p className={head}>Otros</p>
+          <button
+            type="button"
+            disabled={full}
+            onClick={() => onAdd("countdown")}
+            className="flex w-full items-center gap-2 rounded-md border border-neutral-200 px-2.5 py-2 text-left text-sm hover:bg-neutral-50 disabled:opacity-40"
+          >
+            <span className="font-semibold tabular-nums">12 : 05 : 30</span>
+            <span className="text-neutral-600">Cuenta regresiva a la boda</span>
+          </button>
+
           <p className={head}>Formas</p>
           <div className="grid grid-cols-4 gap-1.5">
             {(Object.keys(SHAPES) as (keyof typeof SHAPES)[]).map((k) => (
@@ -2012,8 +2245,8 @@ function tokenChip(key: string, tokens: TokenValues) {
   chip.contentEditable = "false";
   chip.dataset.token = key;
   chip.textContent = tokens[key] || `[${TOKEN_HELP[key] ?? key}]`;
-  chip.title = `Dato: ${TOKEN_HELP[key] ?? key}`;
-  chip.style.cssText = "background:rgba(37,99,235,.13);border-radius:.15em;box-shadow:0 0 0 .04em rgba(37,99,235,.35)";
+  chip.title = `Dato automático (${TOKEN_HELP[key] ?? key}). Tocalo para convertirlo en texto y editarlo.`;
+  chip.style.cssText = "background:rgba(37,99,235,.13);border-radius:.15em;box-shadow:0 0 0 .04em rgba(37,99,235,.35);cursor:pointer";
   return chip;
 }
 
@@ -2095,6 +2328,20 @@ function InlineText({
       aria-label="Texto"
       data-inline-editor
       onInput={emit}
+      onClick={(e) => {
+        // Los datos automáticos (fichas) se vuelven texto común para poder editarlos.
+        const chip = (e.target as HTMLElement).closest<HTMLElement>("[data-token]");
+        if (!chip || !ref.current?.contains(chip)) return;
+        const text = document.createTextNode(chip.textContent ?? "");
+        chip.replaceWith(text);
+        const sel = window.getSelection();
+        const r = document.createRange();
+        r.setStartAfter(text);
+        r.collapse(true);
+        sel?.removeAllRanges();
+        sel?.addRange(r);
+        emit();
+      }}
       onPointerDown={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {

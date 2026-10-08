@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { COLUMN_MAX_WIDTH, type DesktopBackground } from "@/lib/desktopBackground";
+import { BgMedia, isVideo, type BgFrame } from "./BgMedia";
 
 // Una sección de la invitación. Se diseña para celular: en pantallas anchas
 // se ve como una columna centrada y alrededor va el fondo para PC. Qué fondo
@@ -11,19 +12,21 @@ export function Slide({
   bgImage,
   fullBleed = false,
   overlay = 0.4,
+  frame,
 }: {
   children: ReactNode;
   className?: string;
   bgImage?: string | null;
   fullBleed?: boolean;
   overlay?: number; // velo del color de fondo sobre la foto (0 a 1)
+  frame?: BgFrame; // encuadre del fondo
 }) {
   return (
     <section className="relative flex min-h-dvh flex-col items-center overflow-hidden">
       {/* Fondo para PC (a los costados de la columna) */}
       <div aria-hidden className="desk-backdrop absolute inset-0 overflow-hidden">
         <div className="desk-color absolute inset-0" />
-        {bgImage && (
+        {bgImage && !isVideo(bgImage) && (
           <div className="desk-blur absolute inset-0">
             <div className="absolute -inset-10 bg-cover bg-center" style={{ backgroundImage: `url(${bgImage})`, filter: "blur(28px) saturate(0.9)" }} />
             <div className="absolute inset-0 bg-[var(--color-bg)] opacity-40" />
@@ -36,7 +39,7 @@ export function Slide({
       >
         {bgImage && (
           <>
-            <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${bgImage})` }} />
+            <BgMedia src={bgImage} frame={frame} />
             <div className="absolute inset-0 bg-[var(--color-bg)]" style={{ opacity: overlay }} />
           </>
         )}

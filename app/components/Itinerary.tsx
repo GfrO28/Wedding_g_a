@@ -9,7 +9,7 @@ export async function Itinerary() {
   const [WEDDING, layout, tokens] = await Promise.all([getWeddingContent(), getTextLayout("itinerary"), getTokenValues("")]);
   if (WEDDING.itinerary.length < 1) return null;
   return (
-    <Slide bgImage={WEDDING.zoneImages.itinerary} overlay={overlayOf(layout)} fullBleed>
+    <Slide bgImage={WEDDING.zoneImages.itinerary} overlay={overlayOf(layout)} frame={layout.bg} fullBleed>
       <TextArtboard page layout={layout} tokens={tokens} animate />
     </Slide>
   );

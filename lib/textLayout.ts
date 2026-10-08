@@ -75,7 +75,7 @@ export type TextElement = {
   // con lo que tiene adentro · photo: foto con borde · map: mapa del lugar
   // `ref` · link: texto que abre el mapa del lugar `ref`.
   // shape: forma de color (variant = tipo) · ornament: adorno (variant = cuál).
-  kind: "text" | "block" | "panel" | "photo" | "map" | "link" | "shape" | "ornament";
+  kind: "text" | "block" | "panel" | "photo" | "map" | "link" | "shape" | "ornament" | "countdown";
   text: string; // en photo: texto alternativo
   x: number; // centro, en px de la mesa
   y: number; // centro (en los paneles: borde de arriba)
@@ -90,6 +90,7 @@ export type TextElement = {
   locked: boolean; // bloqueado: no se mueve ni cambia de tamaño en el editor
   removed: boolean; // eliminado del diseño (los fijos se pueden recuperar)
   effect: EffectKey; // fotos: efecto al pasar el mouse o tocarla
+  layer: string; // capa (grupo) a la que pertenece, o "" si está suelto
   fontSize: number;
   font: FontKey;
   color: string;
@@ -117,9 +118,12 @@ export type TextLayout = Record<Orientation, TextElement[]> & {
   overlay?: number;
   manualPhotos?: boolean;
   arrange?: string; // Itinerario: acomodo automático de los pasos (ARRANGEMENTS)
+  bg?: { x: number; y: number; zoom: number }; // encuadre del fondo (punto de enfoque en % y zoom)
+  layers?: { id: string; name: string }[]; // capas creadas por quien diseña (agrupan objetos)
 };
 
 export const DEFAULT_OVERLAY = 0.4;
+export const bgFrameOf = (l: TextLayout) => l.bg ?? { x: 50, y: 50, zoom: 1 };
 export const overlayOf = (l: TextLayout) => l.overlay ?? DEFAULT_OVERLAY;
 
 export const FRAMES = {
@@ -151,7 +155,7 @@ export const ORNAMENT_KEYS = [
   "flame", "bird",
   "divider", "rings", "heart", "flower", "flower2", "leaf", "sprout", "sparkles", "star", "feather", "gem", "crown",
 ] as const;
-const CUSTOM_KINDS = ["text", "photo", "shape", "ornament"] as const;
+const CUSTOM_KINDS = ["text", "photo", "shape", "ornament", "countdown"] as const;
 export type CustomKind = (typeof CUSTOM_KINDS)[number];
 const CUSTOM_ID = /^x-[a-z0-9]{4,16}$/;
 export const MAX_CUSTOM = 40;
@@ -168,6 +172,8 @@ export function customTemplate(kind: CustomKind, id: string, x = 0, y = 0): Text
       return el({ ...common, kind: "shape", name: "Forma", text: "", w: 240, h: 240, variant: "rect", opacity: 0.85 });
     case "ornament":
       return el({ ...common, kind: "ornament", name: "Adorno", text: "", w: 180, h: 180, variant: "flower" });
+    case "countdown":
+      return el({ ...common, kind: "countdown", name: "Cuenta regresiva", text: "", w: 600, fontSize: 30, weight: 600, color: "var(--color-fg)" });
     default:
       return el({ ...common, kind: "text", name: "Texto", text: "Escribí acá", w: 500, color: "var(--color-fg)", lineHeight: 1.3 });
   }
@@ -364,7 +370,7 @@ export function typeStyle(el: TextElement): Record<string, string> {
 const base = {
   kind: "text" as const, align: "center" as const, letterSpacing: 0, lineHeight: 1.15,
   weight: 400, italic: false, uppercase: false, rotation: 0, hidden: false, style: null,
-  ref: "", src: "", frame: "none" as FrameKey, variant: "", z: 0, opacity: 1, locked: false, removed: false, effect: "none" as EffectKey,
+  ref: "", src: "", frame: "none" as FrameKey, variant: "", z: 0, opacity: 1, locked: false, removed: false, effect: "none" as EffectKey, layer: "",
 };
 type Spec = Partial<TextElement> & Pick<TextElement, "id" | "name" | "text" | "fontSize" | "font" | "color">;
 const el = (s: Spec & { x?: number; y?: number; w?: number; h?: number }): TextElement => ({ ...base, x: 0, y: 0, w: 600, h: 0, ...s });
@@ -411,6 +417,7 @@ export type SectionConfig = {
   extendable?: boolean; // puede medir más de una pantalla
   photos?: boolean; // tiene una foto por cada imagen de la galería (withDynamic)
   steps?: boolean; // tiene un grupo de objetos por cada paso del itinerario (withDynamic)
+  chapters?: boolean; // tiene un grupo de objetos por cada capítulo de la historia (withDynamic)
 };
 
 // Cada tarjeta de "El evento": recuadro, nombre, hora, salón y dirección, sueltos.
@@ -535,7 +542,18 @@ export const SECTIONS = {
       ],
     },
   },
-  story: { label: "Nuestra historia", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, extendable: true, defaults: layoutOf(T("Nuestra historia", 110, 70), B({ y: 580, h: 860 }, { y: 425, h: 640, w: 768 })) },
+  countdown: {
+    label: "Cuenta regresiva", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, extendable: true,
+    defaults: layoutOf(
+      T("Faltan", 420, 260),
+      pair(
+        el({ kind: "block", id: "countdown", name: "Cuenta regresiva", text: "", x: 384, y: 560, w: 640, fontSize: 40, font: "inter", color: "var(--color-fg)", weight: 600 }),
+        el({ kind: "block", id: "countdown", name: "Cuenta regresiva", text: "", x: 512, y: 400, w: 700, fontSize: 30, font: "inter", color: "var(--color-fg)", weight: 600 }),
+      ),
+      P("countdownDate", "Fecha", "{fecha}", { y: 700, fs: 30 }, { y: 520, fs: 18 }),
+    ),
+  },
+  story: { label: "Nuestra historia", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, extendable: true, chapters: true, defaults: layoutOf(T("Nuestra historia", 110, 70)) },
   event: {
     label: "El evento", mode: "artboard", boards: ARTBOARDS, extendable: true,
     tokens: [...COMMON_TOKENS, "vestimenta", "evento1", "hora1", "salon1", "direccion1", "evento2", "hora2", "salon2", "direccion2"],
@@ -659,6 +677,7 @@ function cleanElement(d: TextElement, s: Record<string, unknown>, A: Board): Tex
     locked: typeof s.locked === "boolean" ? s.locked : d.locked,
     removed: s.removed === true,
     effect: typeof s.effect === "string" && s.effect in EFFECTS ? (s.effect as EffectKey) : d.effect,
+    layer: typeof s.layer === "string" && /^l-[a-z0-9]{4,16}$/.test(s.layer) ? s.layer : "",
     src: "",
     style: null,
   };
@@ -723,6 +742,13 @@ export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayo
         out[o].push(cleanElement(stepTemplate(m[1], m[2] as StepPart), s, A));
       }
     }
+    if (cfg.chapters) {
+      for (const s of list) {
+        const m = s && typeof s.id === "string" ? CHAP_ID.exec(s.id) : null;
+        if (!m || out[o].some((e) => e.id === s.id)) continue;
+        out[o].push(cleanElement(chapterTemplate(m[1], m[2] as ChapterPart), s, A));
+      }
+    }
     // Objetos agregados: textos, imágenes, formas y adornos.
     let custom = 0;
     for (const s of list) {
@@ -757,6 +783,21 @@ export function sanitizeLayout(section: LayoutSection, input: unknown): TextLayo
         Object.assign(link, { x: link.x - half, w: waze.w });
       }
     }
+  }
+  // Capas propias: solo quedan las válidas, y los objetos de capas que no existen quedan sueltos.
+  const layersIn = (src as { layers?: unknown }).layers;
+  if (Array.isArray(layersIn)) {
+    out.layers = layersIn
+      .filter((l): l is { id: string; name: unknown } => !!l && typeof l === "object" && typeof (l as { id?: unknown }).id === "string" && /^l-[a-z0-9]{4,16}$/.test((l as { id: string }).id))
+      .slice(0, 20)
+      .map((l) => ({ id: l.id, name: typeof l.name === "string" && l.name.trim() ? l.name.trim().slice(0, 40) : "Capa" }));
+  }
+  const layerIds = new Set((out.layers ?? []).map((l) => l.id));
+  for (const o of ["portrait", "landscape"] as Orientation[]) out[o] = out[o].map((e) => (e.layer && !layerIds.has(e.layer) ? { ...e, layer: "" } : e));
+  const bgIn = (src as { bg?: unknown }).bg;
+  if (bgIn && typeof bgIn === "object") {
+    const b = bgIn as Record<string, unknown>;
+    out.bg = { x: clamp(b.x, 0, 100, 50), y: clamp(b.y, 0, 100, 50), zoom: clamp(b.zoom, 1, 3, 1) };
   }
   const ov = (src as { overlay?: unknown }).overlay;
   if (cfg.photos && (src as { manualPhotos?: unknown }).manualPhotos === true) out.manualPhotos = true;
@@ -876,7 +917,93 @@ export function arrangeSteps(layout: TextLayout, arrange: string, steps: StepIte
   return out;
 }
 
-export type DynamicItems = { photos?: GalleryItem[]; steps?: StepItem[] };
+export type DynamicItems = { photos?: GalleryItem[]; steps?: StepItem[]; chapters?: ChapterItem[] };
+
+/* ---------- Capítulos de la historia ---------- */
+
+export type ChapterItem = { key: string; image: string; alt: string };
+type ChapterPart = "photo" | "year" | "title" | "text";
+const CHAPTER_PARTS: ChapterPart[] = ["photo", "year", "title", "text"];
+const CHAP_ID = /^chap-([A-Za-z0-9]{1,60})-(photo|year|title|text)$/;
+const PART_NAME: Record<ChapterPart, string> = { photo: "foto", year: "año", title: "título", text: "texto" };
+
+function chapterTemplate(key: string, part: ChapterPart): TextElement {
+  const id = `chap-${key}-${part}`;
+  const base = { id, x: 0, y: 0, font: "inter" as FontKey, ref: key, color: "var(--color-muted)" };
+  switch (part) {
+    case "photo":
+      return el({ ...base, kind: "photo", name: "Foto", text: "", w: 600, h: 400, fontSize: 16, frame: "rounded", color: "var(--color-fg)" });
+    case "year":
+      return el({ ...base, kind: "text", name: "Año", text: `{anio_${key}}`, w: 600, fontSize: 26, uppercase: true, letterSpacing: 0.2 });
+    case "title":
+      return el({ ...base, kind: "text", name: "Título", text: `{cap_${key}}`, w: 660, fontSize: 46, font: "playfair", color: "var(--color-fg)", lineHeight: 1.2 });
+    default:
+      return el({ ...base, kind: "text", name: "Texto", text: `{texto_${key}}`, w: 660, fontSize: 28, lineHeight: 1.5 });
+  }
+}
+
+// Lugar inicial del capítulo número i: uno debajo del otro.
+function chapterSlot(o: Orientation, i: number, part: ChapterPart): Partial<TextElement> {
+  const P = o === "portrait";
+  const { dx, dy } = boardShift(o);
+  const cx = (P ? 384 : 512) + dx;
+  const top = (P ? 230 : 160) + dy + i * (P ? 1000 : 560);
+  const s = P ? 1 : 0.55;
+  const y = { photo: 230, year: 470, title: 530, text: 660 }[part];
+  return { x: cx, y: top + y * s, ...(part === "photo" ? { w: 600 * s, h: 400 * s } : { w: (part === "year" ? 600 : 660) * s }), fontSize: { photo: 16, year: 26, title: 46, text: 28 }[part] * s };
+}
+
+// Capítulos: un grupo de objetos por capítulo (foto, año, título y texto).
+// Los nuevos van a continuación del anterior tal como quedó; los textos salen
+// de los datos del capítulo y la foto, de su imagen.
+function withChapters(section: LayoutSection, layout: TextLayout, chapters: ChapterItem[]): TextLayout {
+  const keys = new Set(chapters.map((c) => c.key));
+  const out: TextLayout = { ...layout };
+  const cfg = sectionConfig(section);
+  const extent = { portrait: extentOf(layout, "portrait"), landscape: extentOf(layout, "landscape") };
+  for (const o of ["portrait", "landscape"] as Orientation[]) {
+    const kept = layout[o]
+      .filter((e) => !e.id.startsWith("chap-") || keys.has(e.ref || (CHAP_ID.exec(e.id)?.[1] ?? "")))
+      .map((e) => ({ ...e }));
+    let added = false;
+    chapters.forEach((c, i) => {
+      const prev = i > 0 ? chapters[i - 1].key : null;
+      for (const part of CHAPTER_PARTS) {
+        const id = `chap-${c.key}-${part}`;
+        let e = kept.find((x) => x.id === id);
+        // Sin imagen, el capítulo no tiene foto.
+        if (part === "photo" && !c.image) {
+          if (e) kept.splice(kept.indexOf(e), 1);
+          continue;
+        }
+        if (!e) {
+          const p = prev ? kept.find((x) => x.id === `chap-${prev}-${part}`) : undefined;
+          const slot = chapterSlot(o, i, part), prevSlot = chapterSlot(o, i - 1, part);
+          e = p
+            ? { ...p, id, ref: c.key, text: chapterTemplate(c.key, part).text, x: p.x + (slot.x! - prevSlot.x!), y: p.y + (slot.y! - prevSlot.y!), locked: false, removed: false }
+            : { ...chapterTemplate(c.key, part), ...slot };
+          kept.push(e);
+          added = true;
+        }
+        if (part === "photo") {
+          e.src = c.image;
+          if (!e.text) e.text = c.alt;
+        }
+        e.name = `Capítulo ${i + 1} · ${PART_NAME[part]}`;
+      }
+    });
+    out[o] = kept;
+    // La sección se alarga si los capítulos nuevos no entran.
+    if (added || !layout.extent) {
+      const H = cfg.boards[o].h;
+      const bottom = Math.max(0, ...kept.filter((e) => e.id.startsWith("chap-")).map((e) => e.y + (e.kind === "photo" ? e.h / 2 : 120) + 60));
+      const need = EXTENTS.find((x) => x * H >= bottom) ?? EXTENTS[EXTENTS.length - 1];
+      extent[o] = Math.max(extent[o], need);
+    }
+  }
+  out.extent = extent;
+  return out;
+}
 
 // Pasos del itinerario: un grupo de objetos por paso. Los pasos nuevos se
 // ubican con la versión elegida; los borrados desaparecen.
@@ -937,6 +1064,7 @@ function withSteps(layout: TextLayout, steps: StepItem[]): TextLayout {
 export function withDynamic(section: LayoutSection, layout: TextLayout, items: DynamicItems): TextLayout {
   const cfg = sectionConfig(section);
   if (cfg.steps) return withSteps(layout, items.steps ?? []);
+  if (cfg.chapters) return withChapters(section, layout, items.chapters ?? []);
   if (!cfg.photos) return layout;
   const photos = items.photos ?? [];
   const out: TextLayout = { ...layout };

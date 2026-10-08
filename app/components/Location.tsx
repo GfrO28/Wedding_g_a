@@ -8,7 +8,7 @@ import { TextArtboard } from "./TextArtboard";
 export async function Location() {
   const [WEDDING, layout, tokens] = await Promise.all([getWeddingContent(), getTextLayout("location"), getTokenValues("")]);
   return (
-    <Slide bgImage={WEDDING.zoneImages.location} overlay={overlayOf(layout)} fullBleed>
+    <Slide bgImage={WEDDING.zoneImages.location} overlay={overlayOf(layout)} frame={layout.bg} fullBleed>
       <TextArtboard page layout={layout} tokens={tokens} animate />
     </Slide>
   );

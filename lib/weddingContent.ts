@@ -33,6 +33,11 @@ export type Hotel = {
 
 export const ZONE_IMAGE_KEYS = [
   "hero",
+  "countdown",
+  "story",
+  "gallery",
+  "rsvp",
+  "messages",
   "blessing",
   "event",
   "itinerary",
@@ -47,6 +52,10 @@ export type ZoneImageKey = (typeof ZONE_IMAGE_KEYS)[number];
 export const ZONE_TOGGLE_KEYS = [
   "intro",
   "hero",
+  "countdown",
+  "rsvp",
+  "messages",
+  "footer",
   "blessing",
   "story",
   "event",
@@ -152,7 +161,8 @@ export async function getWeddingContent(): Promise<WeddingContent> {
       ZONE_IMAGE_KEYS.map((key) => [key, map[`zoneBg_${key}`] ?? null]),
     ) as Record<ZoneImageKey, string | null>,
     zoneEnabled: Object.fromEntries(
-      ZONE_TOGGLE_KEYS.map((key) => [key, map[`zoneEnabled_${key}`] !== "false"]),
+      // La cuenta regresiva es una sección nueva: arranca sin agregar.
+      ZONE_TOGGLE_KEYS.map((key) => [key, key === "countdown" ? map[`zoneEnabled_${key}`] === "true" : map[`zoneEnabled_${key}`] !== "false"]),
     ) as Record<ZoneToggleKey, boolean>,
   };
 }

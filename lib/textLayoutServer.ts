@@ -15,6 +15,7 @@ import {
   withDynamic,
   stepKey,
   type StepItem,
+  type ChapterItem,
   type LayoutSection,
   type TextLayout,
   type TokenValues,
@@ -30,6 +31,11 @@ function parse(raw: string | undefined): unknown {
 }
 
 // Pasos del itinerario, con la clave que usan sus objetos en el diseño.
+async function getChapters(): Promise<ChapterItem[]> {
+  const w = await getWeddingContent();
+  return w.story.map((c) => ({ key: stepKey(c.id), image: c.image, alt: c.title }));
+}
+
 async function getSteps(): Promise<StepItem[]> {
   const w = await getWeddingContent();
   return w.itinerary.map((s) => ({ key: stepKey(s.id), icon: s.icon }));
@@ -40,7 +46,11 @@ async function getSteps(): Promise<StepItem[]> {
 export async function getTextLayout(section: LayoutSection): Promise<TextLayout> {
   const map = await getSettingsMap();
   const cfg = sectionConfig(section);
-  const items = { photos: cfg.photos ? await getGalleryImages() : [], steps: cfg.steps ? await getSteps() : [] };
+  const items = {
+    photos: cfg.photos ? await getGalleryImages() : [],
+    steps: cfg.steps ? await getSteps() : [],
+    chapters: cfg.chapters ? await getChapters() : [],
+  };
   const layout = withDynamic(section, sanitizeLayout(section, parse(map[layoutSettingKey(section)])), items);
   return applyStyles(layout, sanitizeStyles(parse(map[STYLES_KEY])));
 }
@@ -52,8 +62,8 @@ export async function getEditorLayouts(): Promise<{
   drafts: Record<LayoutSection, TextLayout>;
   styles: { published: TextStyle[]; draft: TextStyle[] };
 }> {
-  const [map, photos, steps] = await Promise.all([getSettingsMap(), getGalleryImages(), getSteps()]);
-  const items = { photos, steps };
+  const [map, photos, steps, chapters] = await Promise.all([getSettingsMap(), getGalleryImages(), getSteps(), getChapters()]);
+  const items = { photos, steps, chapters };
   const published = {} as Record<LayoutSection, TextLayout>;
   const drafts = {} as Record<LayoutSection, TextLayout>;
   for (const s of LAYOUT_SECTIONS) {
@@ -92,6 +102,7 @@ export async function getTokenValues(guestName: string): Promise<TokenValues> {
     lugar2: `${w.reception.name}: ${w.reception.venue}`,
     direccion1: w.ceremony.address,
     direccion2: w.reception.address,
+    fechaISO: w.weddingDateISO,
     mapa1: w.ceremony.mapUrl,
     mapa2: w.reception.mapUrl,
     // Waze abre la app si está instalada (si no, su web) y busca la dirección.
@@ -103,6 +114,8 @@ export async function getTokenValues(guestName: string): Promise<TokenValues> {
     evento2: w.reception.name,
     hora2: w.reception.time,
     salon2: w.reception.venue,
+    // Año, título y texto de cada capítulo de la historia.
+    ...Object.fromEntries(w.story.flatMap((c) => [[`anio_${stepKey(c.id)}`, c.year], [`cap_${stepKey(c.id)}`, c.title], [`texto_${stepKey(c.id)}`, c.text]])),
     // Hora y nombre de cada paso del itinerario.
     ...Object.fromEntries(w.itinerary.flatMap((s) => [[`hora_${stepKey(s.id)}`, s.time], [`paso_${stepKey(s.id)}`, s.label]])),
   };

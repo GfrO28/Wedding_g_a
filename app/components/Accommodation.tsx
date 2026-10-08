@@ -10,7 +10,7 @@ export async function Accommodation() {
   if (WEDDING.accommodation.length < 1) return null;
 
   return (
-    <Slide bgImage={WEDDING.zoneImages.accommodation} overlay={overlayOf(layout)} fullBleed>
+    <Slide bgImage={WEDDING.zoneImages.accommodation} overlay={overlayOf(layout)} frame={layout.bg} fullBleed>
       <TextArtboard page layout={layout} tokens={tokens} animate blocks={{ body: <AccommodationBody hotels={WEDDING.accommodation} /> }} />
     </Slide>
   );

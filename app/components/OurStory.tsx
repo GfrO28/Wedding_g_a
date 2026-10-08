@@ -1,89 +1,16 @@
-import Image from "next/image";
-import { getWeddingContent, type StoryChapter } from "@/lib/weddingContent";
+import { getWeddingContent } from "@/lib/weddingContent";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
-import { FadeIn } from "./FadeIn";
+import { overlayOf } from "@/lib/textLayout";
 import { Slide } from "./Slide";
 import { TextArtboard } from "./TextArtboard";
 
-const OBJECT_POSITION: Record<StoryChapter["imageFocus"], string> = {
-  top: "object-top",
-  center: "object-center",
-  bottom: "object-bottom",
-};
-
+// Cada capítulo (foto, año, título y texto) es un grupo de objetos del diseño.
 export async function OurStory() {
   const [WEDDING, layout, tokens] = await Promise.all([getWeddingContent(), getTextLayout("story"), getTokenValues("")]);
   if (WEDDING.story.length < 1) return null;
-
   return (
-    <Slide fullBleed>
-      <TextArtboard page layout={layout} tokens={tokens} animate blocks={{ body: <StoryBody chapters={WEDDING.story} /> }} />
+    <Slide bgImage={WEDDING.zoneImages.story} overlay={overlayOf(layout)} frame={layout.bg} fullBleed>
+      <TextArtboard page layout={layout} tokens={tokens} animate />
     </Slide>
-  );
-}
-
-export function StoryBody({ chapters }: { chapters: StoryChapter[] }) {
-  return (
-    <div className="space-y-16 px-1 py-2">
-      {chapters.map((chapter, i) => (
-        <FadeIn key={chapter.id} delay={i * 0.1}>
-          <Chapter chapter={chapter} />
-        </FadeIn>
-      ))}
-    </div>
-  );
-}
-
-function Chapter({ chapter }: { chapter: StoryChapter }) {
-  const text = (
-    <div>
-      <p className="text-sm uppercase tracking-wide text-[var(--color-muted)]">
-        {chapter.year}
-      </p>
-      <h3 className="font-serif text-2xl text-[var(--color-fg)]">{chapter.title}</h3>
-      <p className="mt-2 text-[var(--color-muted)]">{chapter.text}</p>
-    </div>
-  );
-
-  const hasImage = chapter.image.trim().length > 0;
-
-  if (chapter.layout === "text-only" || !hasImage) {
-    return <div className="mx-auto max-w-lg text-center">{text}</div>;
-  }
-
-  const image = (
-    <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-[var(--color-border)]">
-      <Image
-        src={chapter.image}
-        alt={chapter.title}
-        fill
-        className={`object-cover ${OBJECT_POSITION[chapter.imageFocus]}`}
-      />
-    </div>
-  );
-
-  if (chapter.layout === "image-top") {
-    return (
-      <div className="mx-auto flex max-w-lg flex-col gap-4">
-        {image}
-        {text}
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid grid-cols-1 items-center gap-6 @lg:grid-cols-2">
-      {chapter.layout === "image-right" ? (
-        <>
-          <div className="@lg:order-2">{image}</div>
-          <div className="@lg:order-1">{text}</div>
-        </>
-      ) : (
-        <>
-          {image}
-          {text}
-        </>
-      )}
-    </div>
   );
 }

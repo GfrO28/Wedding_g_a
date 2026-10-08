@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Ornament } from "./ornaments";
+import { Countdown } from "./Countdown";
 import {
   ARTBOARDS,
   byZ,
@@ -81,6 +82,7 @@ export function ElementContent({
     );
   }
   if (el.kind === "ornament") return <Ornament name={el.variant} color={el.color} />;
+  if (el.kind === "countdown") return tokens.fechaISO ? <Countdown targetISO={tokens.fechaISO} scaled /> : null;
   if (el.kind === "map") {
     const address = tokens[`direccion${el.ref}`];
     return address ? (

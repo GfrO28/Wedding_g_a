@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, Check, ExternalLink, Loader2, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { ArrowLeft, Check, ExternalLink, Loader2, PanelRightClose, PanelRightOpen, Plus, Trash2 } from "lucide-react";
 import type { EnvelopeSlot } from "@/lib/envelopeAssets";
 import { applyStyles, LAYOUT_SECTIONS, pickStyle, withDynamic, type LayoutSection, type TextLayout, type TextStyle, type TokenValues } from "@/lib/textLayout";
 import { ArtboardEditor, type CanvasCover, type EditorApi } from "./ArtboardEditor";
@@ -12,6 +12,7 @@ import { ENVELOPE_BG, EnvelopeCard, EnvelopeClosed } from "./EnvelopeCanvas";
 import { EnvelopeImagesPanel } from "./EnvelopeImagesPanel";
 import { discardDraftsAction, publishAction, saveDraftAction, saveStylesDraftAction } from "./layout-actions";
 import { StylesPanel } from "./StylesPanel";
+import { Hint } from "./Hint";
 import { toggleZoneEnabledAction } from "./zone-actions";
 
 export type EditorSection = {
@@ -49,7 +50,7 @@ export function EditorShell({
   galleryPhotos: LibraryPhoto[];
   desktopBackground: DesktopBackground;
 }) {
-  const [currentId, setCurrentId] = useState(sections[0].id);
+  const [currentId, setCurrentId] = useState((sections.find((s) => !s.zone || s.enabled !== false) ?? sections[0]).id);
   const [layouts, setLayouts] = useState(drafts);
   const [publishedState, setPublishedState] = useState(published);
   const [styles, setStyles] = useState(initialStyles.draft);
@@ -62,6 +63,8 @@ export function EditorShell({
   const [contentOpen, setContentOpen] = useState(sections[0].id === "intro");
   const [envelopeAssets, setEnvelopeAssets] = useState(envelope.assets);
   const [galleryPhotos, setGalleryPhotos] = useState(initialGalleryPhotos);
+  // Fondo de cada sección (imagen o video); se cambia desde la capa Fondo.
+  const [bgs, setBgs] = useState<Record<string, string | null>>(() => Object.fromEntries(sections.map((s) => [s.id, s.background?.image ?? null])));
   const editorApi = useRef<EditorApi>(null);
   // Fotos que ya están subidas (galería e imágenes usadas en otras secciones):
   // se pueden reutilizar en "+ Agregar" sin volver a subirlas.
@@ -90,9 +93,14 @@ export function EditorShell({
   if (drafts !== seenDrafts) {
     setSeenDrafts(drafts);
     const merged = mergeSteps(layouts.itinerary, drafts.itinerary);
-    if (merged) {
-      setLayouts({ ...layouts, itinerary: merged });
-      setPublishedState({ ...publishedState, itinerary: mergeSteps(publishedState.itinerary, published.itinerary) ?? publishedState.itinerary });
+    const story = mergeChapters(layouts.story, drafts.story);
+    if (merged || story) {
+      setLayouts({ ...layouts, ...(merged ? { itinerary: merged } : null), ...(story ? { story } : null) });
+      setPublishedState({
+        ...publishedState,
+        itinerary: mergeSteps(publishedState.itinerary, published.itinerary) ?? publishedState.itinerary,
+        story: mergeChapters(publishedState.story, published.story) ?? publishedState.story,
+      });
       setVersion((v) => v + 1);
     }
   }
@@ -213,6 +221,21 @@ export function EditorShell({
     setNotice("Se descartaron los cambios sin publicar.");
   }
 
+  // Eliminar una sección la saca de la invitación (sus datos y su diseño
+  // quedan guardados, así se puede volver a agregar tal cual).
+  async function removeSection(s: EditorSection) {
+    if (!s.zone || !window.confirm(`¿Eliminar la sección «${s.label}» de la invitación? Podés volver a agregarla desde «+ Agregar sección».`)) return;
+    setEnabled((e) => ({ ...e, [s.id]: false }));
+    if (currentId === s.id) setCurrentId(sections.find((x) => x.group === "sections" && x.id !== s.id && (!x.zone || enabled[x.id]))?.id ?? "music");
+    await toggleZoneEnabledAction(s.zone, false);
+  }
+  async function addSection(s: EditorSection) {
+    if (!s.zone) return;
+    setEnabled((e) => ({ ...e, [s.id]: true }));
+    setCurrentId(s.id);
+    await toggleZoneEnabledAction(s.zone, true);
+  }
+
   async function toggleZone(s: EditorSection) {
     if (!s.zone) return;
     const next = !enabled[s.id];
@@ -242,6 +265,33 @@ export function EditorShell({
         ),
       }
     : undefined;
+
+  // Plantilla de la sección: volver al diseño original (se puede deshacer).
+  const templateCard = design ? (
+    <section className="mb-5 flex flex-col gap-2 rounded-lg border border-neutral-200 p-3" aria-label="Plantilla">
+      <h3 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">Plantilla</h3>
+      <div className="flex items-center gap-3">
+        <div className="flex h-14 w-10 shrink-0 flex-col items-center justify-center gap-1 rounded border border-neutral-200 bg-neutral-50">
+          <span className="h-1 w-6 rounded bg-neutral-300" />
+          <span className="h-1.5 w-4 rounded bg-neutral-400" />
+          <span className="h-1 w-5 rounded bg-neutral-300" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-neutral-800">Diseño original</p>
+          <p className="text-xs text-neutral-500">Vuelve a ubicar los objetos como venían. Se puede deshacer.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            if (window.confirm(`¿Aplicar el diseño original a «${current.label}»? Lo que acomodaste se reemplaza (podés deshacerlo con Ctrl+Z).`)) editorApi.current?.restoreOriginal();
+          }}
+          className="shrink-0 rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium hover:bg-neutral-50"
+        >
+          Aplicar
+        </button>
+      </div>
+    </section>
+  ) : null;
 
   const panel =
     current.id === "intro" ? (
@@ -309,7 +359,7 @@ export function EditorShell({
                 {group === "sections" ? "Secciones" : "General"}
               </p>
               {sections
-                .filter((s) => s.group === group)
+                .filter((s) => s.group === group && (group === "general" || !s.zone || enabled[s.id]))
                 .map((s) => {
                   const active = s.id === currentId;
                   const isOn = s.zone ? enabled[s.id] : true;
@@ -333,7 +383,18 @@ export function EditorShell({
                           <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? "bg-amber-300" : "bg-amber-500"}`} title="Cambios sin publicar" />
                         )}
                       </button>
-                      {s.zone && (
+                      {s.zone && group === "sections" && (
+                        <button
+                          type="button"
+                          aria-label={`Eliminar la sección ${s.label}`}
+                          title="Eliminar la sección (se puede volver a agregar)"
+                          onClick={() => removeSection(s)}
+                          className={`rounded p-1 ${active ? "text-white/70 hover:text-white" : "text-neutral-300 hover:text-red-600"}`}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                      {s.zone && group === "general" && (
                         <button
                           type="button"
                           role="switch"
@@ -351,12 +412,13 @@ export function EditorShell({
                     </div>
                   );
                 })}
+              {group === "sections" && <AddSectionMenu sections={sections.filter((s) => s.group === "sections" && s.zone && !enabled[s.id])} onAdd={addSection} />}
             </div>
           ))}
-          <p className="px-2 text-[11px] leading-snug text-neutral-400">
+          <Hint id="drafts" className="px-2"><p className="text-[11px] leading-snug text-neutral-400">
             El diseño se guarda solo como borrador. Los invitados lo ven al tocar Publicar. Los datos de «Contenido»
             (textos, fotos, lugares) se publican al guardarlos.
-          </p>
+          </p></Hint>
         </nav>
 
         {/* Lienzo o contenido */}
@@ -367,7 +429,13 @@ export function EditorShell({
               section={design}
               initialLayout={layouts[design]}
               tokens={tokens}
-              background={isEnvelope ? { color: ENVELOPE_BG } : current.background ?? { color: "var(--color-bg)" }}
+              background={
+                isEnvelope
+                  ? { color: ENVELOPE_BG }
+                  : { color: current.background?.color ?? "var(--color-bg)", image: bgs[current.id] ?? null, overlay: Boolean(bgs[current.id]) }
+              }
+              bgZone={BG_ZONES.includes(current.id) ? current.id : undefined}
+              onBackgroundChange={(url) => setBgs((b) => ({ ...b, [current.id]: url }))}
               underlay={isEnvelope ? <EnvelopeCard /> : undefined}
               cover={envelopeCover}
               blocks={blocks[design]}
@@ -399,6 +467,7 @@ export function EditorShell({
                 <PanelRightClose size={16} />
               </button>
             </div>
+            {templateCard}
             {panel}
           </aside>
         )}
@@ -406,6 +475,9 @@ export function EditorShell({
     </div>
   );
 }
+
+// Secciones con fondo propio (imagen o video).
+const BG_ZONES = ["hero", "countdown", "blessing", "story", "event", "itinerary", "location", "gallery", "accommodation", "gifts", "rsvp", "messages"];
 
 const stepKeys = (l: TextLayout) =>
   l.portrait.filter((e) => /^step-.+-icon$/.test(e.id)).map((e) => e.ref).sort().join(",");
@@ -436,6 +508,75 @@ function mergeSteps(current: TextLayout, incoming: TextLayout): TextLayout | nul
       return fresh ? { ...e, variant: fresh.variant } : e;
     });
   return merged;
+}
+
+// Capítulos: se suman o quitan los capítulos y se actualizan las fotos que
+// cambiaron en "Contenido", sin tocar cómo quedaron acomodados.
+const chapterItems = (l: TextLayout) =>
+  l.portrait
+    .filter((e) => /^chap-.+-title$/.test(e.id))
+    .map((t) => {
+      const photo = l.portrait.find((e) => e.id === `chap-${t.ref}-photo`);
+      return { key: t.ref, image: photo && !photo.removed ? photo.src : "", alt: "" };
+    });
+function mergeChapters(current: TextLayout, incoming: TextLayout): TextLayout | null {
+  const sig = (l: TextLayout) => JSON.stringify(chapterItems(l));
+  if (sig(current) === sig(incoming)) return null;
+  return withDynamic("story", current, { chapters: chapterItems(incoming) });
+}
+
+// Secciones disponibles para agregar (las que no están en la invitación).
+const SECTION_HELP: Record<string, string> = {
+  intro: "El sobre con sello que se abre al entrar",
+  hero: "Nombres, fecha y saludo al invitado",
+  countdown: "Los días, horas y minutos que faltan",
+  blessing: "Una frase, el monograma y los padres",
+  story: "Capítulos con foto de su historia",
+  event: "Ceremonia y recepción: hora y lugar",
+  itinerary: "Los momentos del día, con íconos",
+  location: "Mapas y botones de Google Maps y Waze",
+  gallery: "Fotos con marco y ampliación",
+  accommodation: "Hoteles recomendados",
+  gifts: "Lista de regalos, luna de miel y datos de pago",
+  rsvp: "El formulario para confirmar asistencia",
+  messages: "Los mensajes de los invitados",
+  footer: "Cierre con los nombres y el hashtag",
+};
+function AddSectionMenu({ sections, onAdd }: { sections: EditorSection[]; onAdd: (s: EditorSection) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        disabled={!sections.length}
+        className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-neutral-300 px-2 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
+        title={sections.length ? "Agregar una sección" : "Ya están todas las secciones"}
+      >
+        <Plus size={14} /> Agregar sección
+      </button>
+      {open && (
+        <ul className="mt-1 flex flex-col gap-0.5 rounded-md border border-neutral-200 bg-white p-1 shadow-sm" aria-label="Secciones para agregar">
+          {sections.map((s) => (
+            <li key={s.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  onAdd(s);
+                }}
+                className="w-full rounded px-2 py-1.5 text-left hover:bg-neutral-50"
+              >
+                <span className="block text-sm text-neutral-800">{s.label}</span>
+                <span className="block text-[11px] leading-snug text-neutral-500">{SECTION_HELP[s.id] ?? ""}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 function SaveIndicator({ state, anyUnpublished }: { state: SaveState; anyUnpublished: boolean }) {

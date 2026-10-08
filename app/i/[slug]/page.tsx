@@ -18,6 +18,7 @@ import { Gifts } from "@/app/components/Gifts";
 import { RSVPForm } from "@/app/components/RSVPForm";
 import { GuestMessages } from "@/app/components/GuestMessages";
 import { Footer } from "@/app/components/Footer";
+import { CountdownSection } from "@/app/components/CountdownSection";
 import { DesktopFixedBackground, desktopPageProps } from "@/app/components/Slide";
 import { getDesktopBackground } from "@/lib/desktopBackgroundServer";
 import { getWeddingContent } from "@/lib/weddingContent";
@@ -59,6 +60,7 @@ export default async function GuestInvitationPage({
     <DesktopFixedBackground desktop={desktop} />
     <main className="h-dvh overflow-y-auto overscroll-y-contain" {...desktopPageProps(desktop)}>
       {content.zoneEnabled.hero && <Hero guestName={guest.fullName} />}
+      {content.zoneEnabled.countdown && <CountdownSection />}
       {content.zoneEnabled.blessing && <Blessing />}
       {content.zoneEnabled.story && <OurStory />}
       {content.zoneEnabled.event && <EventDetails />}
@@ -67,15 +69,17 @@ export default async function GuestInvitationPage({
       {content.zoneEnabled.gallery && <Gallery />}
       {content.zoneEnabled.accommodation && <Accommodation />}
       {content.zoneEnabled.gifts && <Gifts slug={guest.slug} />}
+      {content.zoneEnabled.rsvp && (
       <RSVPForm
         slug={guest.slug}
         maxAttendees={guest.maxAttendees}
         existing={existingRsvp ?? null}
         layout={rsvpText}
+        bgImage={content.zoneImages.rsvp}
         tokens={tokens}
-      />
-      <GuestMessages slug={guest.slug} />
-      <Footer />
+      />)}
+      {content.zoneEnabled.messages && <GuestMessages slug={guest.slug} />}
+      {content.zoneEnabled.footer && <Footer />}
     </main>
     </>
   );

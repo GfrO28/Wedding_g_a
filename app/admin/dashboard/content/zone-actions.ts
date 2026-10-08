@@ -8,6 +8,8 @@ import { envelopeAssetUrl, envelopeSettingKey, isEnvelopeSlot } from "@/lib/enve
 import { DESKTOP_BG_KEY, sanitizeDesktopBackground } from "@/lib/desktopBackground";
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+// El fondo de una sección puede ser una imagen o un video corto.
+const ZONE_BG_TYPES = [...ALLOWED_IMAGE_TYPES, "video/mp4", "video/webm"];
 const ALLOWED_AUDIO_TYPES = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/ogg"];
 
 function isZoneKey(key: string): key is ZoneImageKey {
@@ -45,8 +47,8 @@ export async function requestZoneImageUploadAction(
   contentType: string,
 ): Promise<UploadRequest> {
   if (!isZoneKey(zone)) return { error: "Zona inválida.", uploadUrl: null, publicUrl: null };
-  if (!ALLOWED_IMAGE_TYPES.includes(contentType)) {
-    return { error: "Tipo de archivo no permitido.", uploadUrl: null, publicUrl: null };
+  if (!ZONE_BG_TYPES.includes(contentType)) {
+    return { error: "Subí una imagen (JPG, PNG o WebP) o un video (MP4 o WebM).", uploadUrl: null, publicUrl: null };
   }
   const key = `zones/${zone}-${crypto.randomUUID()}-${safeName(filename)}`;
   const uploadUrl = await getUploadUrl(key, contentType);
@@ -54,8 +56,14 @@ export async function requestZoneImageUploadAction(
 }
 
 export async function saveZoneImageAction(zone: string, url: string) {
-  if (!isZoneKey(zone)) return;
+  if (!isZoneKey(zone) || !/^https:\/\/[^\s"<>]+$/.test(url)) return;
   await setSetting(`zoneBg_${zone}`, url);
+  revalidate();
+}
+
+export async function clearZoneBackgroundAction(zone: string) {
+  if (!isZoneKey(zone)) return;
+  await setSetting(`zoneBg_${zone}`, "");
   revalidate();
 }
 
