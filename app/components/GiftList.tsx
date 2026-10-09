@@ -100,10 +100,6 @@ function GiftCard({ gift: g, showRaised, onGive }: { gift: GiftView; showRaised:
         )}
         <div className="min-w-0">
           <h3 className="font-medium text-[var(--color-fg)]">{g.name}</h3>
-          <p className="text-xs text-[var(--color-muted)]" data-currency-note>
-            {g.currency === "USD" ? "En dólares · se abona en la cuenta en dólares" : g.currency === "ANY" ? "En soles o en dólares, como prefieras" : "En soles"}
-            {g.goal === null && " · aporte libre"}
-          </p>
           {g.description && <p className="text-sm text-[var(--color-muted)]">{g.description}</p>}
           {g.link && (
             <a href={g.link} target="_blank" rel="noopener noreferrer" className="text-sm text-[var(--color-accent)] underline underline-offset-2">
