@@ -8,7 +8,7 @@ import { ENVELOPE_DESIGNS, envelopeColors, type EnvelopeAnim, type EnvelopeDesig
 import { VideoEnvelopeImagesPanel, videoEnvelopeImages } from "./VideoEnvelopeImagesPanel";
 import { EnvelopeAnimPanel } from "./EnvelopeAnimPanel";
 import { FramedEnvelope } from "@/app/components/FramedEnvelope";
-import { applyStyles, backdropOf, ENVELOPE_VIDEO_BG, isCustom, LAYOUT_SECTIONS, mapSourceOf, withDynamic, type LayoutSection, type TextElement, type TextLayout, type TextStyle, type TokenValues } from "@/lib/textLayout";
+import { applyStyles, backdropOf, ENVELOPE_VIDEO_BG, isCustom, mapSourceOf, withDynamic, type LayoutSection, type TextElement, type TextLayout, type TextStyle, type TokenValues } from "@/lib/textLayout";
 import { ArtboardEditor, type CanvasCover, type Clip, type EditorApi } from "./ArtboardEditor";
 import { GalleryPhotosPanel, type LibraryPhoto } from "./GalleryPhotosPanel";
 import { DesktopBackgroundPanel } from "./DesktopBackgroundPanel";
@@ -137,15 +137,6 @@ export function EditorShell({
   const unpublished = (s: LayoutSection) => JSON.stringify(layouts[s]) !== JSON.stringify(publishedState[s]);
   const stylesUnpublished = JSON.stringify(styles) !== JSON.stringify(publishedStyles);
   const anyUnpublished = stylesUnpublished || sections.some((s) => s.design && unpublished(s.design)) || unpublished("envelopeVideo");
-
-  // Cuántos textos usan cada estilo (en todas las secciones y formatos).
-  const styleUsage = useMemo(() => {
-    const out: Record<string, number> = {};
-    for (const s of LAYOUT_SECTIONS)
-      for (const list of [layouts[s].portrait, layouts[s].landscape])
-        for (const e of list) if (e.kind === "text" && e.style) out[e.style] = (out[e.style] ?? 0) + 1;
-    return out;
-  }, [layouts]);
 
   const flush = useCallback(async () => {
     if (timer.current) clearTimeout(timer.current);
@@ -585,7 +576,6 @@ export function EditorShell({
               actions={contentToggle}
               styles={styles}
               onStylesChange={handleStylesChange}
-              styleUsage={styleUsage}
               apiRef={editorApi}
               imageLibrary={imageLibrary}
               onOpenLibrary={() => setContentOpen(true)}

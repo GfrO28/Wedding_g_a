@@ -20,7 +20,6 @@ import {
   Braces,
   ArrowDownToLine,
   ArrowUpToLine,
-  Check,
   ClipboardPaste,
   Copy,
   Scissors,
@@ -44,7 +43,6 @@ import {
   RotateCw,
   SlidersHorizontal,
   Trash2,
-  Type,
   Undo2,
   ZoomIn,
   ZoomOut,
@@ -54,7 +52,6 @@ import {
   AlignStartHorizontal,
   AlignCenterHorizontal,
   AlignEndHorizontal,
-  Unlink,
   X,
 } from "lucide-react";
 import { ElementContent, entranceClass, entranceDelay, isSized, lettersFx, TextArtboard, type Blocks } from "@/app/components/TextArtboard";
@@ -90,6 +87,8 @@ import {
   ENTRANCES,
   enterOrder,
   type EnterKey,
+  TEXT_ROLES,
+  type TextRole,
   FRAMES,
   EFFECTS,
   type EffectKey,
@@ -179,7 +178,7 @@ const clone = (l: TextLayout): TextLayout => JSON.parse(JSON.stringify(l));
 // Lo que se ve igual en celular y PC: el texto, la tipografía, el color, el
 // formato, el estilo, el borde y la versión. La posición, el tamaño, la
 // alineación, el giro y si está oculto son de cada formato.
-const SHARED_PROPS = [...STYLE_PROPS, "text", "style", "frame", "variant", "opacity", "effect", "labelFont", "labelUpper", "enter"] as const;
+const SHARED_PROPS = [...STYLE_PROPS, "text", "style", "frame", "variant", "opacity", "effect", "labelFont", "labelUpper", "enter", "role"] as const;
 const otherOf = (o: Orientation): Orientation => (o === "portrait" ? "landscape" : "portrait");
 
 // Aplica en el otro formato la parte compartida de un cambio.
@@ -209,7 +208,6 @@ export function ArtboardEditor({
   actions,
   styles = [],
   onStylesChange,
-  styleUsage = {},
   underlay,
   cover,
   apiRef,
@@ -229,7 +227,6 @@ export function ArtboardEditor({
   actions?: ReactNode;
   styles?: TextStyle[];
   onStylesChange?: (styles: TextStyle[]) => void;
-  styleUsage?: Record<string, number>;
   underlay?: ReactNode; // fondo dibujado dentro de la mesa, detrás de los textos
   cover?: CanvasCover;
   apiRef?: React.Ref<EditorApi>;
@@ -308,7 +305,6 @@ export function ArtboardEditor({
   const removedEls = layout[orientation].filter((e) => e.removed && !/^step-.+-card$/.test(e.id));
   const selected = elements.find((e) => e.id === selectedId) ?? null;
   const selectedRaw = layout[orientation].find((e) => e.id === selectedId) ?? null;
-  const selectedStyle = selectedRaw?.style ? styles.find((s) => s.id === selectedRaw.style) ?? null : null;
 
   useEffect(() => {
     if (firstRender.current) {
@@ -505,31 +501,6 @@ export function ArtboardEditor({
       return;
     }
     if (selectedRaw) patch(selectedRaw.id, { text: selectedRaw.text + `{${key}}` });
-  }
-
-  /* ---------- Estilos ---------- */
-
-  function applyStyle(styleId: string | null) {
-    if (!selected) return;
-    if (styleId) patch(selected.id, { style: styleId });
-    // Desvincular: el texto se queda con cómo se ve ahora.
-    else patch(selected.id, { style: null, ...pickStyle(selected) });
-    setPopover(null);
-  }
-
-  function createStyle(name: string) {
-    if (!selected) return;
-    const base = name.trim().toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) || "estilo";
-    let id = base;
-    for (let i = 2; styles.some((s) => s.id === id); i++) id = `${base}-${i}`;
-    const style: TextStyle = { id, name: name.trim().slice(0, 40) || "Estilo", ...pickStyle(selected) };
-    record({ layout, styles });
-    onStylesChange?.([...styles, style]);
-    const next = clone(layout);
-    next[orientation] = next[orientation].map((e) => (e.id === selected.id ? { ...e, style: id } : e));
-    shareChanges(next, orientation, selected.id, { style: id });
-    setLayout(next);
-    setPopover(null);
   }
 
   function snap(id: string, x: number, y: number, w: number) {
@@ -1551,11 +1522,6 @@ export function ArtboardEditor({
             editing={editing?.id === selected.id}
             onEdit={() => (editing ? finishEdit() : startEdit(selected.id))}
             onInsertToken={insertToken}
-            styles={styles}
-            currentStyle={selectedStyle}
-            styleUsage={styleUsage}
-            onApplyStyle={applyStyle}
-            onCreateStyle={createStyle}
             onDuplicate={canDuplicate(selected) ? () => duplicate(selected.id) : undefined}
             onDelete={canRemove(selected) ? () => remove(selected.id) : undefined}
             deleteLabel={
@@ -1776,11 +1742,6 @@ function ContextToolbar({
   editing,
   onEdit,
   onInsertToken,
-  styles,
-  currentStyle,
-  styleUsage,
-  onApplyStyle,
-  onCreateStyle,
   onDuplicate,
   onDelete,
   onFront,
@@ -1807,11 +1768,6 @@ function ContextToolbar({
   editing: boolean;
   onEdit: () => void;
   onInsertToken: (key: string) => void;
-  styles: TextStyle[];
-  currentStyle: TextStyle | null;
-  styleUsage: Record<string, number>;
-  onApplyStyle: (id: string | null) => void;
-  onCreateStyle: (name: string) => void;
   onDuplicate?: () => void;
   onDelete?: () => void;
   onFront: () => void;
@@ -1835,7 +1791,6 @@ function ContextToolbar({
   const small = phonePx < MIN_READABLE_PX;
   const toggle = (p: Popover) => setPopover(popover === p ? null : p);
   const sizeStep = isPanel ? 1 : 2;
-  const [newName, setNewName] = useState("");
   const colorTool = <ColorTool color={el.color} open={popover === "color"} onToggle={() => toggle("color")} onPick={(color) => onPatch({ color })} />;
   // Transparencia: 0% = sólido, 100% = invisible.
   const transparency = (
@@ -1866,70 +1821,7 @@ function ContextToolbar({
         </ToolButton>
       )}
 
-      {isText && (
-        <div className="relative" data-popover>
-          <ToolButton label="Estilo de texto" active={popover === "style"} onClick={() => toggle("style")}>
-            <Type size={14} />
-            <span className="max-w-[8rem] truncate text-xs">{currentStyle ? currentStyle.name : "Sin estilo"}</span>
-          </ToolButton>
-          {popover === "style" && (
-            <div className="absolute left-0 top-full z-30 mt-1 w-72 rounded-lg border border-neutral-200 bg-white p-2 shadow-lg">
-              <p className="px-1.5 pb-1 text-[11px] text-neutral-500">
-                Aplicá un estilo para copiar su tipografía, color y formato. Si después cambiás este texto desde la barra, se separa del estilo y los demás no cambian.
-              </p>
-              {styles.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => onApplyStyle(s.id)}
-                  className={`flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-neutral-50 ${currentStyle?.id === s.id ? "bg-neutral-100" : ""}`}
-                >
-                  <span className="w-4 shrink-0">{currentStyle?.id === s.id && <Check size={14} />}</span>
-                  <span
-                    className="min-w-0 flex-1 truncate text-lg"
-                    style={{
-                      fontFamily: FONTS[s.font].css,
-                      fontWeight: s.weight,
-                      fontStyle: s.italic ? "italic" : "normal",
-                      textTransform: s.uppercase ? "uppercase" : "none",
-                      letterSpacing: `${Math.min(s.letterSpacing, 0.15)}em`,
-                      color: s.color,
-                    }}
-                  >
-                    {s.name}
-                  </span>
-                  <span className="text-[11px] text-neutral-400">{styleUsage[s.id] ?? 0}</span>
-                </button>
-              ))}
-              {currentStyle && (
-                <button type="button" onClick={() => onApplyStyle(null)} className="mt-1 flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-50">
-                  <Unlink size={14} /> Quitar estilo (editar este texto aparte)
-                </button>
-              )}
-              <form
-                className="mt-1 flex gap-1 border-t border-neutral-100 pt-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (newName.trim()) onCreateStyle(newName);
-                  setNewName("");
-                }}
-              >
-                <input
-                  aria-label="Nombre del estilo nuevo"
-                  placeholder="Nuevo estilo con este texto…"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  maxLength={40}
-                  className="min-w-0 flex-1 rounded-md border border-neutral-300 px-2 py-1 text-sm"
-                />
-                <button type="submit" disabled={!newName.trim()} className="rounded-md bg-neutral-900 px-2.5 text-xs font-medium text-white disabled:opacity-40">
-                  Crear
-                </button>
-              </form>
-            </div>
-          )}
-        </div>
-      )}
+      {isText && <RoleSelect value={el.role} onChange={(role) => onPatch({ role })} />}
 
       {canWrite && (
         <ToolButton label={editing ? "Terminar de escribir (Esc)" : "Escribir en el lienzo (doble clic o Enter)"} active={editing} onClick={onEdit}>
@@ -2158,6 +2050,24 @@ function ContextToolbar({
   );
 }
 
+// Tipo de texto: título, subtítulo o texto (define el orden de aparición).
+function RoleSelect({ value, onChange }: { value: TextRole | null; onChange: (v: TextRole) => void }) {
+  return (
+    <select
+      aria-label="Tipo de texto"
+      title="Tipo de texto: aparecen primero los títulos, después los subtítulos y después el resto"
+      className="h-8 rounded-md border border-neutral-300 px-2 text-sm"
+      value={value ?? ""}
+      onChange={(e) => e.target.value && onChange(e.target.value as TextRole)}
+    >
+      {value === null && <option value="">Tipo: varios</option>}
+      {(Object.keys(TEXT_ROLES) as TextRole[]).map((k) => (
+        <option key={k} value={k}>Tipo: {TEXT_ROLES[k]}</option>
+      ))}
+    </select>
+  );
+}
+
 // Efecto de aparición (null: los seleccionados tienen efectos distintos).
 function EnterSelect({ value, onChange }: { value: EnterKey | null; onChange: (v: EnterKey) => void }) {
   return (
@@ -2276,6 +2186,7 @@ function GroupTextTools({
   return (
     <>
       <span className="text-[11px] text-neutral-500" data-group-texts>{texts.length} {texts.length === 1 ? "texto" : "textos"}:</span>
+      {texts.every((t) => t.kind === "text") && <RoleSelect value={texts.every((t) => t.role === texts[0].role) ? texts[0].role : null} onChange={(role) => onPatch({ role })} />}
       <select
         aria-label="Tipografía de los seleccionados"
         className="h-8 max-w-[10rem] rounded-md border border-neutral-300 px-2 text-sm"
@@ -2493,13 +2404,13 @@ function AddMenu({
 
             {tab === "text" && (
               <div className="flex flex-col">
-                <button type="button" disabled={full} onClick={() => onAdd("text", { text: "Título", fontSize: 59, style: "titulos", font: "playfair" })} className={`${row} font-serif text-lg`}>
+                <button type="button" disabled={full} onClick={() => onAdd("text", { text: "Título", fontSize: 59, font: "playfair", color: "var(--color-fg)", lineHeight: 1.15, role: "title" })} className={`${row} font-serif text-lg`}>
                   Título
                 </button>
-                <button type="button" disabled={full} onClick={() => onAdd("text", { text: "Subtítulo", fontSize: 35, style: "detalle", color: "var(--color-muted)" })} className={`${row} text-sm`}>
+                <button type="button" disabled={full} onClick={() => onAdd("text", { text: "Subtítulo", fontSize: 35, font: "inter", color: "var(--color-muted)", lineHeight: 1.15, role: "subtitle" })} className={`${row} text-sm`}>
                   Subtítulo
                 </button>
-                <button type="button" disabled={full} onClick={() => onAdd("text", { text: "Escribí acá tu texto", fontSize: 28, style: "parrafo", color: "var(--color-muted)", lineHeight: 1.45 })} className={`${row} text-xs text-neutral-600`}>
+                <button type="button" disabled={full} onClick={() => onAdd("text", { text: "Escribí acá tu texto", fontSize: 28, font: "inter", color: "var(--color-muted)", lineHeight: 1.45, role: "text" })} className={`${row} text-xs text-neutral-600`}>
                   Párrafo
                 </button>
               </div>
