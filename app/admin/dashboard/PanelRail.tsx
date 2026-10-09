@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Gift, Globe, LayoutDashboard, LogOut, PenLine, Users } from "lucide-react";
+import { Gift, Globe, LayoutDashboard, LogOut, PenLine, ShieldCheck, Users } from "lucide-react";
 import { logoutAction } from "./panel-actions";
 
 const LINKS = [
@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/admin/dashboard/regalos", label: "Lista de regalos", Icon: Gift },
   { href: "/admin/dashboard/content", label: "Editor de la invitación", Icon: PenLine, active: true },
   { href: "/admin/dashboard/web", label: "Web de novios (pronto)", Icon: Globe },
+  { href: "/admin/dashboard/seguridad", label: "Seguridad", Icon: ShieldCheck },
 ];
 
 // El menú del panel en versión angosta (solo íconos), para el editor.

@@ -1,5 +1,6 @@
 "use server";
 
+import { requireAdmin } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { setJSON, setSetting } from "@/lib/kv";
 import { getSettingsMap } from "@/lib/settings";
@@ -18,12 +19,14 @@ import {
 
 // Guardado automático del editor: solo toca el borrador, los invitados no lo ven.
 export async function saveDraftAction(section: string, layout: unknown): Promise<{ ok: boolean }> {
+  await requireAdmin();
   if (!isLayoutSection(section)) return { ok: false };
   await setJSON(draftLayoutKey(section), sanitizeLayout(section, layout));
   return { ok: true };
 }
 
 export async function saveStylesDraftAction(styles: unknown): Promise<{ ok: boolean }> {
+  await requireAdmin();
   await setJSON(DRAFT_STYLES_KEY, sanitizeStyles(styles));
   return { ok: true };
 }
@@ -39,6 +42,7 @@ function parse(raw: string | undefined): unknown {
 
 // Publica los borradores (diseños y estilos): pasan a ser lo que ven los invitados.
 export async function publishAction(): Promise<{ ok: boolean; published: Partial<Record<LayoutSection, TextLayout>> }> {
+  await requireAdmin();
   const map = await getSettingsMap();
   const published: Partial<Record<LayoutSection, TextLayout>> = {};
   for (const s of LAYOUT_SECTIONS) {
@@ -60,6 +64,7 @@ export async function publishAction(): Promise<{ ok: boolean; published: Partial
 
 // Descarta los borradores y vuelve a lo publicado.
 export async function discardDraftsAction(): Promise<{ ok: boolean }> {
+  await requireAdmin();
   for (const s of LAYOUT_SECTIONS) await setSetting(draftLayoutKey(s), "");
   await setSetting(DRAFT_STYLES_KEY, "");
   revalidatePath("/admin/dashboard/content");

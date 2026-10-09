@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { COOKIE_NAME, expectedToken } from "@/lib/auth";
+import { COOKIE_NAME, looksLikeSession } from "@/lib/authCookie";
 
+// Control rápido (sin base de datos): sin una cookie de sesión con la forma
+// correcta, al login. La verificación de verdad la hacen el layout del panel
+// y cada acción (lib/auth.ts → verifySession).
 export async function proxy(request: NextRequest) {
-  const token = request.cookies.get(COOKIE_NAME)?.value;
-  const valid = Boolean(token) && token === (await expectedToken());
-
-  if (!valid) {
-    const loginUrl = new URL("/admin", request.url);
-    return NextResponse.redirect(loginUrl);
+  if (!looksLikeSession(request.cookies.get(COOKIE_NAME)?.value)) {
+    return NextResponse.redirect(new URL("/admin", request.url));
   }
-
   return NextResponse.next();
 }
 

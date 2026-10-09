@@ -1,5 +1,6 @@
 "use server";
 
+import { requireAdmin } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { setSetting } from "@/lib/kv";
 import { getUploadUrl, publicUrlFor, r2PublicBase } from "@/lib/storage/r2";
@@ -21,6 +22,7 @@ function isZoneToggleKey(key: string): key is ZoneToggleKey {
 }
 
 export async function toggleZoneEnabledAction(zone: string, enabled: boolean) {
+  await requireAdmin();
   if (!isZoneToggleKey(zone)) return;
   await setSetting(`zoneEnabled_${zone}`, enabled ? "true" : "false");
   revalidate();
@@ -28,6 +30,7 @@ export async function toggleZoneEnabledAction(zone: string, enabled: boolean) {
 
 // Orden de las secciones de la invitación (se publica al guardarlo).
 export async function saveSectionOrderAction(order: string[]) {
+  await requireAdmin();
   const clean = sanitizeSectionOrder(order);
   await setSetting(SECTION_ORDER_KEY, JSON.stringify(clean));
   revalidate();
@@ -54,6 +57,7 @@ export async function requestZoneImageUploadAction(
   filename: string,
   contentType: string,
 ): Promise<UploadRequest> {
+  await requireAdmin();
   if (!isZoneKey(zone)) return { error: "Zona inválida.", uploadUrl: null, publicUrl: null };
   if (!ZONE_BG_TYPES.includes(contentType)) {
     return { error: "Subí una imagen (JPG, PNG o WebP) o un video (MP4 o WebM).", uploadUrl: null, publicUrl: null };
@@ -64,18 +68,21 @@ export async function requestZoneImageUploadAction(
 }
 
 export async function saveZoneImageAction(zone: string, url: string) {
+  await requireAdmin();
   if (!isZoneKey(zone) || !/^https:\/\/[^\s"<>]+$/.test(url)) return;
   await setSetting(`zoneBg_${zone}`, url);
   revalidate();
 }
 
 export async function clearZoneBackgroundAction(zone: string) {
+  await requireAdmin();
   if (!isZoneKey(zone)) return;
   await setSetting(`zoneBg_${zone}`, "");
   revalidate();
 }
 
 export async function clearZoneImageAction(formData: FormData) {
+  await requireAdmin();
   const zone = String(formData.get("zone") ?? "");
   if (!isZoneKey(zone)) return;
   await setSetting(`zoneBg_${zone}`, "");
@@ -86,6 +93,7 @@ export async function requestMusicUploadAction(
   filename: string,
   contentType: string,
 ): Promise<UploadRequest> {
+  await requireAdmin();
   if (!ALLOWED_AUDIO_TYPES.includes(contentType)) {
     return { error: "Subí un archivo de audio (mp3, wav u ogg).", uploadUrl: null, publicUrl: null };
   }
@@ -95,17 +103,20 @@ export async function requestMusicUploadAction(
 }
 
 export async function saveMusicAction(url: string, title: string) {
+  await requireAdmin();
   await setSetting("musicSrc", url);
   await setSetting("musicTitle", title || "Nuestra canción");
   revalidate();
 }
 
 export async function clearMusicAction() {
+  await requireAdmin();
   await setSetting("musicSrc", "");
   revalidate();
 }
 
 export async function updateMusicTitleAction(title: string) {
+  await requireAdmin();
   await setSetting("musicTitle", title || "Nuestra canción");
   revalidate();
 }
@@ -118,6 +129,7 @@ export async function requestEnvelopeUploadAction(
   filename: string,
   contentType: string,
 ): Promise<UploadRequest> {
+  await requireAdmin();
   if (!isEnvelopeSlot(slot)) return { error: "Pieza inválida.", uploadUrl: null, publicUrl: null };
   if (!ENVELOPE_TYPES.includes(contentType)) {
     return { error: "Subí un PNG (o WebP) con fondo transparente.", uploadUrl: null, publicUrl: null };
@@ -128,6 +140,7 @@ export async function requestEnvelopeUploadAction(
 }
 
 export async function saveEnvelopeImageAction(slot: string, url: string) {
+  await requireAdmin();
   if (!isEnvelopeSlot(slot)) return { assetUrl: null };
   await setSetting(envelopeSettingKey(slot), url);
   revalidate();
@@ -138,6 +151,7 @@ export async function saveEnvelopeImageAction(slot: string, url: string) {
 const VIDEO_ENVELOPE_TYPES = ["image/png", "image/webp", "image/jpeg"];
 
 export async function requestVideoEnvelopeUploadAction(slot: string, filename: string, contentType: string): Promise<UploadRequest> {
+  await requireAdmin();
   if (!isVideoEnvelopeSlot(slot)) return { error: "Pieza inválida.", uploadUrl: null, publicUrl: null };
   if (!VIDEO_ENVELOPE_TYPES.includes(contentType)) {
     return { error: "Subí un PNG o WebP (con transparencia) o un JPG.", uploadUrl: null, publicUrl: null };
@@ -148,6 +162,7 @@ export async function requestVideoEnvelopeUploadAction(slot: string, filename: s
 }
 
 export async function saveVideoEnvelopeImageAction(slot: string, url: string) {
+  await requireAdmin();
   const base = r2PublicBase();
   // Solo imágenes de nuestro bucket.
   if (!isVideoEnvelopeSlot(slot) || !base || !url.startsWith(base + "/") || /[\s"<>]/.test(url)) return { ok: false };
@@ -157,6 +172,7 @@ export async function saveVideoEnvelopeImageAction(slot: string, url: string) {
 }
 
 export async function resetVideoEnvelopeImageAction(slot: string) {
+  await requireAdmin();
   if (!isVideoEnvelopeSlot(slot)) return;
   await setSetting(envelopeSettingKey(slot), "");
   revalidate();
@@ -164,6 +180,7 @@ export async function resetVideoEnvelopeImageAction(slot: string) {
 
 // Velocidad y tiempos de la animación del sobre (se publican al cambiarlos).
 export async function setEnvelopeAnimAction(input: unknown) {
+  await requireAdmin();
   const clean = sanitizeEnvelopeAnim(input);
   await setSetting(ENVELOPE_ANIM_KEY, JSON.stringify(clean));
   revalidate();
@@ -172,6 +189,7 @@ export async function setEnvelopeAnimAction(input: unknown) {
 
 // Color del papel del sobre clásico (se publica al elegirlo).
 export async function setEnvelopePaperAction(color: string) {
+  await requireAdmin();
   if (!isPaperColor(color)) return;
   await setSetting(ENVELOPE_PAPER_KEY, color.toLowerCase());
   revalidate();
@@ -179,12 +197,14 @@ export async function setEnvelopePaperAction(color: string) {
 
 // Versión del sobre de apertura (se publica al elegirla).
 export async function setEnvelopeDesignAction(design: string) {
+  await requireAdmin();
   if (!isEnvelopeDesign(design)) return;
   await setSetting(ENVELOPE_DESIGN_KEY, design);
   revalidate();
 }
 
 export async function resetEnvelopeImageAction(slot: string) {
+  await requireAdmin();
   if (!isEnvelopeSlot(slot)) return;
   await setSetting(envelopeSettingKey(slot), "");
   revalidate();
@@ -192,6 +212,7 @@ export async function resetEnvelopeImageAction(slot: string) {
 
 // Imágenes (y videos de fondo) agregados al diseño con "+ Agregar".
 export async function requestDesignImageUploadAction(filename: string, contentType: string): Promise<UploadRequest> {
+  await requireAdmin();
   if (!ZONE_BG_TYPES.includes(contentType)) {
     return { error: "Subí una imagen (JPG, PNG o WebP) o un video (MP4 o WebM).", uploadUrl: null, publicUrl: null };
   }
@@ -202,6 +223,7 @@ export async function requestDesignImageUploadAction(filename: string, contentTy
 
 // Fondo para PC (alrededor de la columna de la invitación). Se publica al guardar.
 export async function saveDesktopBackgroundAction(input: unknown) {
+  await requireAdmin();
   const clean = sanitizeDesktopBackground(input);
   await setSetting(DESKTOP_BG_KEY, JSON.stringify(clean));
   revalidate();

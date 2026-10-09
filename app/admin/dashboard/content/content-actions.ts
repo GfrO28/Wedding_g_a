@@ -1,5 +1,6 @@
 "use server";
 
+import { requireAdmin } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { setJSON, setSetting } from "@/lib/kv";
 import { stepIcon, stepKey } from "@/lib/textLayout";
@@ -21,6 +22,7 @@ function str(formData: FormData, name: string) {
 }
 
 export async function updateGiftsAction(formData: FormData) {
+  await requireAdmin();
   await setSetting("contentGiftsMessage", str(formData, "message"));
   await setJSON("contentGiftsPayment", {
     yape: { phone: str(formData, "yapePhone"), name: str(formData, "yapeName"), enabled: formData.get("yapeOn") === "on" },
@@ -39,6 +41,7 @@ export async function updateGiftsAction(formData: FormData) {
 // --- Historia (lista) ---
 
 export async function addStoryChapterAction(formData: FormData) {
+  await requireAdmin();
   const chapters = await getEffectiveStory();
   const layout = str(formData, "layout") || "image-left";
   const imageFocus = str(formData, "imageFocus") || "center";
@@ -56,6 +59,7 @@ export async function addStoryChapterAction(formData: FormData) {
 }
 
 export async function deleteStoryChapterAction(formData: FormData) {
+  await requireAdmin();
   const id = str(formData, "id");
   const chapters = await getEffectiveStory();
   await setJSON("contentStory", chapters.filter((c) => c.id !== id));
@@ -65,6 +69,7 @@ export async function deleteStoryChapterAction(formData: FormData) {
 // --- Itinerario (lista) ---
 
 export async function addItineraryStepAction(formData: FormData) {
+  await requireAdmin();
   const steps = await getEffectiveItinerary();
   steps.push({
     id: crypto.randomUUID(),
@@ -77,6 +82,7 @@ export async function addItineraryStepAction(formData: FormData) {
 }
 
 export async function deleteItineraryStepAction(formData: FormData) {
+  await requireAdmin();
   const id = str(formData, "id");
   const steps = await getEffectiveItinerary();
   await setJSON("contentItinerary", steps.filter((s) => s.id !== id));
@@ -86,6 +92,7 @@ export async function deleteItineraryStepAction(formData: FormData) {
 // --- Alojamiento (lista) ---
 
 export async function addHotelAction(formData: FormData) {
+  await requireAdmin();
   const hotels = await getEffectiveAccommodation();
   hotels.push({
     id: crypto.randomUUID(),
@@ -99,6 +106,7 @@ export async function addHotelAction(formData: FormData) {
 }
 
 export async function deleteHotelAction(formData: FormData) {
+  await requireAdmin();
   const id = str(formData, "id");
   const hotels = await getEffectiveAccommodation();
   await setJSON("contentAccommodation", hotels.filter((h) => h.id !== id));
@@ -107,6 +115,7 @@ export async function deleteHotelAction(formData: FormData) {
 
 // Editar un paso del itinerario (hora, nombre e ícono) desde el panel.
 export async function updateItineraryStepAction(id: string, data: { time: string; label: string; icon: string }) {
+  await requireAdmin();
   const steps = await getEffectiveItinerary();
   const clip = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : "");
   await setJSON(
@@ -118,6 +127,7 @@ export async function updateItineraryStepAction(id: string, data: { time: string
 
 // Cambiar el ícono de un paso desde el lienzo (los objetos del paso usan su clave).
 export async function setItineraryStepIconAction(key: string, icon: string) {
+  await requireAdmin();
   const steps = await getEffectiveItinerary();
   if (!steps.some((s) => stepKey(s.id) === key)) return;
   await setJSON("contentItinerary", steps.map((s) => (stepKey(s.id) === key ? { ...s, icon: stepIcon(icon) } : s)));
@@ -129,6 +139,7 @@ export async function setItineraryStepIconAction(key: string, icon: string) {
 // Del calendario llega "AAAA-MM-DDTHH:mm" (hora local de la boda); se guarda
 // con la zona horaria que ya tenía la fecha (Perú: -05:00).
 export async function updateDatesAction(formData: FormData) {
+  await requireAdmin();
   const w = await getWeddingContent();
   const tzOf = (iso: string) => /([+-]\d{2}:\d{2}|Z)$/.exec(iso)?.[1] ?? "-05:00";
   const toISO = (local: string, prev: string) => (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(local) ? `${local}:00${tzOf(prev)}` : prev);
@@ -140,11 +151,13 @@ export async function updateDatesAction(formData: FormData) {
 // --- Cómo llegar: dirección (mapa y Waze) y link de Google Maps ---
 
 export async function updateDressCodeAction(formData: FormData) {
+  await requireAdmin();
   await setSetting("contentDressCode", str(formData, "dressCode").slice(0, 300));
   revalidate();
 }
 
 export async function updateMapsAction(formData: FormData) {
+  await requireAdmin();
   const w = await getWeddingContent();
   await setJSON("contentCeremony", { ...w.ceremony, address: str(formData, "ceremonyAddress"), mapUrl: str(formData, "ceremonyMapUrl") });
   await setJSON("contentReception", { ...w.reception, address: str(formData, "receptionAddress"), mapUrl: str(formData, "receptionMapUrl") });
@@ -159,6 +172,7 @@ export async function updateStoryChapterAction(
   id: string,
   data: { year: string; title: string; text: string; image: string; layout: string; imageFocus: string },
 ) {
+  await requireAdmin();
   const chapters = await getEffectiveStory();
   await setJSON(
     "contentStory",
@@ -180,6 +194,7 @@ export async function updateStoryChapterAction(
 }
 
 export async function updateHotelAction(id: string, data: { name: string; description: string; bookingUrl: string; deadline: string }) {
+  await requireAdmin();
   const hotels = await getEffectiveAccommodation();
   await setJSON(
     "contentAccommodation",

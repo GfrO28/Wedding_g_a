@@ -101,3 +101,23 @@ export const siteSettings = pgTable("site_settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
 });
+
+// Sesiones del panel de novios: cada ingreso crea una, con vencimiento. La
+// cookie guarda un código al azar y acá solo su huella (sha-256).
+export const adminSessions = pgTable("admin_sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tokenHash: text("token_hash").notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  userAgent: text("user_agent"),
+  ip: text("ip"),
+});
+
+// Intentos de ingreso (para bloquear después de varios fallidos seguidos).
+export const loginAttempts = pgTable("login_attempts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ip: text("ip").notNull(),
+  success: boolean("success").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
