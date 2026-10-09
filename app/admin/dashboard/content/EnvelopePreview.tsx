@@ -5,6 +5,8 @@ import { RotateCcw } from "lucide-react";
 import type { EnvelopeAssets } from "@/app/components/envelope/engine";
 import type { TextLayout, TokenValues } from "@/lib/textLayout";
 import type { EnvelopeAnim } from "@/lib/envelopeAssets";
+import type { EnvelopePhases } from "@/app/components/envelope/engine";
+import { EnvelopeTimer } from "./EnvelopeTimer";
 
 const DEVICES = [
   { w: 360, h: 640, label: "360×640" },
@@ -39,6 +41,7 @@ export function EnvelopePreview({
   const [boxWidth, setBoxWidth] = useState(0);
   const [info, setInfo] = useState<Info | null>(null);
   const [loading, setLoading] = useState(true);
+  const [timeline, setTimeline] = useState<{ at: number; p: EnvelopePhases } | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const D = DEVICES[device];
@@ -61,7 +64,7 @@ export function EnvelopePreview({
       const engine = await import("@/app/components/envelope/engine");
       const G = await engine.loadGeometry(assets);
       if (cancelled) return;
-      const m = engine.mountEnvelope(stage, G, { width: D.w, height: D.h, debug, textLayout, tokens, colors: bg && hint ? { background: bg, hint } : undefined, anim });
+      const m = engine.mountEnvelope(stage, G, { width: D.w, height: D.h, debug, textLayout, tokens, colors: bg && hint ? { background: bg, hint } : undefined, anim, onTimeline: (p) => setTimeline({ at: performance.now(), p }) });
       mounted = m;
       const F = m.layout, r = F.layout;
       const sides = F.rotated ? r.cropY : r.cropX, ends = F.rotated ? r.cropX : r.cropY;
@@ -121,6 +124,7 @@ export function EnvelopePreview({
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center text-xs text-[#efe8dd]/80">Cargando piezas…</div>
           )}
+          <EnvelopeTimer phases={timeline} />
         </div>
       </div>
 

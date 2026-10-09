@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import type { EnvelopeAssets } from "@/app/components/envelope/engine";
 import type { TextLayout, TokenValues } from "@/lib/textLayout";
 import type { EnvelopeAnim } from "@/lib/envelopeAssets";
+import type { EnvelopePhases } from "@/app/components/envelope/engine";
+import { EnvelopeTimer } from "./EnvelopeTimer";
 
 // Mismos colores que el motor del sobre (engine.ts → ENVELOPE_CONFIG); se
 // repiten acá para no cargar GSAP solo para pintar el fondo.
@@ -58,6 +60,7 @@ export function EnvelopeClosed({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
+  const [timeline, setTimeline] = useState<{ at: number; p: EnvelopePhases } | null>(null);
   const opened = useRef(onOpened);
   useEffect(() => {
     opened.current = onOpened;
@@ -72,7 +75,11 @@ export function EnvelopeClosed({
       const engine = await import("@/app/components/envelope/engine");
       const G = await engine.loadGeometry(assets);
       if (cancelled) return;
-      mounted = engine.mountEnvelope(stage, G, { width, height, textLayout: layout, tokens, colors, anim, onComplete: () => opened.current() });
+      mounted = engine.mountEnvelope(stage, G, {
+        width, height, textLayout: layout, tokens, colors, anim,
+        onTimeline: (p) => setTimeline({ at: performance.now(), p }),
+        onComplete: () => opened.current(),
+      });
       setLoading(false);
     })();
     return () => {
@@ -86,6 +93,8 @@ export function EnvelopeClosed({
   return (
     <div ref={ref} className="absolute inset-0 overflow-hidden" data-envelope-closed>
       {loading && <div className="absolute inset-0 flex items-center justify-center text-2xl text-[#efe8dd]/80">Cargando el sobre…</div>}
+      {/* El lienzo se dibuja achicado: el cronómetro se agranda en proporción. */}
+      <EnvelopeTimer phases={timeline} scale={Math.max(1, width / 420)} />
     </div>
   );
 }

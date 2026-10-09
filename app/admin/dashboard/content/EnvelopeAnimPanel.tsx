@@ -1,21 +1,46 @@
 "use client";
 
-import { useRef } from "react";
 import { DEFAULT_ENVELOPE_ANIM, type EnvelopeAnim } from "@/lib/envelopeAssets";
 import { setEnvelopeAnimAction } from "./zone-actions";
+import { flapsDuration, phasesFor, speedForDuration } from "@/app/components/envelope/engine";
+
+// Guardado diferido (al dejar de mover el control).
+function saveLater(next: EnvelopeAnim) {
+  clearTimeout(saveLater.timer);
+  saveLater.timer = setTimeout(() => void setEnvelopeAnimAction(next), 500);
+}
+saveLater.timer = undefined as ReturnType<typeof setTimeout> | undefined;
 
 const fmt = (n: number, d = 1) => n.toLocaleString("es", { maximumFractionDigits: d, minimumFractionDigits: d });
 
 // Velocidad y tiempos de la apertura del sobre. Se publica solo, al soltar el
 // control. En el sobre con video solo aplica la espera antes de la portada.
-export function EnvelopeAnimPanel({ anim, onChange, classic }: { anim: EnvelopeAnim; onChange: (a: EnvelopeAnim) => void; classic: boolean }) {
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+export function EnvelopeAnimPanel({ anim, onChange, classic, letters }: { anim: EnvelopeAnim; onChange: (a: EnvelopeAnim) => void; classic: boolean; letters: number }) {
   function set(patch: Partial<EnvelopeAnim>) {
     const next = { ...anim, ...patch };
     onChange(next);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => void setEnvelopeAnimAction(next), 500);
+    saveLater(next);
   }
+  const duration = flapsDuration(anim);
+  const p = phasesFor(anim, letters);
+  const slider = (label: string, value: number, min: number, max: number, step: number, show: string, onSet: (v: number) => void, key: string, help?: string) => (
+    <label className="flex flex-col gap-0.5" data-anim={key}>
+      <span className="flex items-baseline justify-between text-xs text-neutral-700">
+        {label} <b className="font-medium tabular-nums text-neutral-900">{show}</b>
+      </span>
+      <input
+        type="range"
+        aria-label={label}
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onSet(Number(e.target.value))}
+        className="accent-neutral-900"
+      />
+      {help && <span className="text-[11px] leading-snug text-neutral-400">{help}</span>}
+    </label>
+  );
   const row = (label: string, key: keyof EnvelopeAnim, min: number, max: number, step: number, show: (v: number) => string, help?: string) => (
     <label className="flex flex-col gap-0.5" data-anim={key}>
       <span className="flex items-baseline justify-between text-xs text-neutral-700">
@@ -28,7 +53,11 @@ export function EnvelopeAnimPanel({ anim, onChange, classic }: { anim: EnvelopeA
         max={max}
         step={step}
         value={anim[key]}
-        onChange={(e) => set({ [key]: Number(e.target.value) })}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          // Cambiar cuándo arrancan la superior e inferior no cambia la duración de la apertura.
+          set(key === "overlap" ? { overlap: v, speed: speedForDuration(duration, v) } : { [key]: v });
+        }}
         className="accent-neutral-900"
       />
       {help && <span className="text-[11px] leading-snug text-neutral-400">{help}</span>}
@@ -44,13 +73,23 @@ export function EnvelopeAnimPanel({ anim, onChange, classic }: { anim: EnvelopeA
       </div>
       {classic && (
         <>
-          {row("Velocidad de las solapas", "speed", 0.5, 2, 0.1, (v) => `${fmt(v)}×`, "Más alto, más rápido.")}
+          {slider("Duración de la apertura de las solapas", Math.round(duration * 10) / 10, 1.5, 6, 0.1, `${fmt(duration)} s`, (v) => set({ speed: speedForDuration(v, anim.overlap) }), "speed", "Desde que se toca el sello hasta que las cuatro solapas quedan abiertas. El mensaje aparece siempre a su ritmo.")}
           {row("Superior e inferior arrancan", "overlap", 0, 1, 0.05, (v) => (v === 0 ? "junto con las laterales" : v === 1 ? "al terminar las laterales" : `al ${Math.round(v * 100)}% de las laterales`))}
           {row("Tiempo para leer el mensaje", "hold", 1, 6, 0.5, (v) => `${fmt(v)} s`)}
           {row("Acercamiento al abrir", "zoom", 0, 0.15, 0.01, (v) => `${Math.round(v * 100)}%`)}
         </>
       )}
       {row("Espera antes de animar la portada", "heroDelay", 0, 3, 0.1, (v) => `${fmt(v)} s`, "Desde que el sobre empieza a desvanecerse; así se aprecian las animaciones de la portada.")}
+      {classic && (
+        <div className="rounded-md bg-neutral-50 px-2.5 py-2 text-[11px] leading-relaxed text-neutral-600" data-anim-summary>
+          <p className="mb-0.5 font-medium text-neutral-800">Tiempos (desde que se toca el sello)</p>
+          <p className="flex justify-between"><span>Solapas abiertas</span><span className="tabular-nums">{fmt(p.flapsEnd)} s</span></p>
+          <p className="flex justify-between"><span>Mensaje completo</span><span className="tabular-nums">{fmt(p.textEnd)} s</span></p>
+          <p className="flex justify-between"><span>Empieza a desvanecerse</span><span className="tabular-nums">{fmt(p.fadeStart)} s</span></p>
+          <p className="flex justify-between font-medium text-neutral-800"><span>Animación completa</span><span className="tabular-nums" data-anim-total>{fmt(p.end)} s</span></p>
+          <p className="mt-1 text-neutral-400">Para verlo con cronómetro: «Sobre cerrado» en el lienzo o «Ver la animación del sobre».</p>
+        </div>
+      )}
       <p className="text-[11px] text-neutral-400">Se publica solo al cambiarlo.</p>
     </section>
   );

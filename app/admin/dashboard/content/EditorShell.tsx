@@ -73,6 +73,11 @@ export function EditorShell({
   // Papel del sobre clásico: colores del interior y del texto «Toca el sello».
   const [paper, setPaper] = useState(envelope.paper);
   const [anim, setAnim] = useState(envelope.anim);
+  // Letras del mensaje de la tarjeta (cuánto tarda en aparecer).
+  const envelopeLetters = useMemo(
+    () => layouts.envelope.portrait.filter((e) => e.kind === "text" && e.id !== "hint" && !e.hidden && !e.removed).reduce((n, e) => n + e.text.replace(/\s/g, "").length, 0),
+    [layouts.envelope],
+  );
   const paperColors = useMemo(() => envelopeColors(paper), [paper]);
   const monogram = `${tokens.inicial1 ?? ""}${tokens.inicial2 ?? ""}`;
   const designOf = (s: EditorSection): LayoutSection | undefined => (s.id === "intro" && envDesign === "video" ? "envelopeVideo" : s.design);
@@ -564,7 +569,7 @@ export function EditorShell({
               </button>
             </div>
             {designPicker}
-            {isEnvelope && <EnvelopeAnimPanel anim={anim} onChange={setAnim} classic={envDesign === "classic"} />}
+            {isEnvelope && <EnvelopeAnimPanel anim={anim} onChange={setAnim} classic={envDesign === "classic"} letters={envelopeLetters} />}
             {templateCard}
             {mapObjects.length > 0 && (
               <MapObjectsPanel

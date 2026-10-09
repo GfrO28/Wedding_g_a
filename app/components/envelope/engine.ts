@@ -16,12 +16,26 @@ function timingFor(a: EnvelopeAnim) {
     zoom: [tbStart, 1.4 * k] as const,
     zoomScale: 1 + a.zoom,
     text: tbStart + 0.25 * k,
-    letter: 0.6 * k,
-    stagger: 0.04 * k,
+    // El mensaje aparece siempre a su ritmo (no depende de la velocidad de las solapas).
+    letter: 0.6,
+    stagger: 0.04,
     cleanup: tbStart + 1.4 * k,
     hold: a.hold,
   };
 }
+
+// Las etapas de la animación, en segundos desde que se toca el sello.
+export type EnvelopePhases = { flapsEnd: number; textStart: number; textEnd: number; fadeStart: number; end: number };
+export function phasesFor(a: EnvelopeAnim, letters: number): EnvelopePhases {
+  const t = timingFor(a);
+  const flapsEnd = Math.max(t.right[0] + t.right[1], t.left[0] + t.left[1], t.topBottom[0] + t.topBottom[1]);
+  const textEnd = t.text + Math.max(0, letters - 1) * t.stagger + t.letter;
+  const fadeStart = textEnd + t.hold + t.textOut;
+  return { flapsEnd, textStart: t.text, textEnd, fadeStart, end: fadeStart + t.crossfade };
+}
+// Duración de la apertura de las solapas (s) ⇄ velocidad.
+export const flapsDuration = (a: EnvelopeAnim) => phasesFor(a, 1).flapsEnd;
+export const speedForDuration = (seconds: number, overlap: number) => (0.5 + overlap * 1.2 + 1.2) / seconds;
 
 export type EnvelopeAssets = {
   flapLeft: string;
@@ -396,6 +410,7 @@ export type MountOptions = {
   onOpen?: () => void;
   onReveal?: () => void; // terminó el mensaje de la tarjeta: la intro empieza a desvanecerse
   anim?: EnvelopeAnim; // velocidad y tiempos (por defecto los del panel)
+  onTimeline?: (phases: EnvelopePhases) => void; // al tocar el sello: las etapas que vienen
   onComplete?: () => void;
 };
 
@@ -545,6 +560,7 @@ export function mountEnvelope(container: HTMLElement, G: Geometry, opts: MountOp
     opts.onOpen?.();
     const t = timingFor(opts.anim ?? DEFAULT_ENVELOPE_ANIM), ang = C.angles;
     const textEnd = t.text + (letters.length - 1) * t.stagger + t.letter;
+    opts.onTimeline?.(phasesFor(opts.anim ?? DEFAULT_ENVELOPE_ANIM, letters.length));
     flaps.forEach((fl) => (fl.style.willChange = "transform"));
     tl = gsap.timeline({ paused: true, onComplete: () => opts.onComplete?.() });
 

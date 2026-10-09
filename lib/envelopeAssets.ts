@@ -64,7 +64,7 @@ export function sanitizeEnvelopeAnim(v: unknown): EnvelopeAnim {
   const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
   const d = DEFAULT_ENVELOPE_ANIM;
   return {
-    speed: clampN(o.speed, 0.4, 2.5, d.speed),
+    speed: clampN(o.speed, 0.2, 2.5, d.speed),
     overlap: clampN(o.overlap, 0, 1, d.overlap),
     hold: clampN(o.hold, 0.5, 8, d.hold),
     zoom: clampN(o.zoom, 0, 0.2, d.zoom),
