@@ -55,6 +55,8 @@ export const ENVELOPE_CONFIG = {
   seal: { sizeVmin: 16, minPx: 72, maxPx: 200 },
   hint: "Tocá el sello para abrir",
   angles: { side: 160, topBottom: 170 },
+  // Luz para las sombras: viene de la izquierda, un poco de arriba y de frente.
+  light: { x: -0.55, y: -0.25, z: 0.8 },
   timing: {
     // La superior y la inferior arrancan cuando las laterales van por la mitad (0.5 + 1.2 / 2).
     hintOut: [0, 0.25], prep: [0, 0.4], right: [0.4, 1.2], left: [0.5, 1.2],
@@ -390,7 +392,7 @@ function flapEl(p: Placed, src: string, axis: "x" | "y", extra?: HTMLElement) {
   const img = "position:absolute;inset:0;width:100%;height:100%;max-width:none;display:block;user-select:none;-webkit-user-drag:none";
   el.innerHTML =
     `<div data-front style="${face};filter:brightness(1)"><img alt="" draggable="false" src="${src}" style="${img};transform:${mirror}"></div>` +
-    `<div style="${face};transform:${axis === "y" ? "rotateY(180deg)" : "rotateX(180deg)"}"><img alt="" draggable="false" src="${src}" style="${img};transform:${mirror};filter:brightness(.5)"></div>`;
+    `<div data-back style="${face};transform:${axis === "y" ? "rotateY(180deg)" : "rotateX(180deg)"};filter:brightness(.5)"><img alt="" draggable="false" src="${src}" style="${img};transform:${mirror}"></div>`;
   if (extra) el.appendChild(extra);
   gsap.set(el, { transformOrigin: `${p.ox}px ${p.oy}px` });
   return el;
@@ -511,7 +513,26 @@ export function mountEnvelope(container: HTMLElement, G: Geometry, opts: MountOp
     position: "absolute", width: VW + "px", height: VH + "px", left: (W - VW) / 2 + "px", top: (H - VH) / 2 + "px",
     transformOrigin: "50% 50%", perspective: Math.max(VW, VH) * 1.4 + "px", transform: F.rotated ? "rotate(90deg)" : "none",
   });
-  flapLayer.append(top, bottom, right, left);
+  // Sombras: la silueta de cada solapa, oscura y difusa, proyectada según la
+  // luz. Las de la superior e inferior caen sobre la tarjeta; las de las
+  // laterales, sobre la superior e inferior.
+  const shadowBlur = Math.max(4, vmin * 2.2);
+  const shadowEl = (p: Placed, src: string) => {
+    const el = document.createElement("div");
+    Object.assign(el.style, {
+      position: "absolute", left: p.x + "px", top: p.y + "px", width: p.w + "px", height: p.h + "px",
+      transformOrigin: `${p.ox}px ${p.oy}px`, opacity: "0", pointerEvents: "none",
+    });
+    el.innerHTML = `<img alt="" draggable="false" src="${src}" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;display:block;transform:scale(${p.mx}, ${p.my});filter:brightness(0) blur(${shadowBlur}px)">`;
+    return el;
+  };
+  const shadows = [
+    shadowEl(P.top, A.flapTop),
+    shadowEl(P.bottom, A.flapBottom || A.flapTop),
+    shadowEl(P.right, A.flapRight || A.flapLeft),
+    shadowEl(P.left, A.flapLeft),
+  ];
+  flapLayer.append(shadows[0], shadows[1], top, bottom, shadows[2], shadows[3], right, left);
   scene.appendChild(flapLayer);
 
   // Aviso «Tocá el sello para abrir»: es un texto del lienzo del sobre (se
@@ -549,6 +570,34 @@ export function mountEnvelope(container: HTMLElement, G: Geometry, opts: MountOp
 
   const flaps = [top, bottom, right, left];
   const fronts = flaps.map((fl) => fl.querySelector<HTMLElement>("[data-front]")!);
+  const backs = flaps.map((fl) => fl.querySelector<HTMLElement>("[data-back]")!);
+
+  // Luz en las coordenadas de las solapas (en PC el marco está girado 90°).
+  const strength = (opts.anim ?? DEFAULT_ENVELOPE_ANIM).shadow;
+  const Lv = C.light, Ln = Math.hypot(Lv.x, Lv.y, Lv.z);
+  let lx = Lv.x / Ln, ly = Lv.y / Ln;
+  const lz = Lv.z / Ln;
+  if (F.rotated) [lx, ly] = [ly, -lx];
+  // Hacia dónde se levanta cada solapa desde su bisagra (superior, inferior, derecha, izquierda).
+  const U: [number, number][] = [[0, 1], [0, -1], [-1, 0], [1, 0]];
+  const PROP = ["rotationX", "rotationX", "rotationY", "rotationY"] as const;
+  // Brillo de cada cara según cuánto mira a la luz, y sombra proyectada en el plano.
+  const shade = (i: number) => {
+    const a = (Math.abs(Number(gsap.getProperty(flaps[i], PROP[i])) || 0) * Math.PI) / 180;
+    const s = Math.sin(a), c = Math.cos(a), [ux, uy] = U[i];
+    const dot = -ux * s * lx - uy * s * ly + c * lz;
+    const lit = (d: number) => 0.5 + (0.5 * Math.max(0, d)) / lz;
+    fronts[i].style.filter = `brightness(${(1 + (lit(dot) - 1) * strength).toFixed(3)})`;
+    backs[i].style.filter = `brightness(${(0.85 * (1 + (lit(-dot) - 1) * strength) * (strength ? 1 : 0.6)).toFixed(3)})`;
+    if (!strength) return;
+    const Dx = -lx / lz, Dy = -ly / lz, vx = -uy, vy = ux;
+    const k = c + (Dx * ux + Dy * uy) * s, sh = (Dx * vx + Dy * vy) * s;
+    const m00 = 1 + (k - 1) * ux * ux + sh * vx * ux, m01 = (k - 1) * ux * uy + sh * vx * uy;
+    const m10 = (k - 1) * uy * ux + sh * vy * ux, m11 = 1 + (k - 1) * uy * uy + sh * vy * uy;
+    shadows[i].style.transform = `matrix(${m00}, ${m10}, ${m01}, ${m11}, 0, 0)`;
+    shadows[i].style.opacity = k > 0.02 ? String(0.42 * strength * s * Math.min(1, k * 3)) : "0";
+  };
+  flaps.forEach((_, i) => shade(i));
 
   seal.addEventListener("click", () => {
     if (playing) return;
@@ -567,7 +616,7 @@ export function mountEnvelope(container: HTMLElement, G: Geometry, opts: MountOp
       tl.to(hint, { opacity: 0, duration: 0.2 }, 0)
         .set(letters, { opacity: 1, filter: "blur(0px)", y: 0 }, 0)
         .to(flaps, { opacity: 0, duration: t.reduced, ease: "power1.inOut" }, 0)
-        .set(flaps, { display: "none" }, t.reduced)
+        .set([...flaps, ...shadows], { display: "none" }, t.reduced)
         .to(words, { opacity: 0, duration: t.textOut }, t.reduced + t.hold)
         .call(() => opts.onReveal?.(), [], ">")
         .to(intro, { opacity: 0, duration: t.crossfade }, ">");
@@ -575,15 +624,13 @@ export function mountEnvelope(container: HTMLElement, G: Geometry, opts: MountOp
       tl.to(hint, { opacity: 0, duration: t.hintOut[1] }, t.hintOut[0])
         .to(sealWrap, { scale: 1.08, duration: t.prep[1], ease: "power2.out" }, t.prep[0])
         .to(sealImg, { filter: "drop-shadow(0px 16px 18px rgba(0,0,0,0.55))", duration: t.prep[1], ease: "power2.out" }, t.prep[0])
-        .to(right, { rotationY: ang.side, duration: t.right[1], ease: "power2.inOut" }, t.right[0])
-        .to(fronts[2], { filter: "brightness(0.6)", duration: t.right[1], ease: "power2.inOut" }, t.right[0])
-        .to(left, { rotationY: -ang.side, duration: t.left[1], ease: "power2.inOut" }, t.left[0])
-        .to(fronts[3], { filter: "brightness(1.25)", duration: t.left[1], ease: "power2.inOut" }, t.left[0])
-        .to(top, { rotationX: ang.topBottom, duration: t.topBottom[1], ease: "power2.inOut" }, t.topBottom[0])
-        .to(bottom, { rotationX: -ang.topBottom, duration: t.topBottom[1], ease: "power2.inOut" }, t.topBottom[0])
+        .to(right, { rotationY: ang.side, duration: t.right[1], ease: "power2.inOut", onUpdate: () => shade(2) }, t.right[0])
+        .to(left, { rotationY: -ang.side, duration: t.left[1], ease: "power2.inOut", onUpdate: () => shade(3) }, t.left[0])
+        .to(top, { rotationX: ang.topBottom, duration: t.topBottom[1], ease: "power2.inOut", onUpdate: () => shade(0) }, t.topBottom[0])
+        .to(bottom, { rotationX: -ang.topBottom, duration: t.topBottom[1], ease: "power2.inOut", onUpdate: () => shade(1) }, t.topBottom[0])
         .to(scene, { scale: t.zoomScale, duration: t.zoom[1], ease: "power1.inOut" }, t.zoom[0])
         .to(letters, { opacity: 1, filter: "blur(0px)", y: 0, duration: t.letter, ease: "power2.out", stagger: { each: t.stagger, from: "random" } }, t.text)
-        .set(flaps, { display: "none" }, t.cleanup)
+        .set([...flaps, ...shadows], { display: "none" }, t.cleanup)
         .to(words, { opacity: 0, filter: "blur(6px)", duration: t.textOut, ease: "power1.in" }, textEnd + t.hold)
         .call(() => opts.onReveal?.(), [], ">")
         .to(intro, { opacity: 0, duration: t.crossfade, ease: "power1.inOut" }, "<");

@@ -50,8 +50,9 @@ export function EnvelopeAnimPanel({ anim, onChange, classic, letters }: { anim: 
       </div>
       {classic && (
         <>
-          {row("Las laterales se levantan en", "sideDur", 0.6, 4, 0.1, (v) => `${fmt(v)} s`, "Cuánto tarda cada solapa lateral en levantarse. Más segundos = más despacio (arrancan siempre en el mismo momento).")}
-          {row("La superior e inferior se levantan en", "tbDur", 0.6, 4, 0.1, (v) => `${fmt(v)} s`)}
+          {row("Las laterales se levantan en", "sideDur", 0.6, 6, 0.1, (v) => `${fmt(v)} s`, "Cuánto tarda cada solapa lateral en levantarse. Más segundos = más despacio (arrancan siempre en el mismo momento).")}
+          {row("La superior e inferior se levantan en", "tbDur", 0.6, 6, 0.1, (v) => `${fmt(v)} s`)}
+          {row("Luz y sombras de las solapas", "shadow", 0, 1, 0.05, (v) => (v === 0 ? "sin sombras" : `${Math.round(v * 100)}%`), "La luz entra de izquierda a derecha: cada solapa se aclara u oscurece al girar y proyecta su sombra.")}
           {row("Superior e inferior arrancan", "overlap", 0, 1, 0.05, (v) => (v === 0 ? "junto con las laterales" : v === 1 ? "al terminar las laterales" : `al ${Math.round(v * 100)}% de las laterales`))}
           {row("Tiempo para leer el mensaje", "hold", 1, 6, 0.5, (v) => `${fmt(v)} s`)}
           {row("Acercamiento al abrir", "zoom", 0, 0.15, 0.01, (v) => `${Math.round(v * 100)}%`)}
