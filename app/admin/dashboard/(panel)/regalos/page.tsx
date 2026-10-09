@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { giftContributions, giftItems, guests } from "@/lib/db/schema";
 import { getWeddingContent } from "@/lib/weddingContent";
 import { getGiftsDisplay } from "@/app/components/Gifts";
-import { asCurrency, raisedByGift } from "@/lib/panel";
+import { asCurrency, asGiftCurrency, fmtTotals, raisedByGift } from "@/lib/panel";
 import { publicUrlFor } from "@/lib/storage/r2";
 import { GiftsManager, type ContributionRow, type GiftRow } from "./GiftsManager";
 
@@ -29,7 +29,8 @@ export default async function GiftsPage() {
     name: i.name,
     description: i.description,
     amount: i.amount,
-    currency: asCurrency(i.currency),
+    currency: asGiftCurrency(i.currency),
+    raisedText: fmtTotals(contributions.filter((c) => c.giftItemId === i.id)),
     closeOnGoal: i.closeOnGoal,
     imageUrl: i.imageUrl,
     link: i.link,

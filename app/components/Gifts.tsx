@@ -5,7 +5,7 @@ import { getWeddingContent } from "@/lib/weddingContent";
 import { backdropOf } from "@/lib/textLayout";
 import { getJSON } from "@/lib/kv";
 import { myContributions, type MyContribution } from "@/lib/gifts";
-import { asCurrency, DEFAULT_GIFTS_DISPLAY, GIFTS_DISPLAY_KEY, PAYMENT_LABELS, paymentShown, raisedByGift, sanitizeGiftsDisplay, type GiftsDisplay, type Payment } from "@/lib/panel";
+import { asGiftCurrency, DEFAULT_GIFTS_DISPLAY, fmtTotals, GIFTS_DISPLAY_KEY, PAYMENT_LABELS, paymentShown, raisedByGift, sanitizeGiftsDisplay, type GiftsDisplay, type Payment } from "@/lib/panel";
 import { FadeIn } from "./FadeIn";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
 import { CopyButton } from "./CopyButton";
@@ -26,7 +26,7 @@ export async function getGiftsData(guestId?: string | null): Promise<GiftView[]>
     db.select().from(giftContributions),
   ]);
   const raised = raisedByGift(items, contributions);
-  const mine = raisedByGift(items, guestId ? contributions.filter((c) => c.guestId === guestId) : []);
+  const mine = guestId ? contributions.filter((c) => c.guestId === guestId) : [];
   return items.map((i) => {
     const goal = i.amount && i.amount > 0 ? i.amount : null;
     const r = raised[i.id] ?? 0;
@@ -36,11 +36,12 @@ export async function getGiftsData(guestId?: string | null): Promise<GiftView[]>
       description: i.description,
       imageUrl: i.imageUrl,
       link: i.link,
-      currency: asCurrency(i.currency),
+      currency: asGiftCurrency(i.currency),
       goal,
       raised: r,
       closed: i.closeOnGoal && goal !== null && r >= goal,
-      mine: mine[i.id] ?? 0,
+      // Lo que aportó esta invitación, por moneda ("S/ 150 · US$ 50").
+      mine: mine.some((c) => c.giftItemId === i.id) ? fmtTotals(mine.filter((c) => c.giftItemId === i.id)) : null,
     };
   });
 }

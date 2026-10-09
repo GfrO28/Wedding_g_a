@@ -40,6 +40,10 @@ export const reminderMessage = (name: string, link: string, deadline: string) =>
 export type Currency = "PEN" | "USD";
 export const asCurrency = (v: unknown): Currency => (v === "USD" ? "USD" : "PEN");
 export const CURRENCY_NAMES: Record<Currency, string> = { PEN: "Soles", USD: "Dólares" };
+// Moneda de un regalo: la de un aporte libre puede quedar a elección del invitado ("ANY").
+export type GiftCurrency = Currency | "ANY";
+export const asGiftCurrency = (v: unknown): GiftCurrency => (v === "USD" || v === "ANY" ? v : "PEN");
+export const GIFT_CURRENCY_NAMES: Record<GiftCurrency, string> = { PEN: "Soles", USD: "Dólares", ANY: "Soles o dólares" };
 const SYMBOL: Record<Currency, string> = { PEN: "S/", USD: "US$" };
 export const fmtMoney = (n: number, c: Currency = "PEN") => `${SYMBOL[c]} ${Math.round(n).toLocaleString("es-PE")}`;
 export const soles = (n: number) => fmtMoney(n, "PEN");

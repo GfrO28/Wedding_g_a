@@ -14,14 +14,15 @@ import {
   setGiftVisibleAction,
   type GiftInput,
 } from "../../panel-actions";
-import { CURRENCY_NAMES, fmtMoney, fmtTotals, inSoles, isBank, PAYMENT_LABELS, PAYMENT_METHODS, paymentShown, soles, type Currency, type GiftsDisplay, type Payment } from "@/lib/panel";
+import { fmtMoney, GIFT_CURRENCY_NAMES, fmtTotals, inSoles, isBank, PAYMENT_LABELS, PAYMENT_METHODS, paymentShown, soles, type Currency, type GiftCurrency, type GiftsDisplay, type Payment } from "@/lib/panel";
 
 export type GiftRow = {
   id: string;
   name: string;
   description: string | null;
   amount: number | null; // meta (null: aporte libre)
-  currency: Currency;
+  currency: GiftCurrency; // "ANY": aporte libre, el invitado elige
+  raisedText: string; // lo juntado, por moneda
   closeOnGoal: boolean;
   imageUrl: string | null;
   link: string | null;
@@ -44,6 +45,8 @@ export type ContributionRow = {
 };
 type Status = "pending" | "received" | "all";
 
+// Un regalo con meta siempre tiene moneda fija.
+const gcOf = (g: { currency: GiftCurrency }): Currency => (g.currency === "USD" ? "USD" : "PEN");
 const when = (iso: string) => new Date(iso).toLocaleDateString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 // Lista de regalos: qué se muestra, medios de pago, regalos y fondos, y los aportes.
@@ -97,7 +100,7 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
         <section className="rounded-2xl border border-[#E7E1DB] bg-white p-5" aria-label="Medios de pago">
           <h2 className="text-[15px] font-semibold">Medios de pago</h2>
           <p className="text-sm text-[#6B6063]">Los invitados copian los datos con un toque</p>
-          {gifts.some((g) => g.currency === "USD" && g.visible) && !paymentShown(payment, "bankUsd") && (
+          {gifts.some((g) => g.currency !== "PEN" && g.visible) && !paymentShown(payment, "bankUsd") && (
             <p className="mt-2 rounded-lg bg-[#FBF5E8] p-2.5 text-sm text-[#6E520F]" role="alert" data-usd-warning>
               Tienes regalos en dólares, pero la «Transferencia en dólares» está oculta: complétala y muéstrala para que puedan abonar.
             </p>
@@ -147,11 +150,11 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
                     <div className="flex items-baseline justify-between gap-2">
                       <h3 className="font-semibold">{g.name}</h3>
                       <span className="whitespace-nowrap rounded-full bg-[#F6F3EF] px-2 py-0.5 text-[11px] text-[#4A4043]">
-                        {g.currency === "USD" ? "Dólares" : "Soles"}
+                        {GIFT_CURRENCY_NAMES[g.currency]}
                         {g.visible ? "" : " · oculto"}
                       </span>
                     </div>
-                    <p className="text-sm font-semibold">{g.amount ? `${fmtMoney(g.raised, g.currency)} de ${fmtMoney(g.amount, g.currency)}` : `${fmtMoney(g.raised, g.currency)} · aporte libre`}</p>
+                    <p className="text-sm font-semibold">{g.amount ? `${fmtMoney(g.raised, gcOf(g))} de ${fmtMoney(g.amount, gcOf(g))}` : `${g.raisedText} · aporte libre`}</p>
                     {g.amount ? (
                       <div className="h-2 overflow-hidden rounded-full bg-[#F1ECE6]"><div className="h-full bg-[#A87D22]" style={{ width: `${pct}%` }} /></div>
                     ) : null}
@@ -321,6 +324,7 @@ function GiftForm({ gift, onClose }: { gift: GiftRow | null; onClose: () => void
     id: gift?.id,
     name: gift?.name ?? "",
     description: gift?.description ?? "",
+    kind: gift && !gift.amount ? "free" : "goal",
     amount: gift?.amount ?? null,
     closeOnGoal: gift?.closeOnGoal ?? false,
     currency: gift?.currency ?? "PEN",
@@ -358,23 +362,49 @@ function GiftForm({ gift, onClose }: { gift: GiftRow | null; onClose: () => void
       }}
       data-gift-form
     >
+      <fieldset className="flex flex-wrap gap-2 sm:col-span-2" data-gift-kind>
+        <legend className="mb-1.5 text-[13px] text-[#4A4043]">Tipo de regalo</legend>
+        {([
+          ["goal", "Con meta", "Tiene un monto a juntar y una barra de avance (ej.: luna de miel)"],
+          ["free", "Aporte libre", "Sin meta: cada invitado aporta lo que quiera"],
+        ] as const).map(([k, label, help]) => (
+          <label key={k} className={`flex flex-1 cursor-pointer flex-col rounded-lg border p-3 text-sm ${v.kind === k ? "border-[#7A2337] bg-[#F3E6E9]" : "border-[#D9D1CA]"}`}>
+            <span className="flex items-center gap-2 font-semibold">
+              <input
+                type="radio"
+                name="kind"
+                checked={v.kind === k}
+                onChange={() => setV({ ...v, kind: k, currency: k === "goal" && v.currency === "ANY" ? "PEN" : v.currency, closeOnGoal: k === "goal" && v.closeOnGoal })}
+                className="accent-[#7A2337]"
+              />
+              {label}
+            </span>
+            <span className="text-xs text-[#6B6063]">{help}</span>
+          </label>
+        ))}
+      </fieldset>
       <Field label="Nombre"><input className={inputCls} required maxLength={120} value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} /></Field>
       <Field label="Moneda">
-        <select className={inputCls} value={v.currency ?? "PEN"} onChange={(e) => setV({ ...v, currency: e.target.value as Currency })}>
-          {(["PEN", "USD"] as const).map((c) => <option key={c} value={c}>{CURRENCY_NAMES[c]}</option>)}
+        <select className={inputCls} value={v.currency ?? "PEN"} onChange={(e) => setV({ ...v, currency: e.target.value as GiftCurrency })}>
+          {(v.kind === "free" ? (["PEN", "USD", "ANY"] as const) : (["PEN", "USD"] as const)).map((c) => (
+            <option key={c} value={c}>{c === "ANY" ? "El invitado elige (soles o dólares)" : GIFT_CURRENCY_NAMES[c]}</option>
+          ))}
         </select>
         <span className="mt-1 block text-xs text-[#6B6063]" data-currency-hint>
-          {v.currency === "USD" ? "Se muestra en dólares y los invitados aportan en dólares." : "Se muestra en soles y los invitados aportan en soles."}
+          {v.currency === "USD" ? "Se muestra en dólares y los invitados aportan en dólares." : v.currency === "ANY" ? "Cada invitado elige si aporta en soles o en dólares; las cuentas van por separado." : "Se muestra en soles y los invitados aportan en soles."}
         </span>
       </Field>
-      <Field label={`Meta (${v.currency === "USD" ? "US$" : "S/"}, opcional)`}>
-        <input className={inputCls} type="number" min={0} value={v.amount ?? ""} onChange={(e) => setV({ ...v, amount: e.target.value === "" ? null : Number(e.target.value) })} />
-        <span className="mt-1 block text-xs text-[#6B6063]">Sin meta, es un aporte libre (sin barra de avance).</span>
-      </Field>
-      <label className="flex min-h-11 items-center gap-2.5 text-sm sm:col-span-2">
-        <input type="checkbox" checked={v.closeOnGoal ?? false} disabled={!v.amount} onChange={(e) => setV({ ...v, closeOnGoal: e.target.checked })} className="h-5 w-5 accent-[#7A2337]" data-close-on-goal />
-        Dejar de recibir aportes al llegar a la meta
-      </label>
+      {v.kind === "goal" && (
+        <>
+          <Field label={`Meta (${v.currency === "USD" ? "US$" : "S/"})`}>
+            <input className={inputCls} type="number" min={1} required value={v.amount ?? ""} onChange={(e) => setV({ ...v, amount: e.target.value === "" ? null : Number(e.target.value) })} />
+          </Field>
+          <label className="flex min-h-11 items-center gap-2.5 text-sm sm:col-span-2">
+            <input type="checkbox" checked={v.closeOnGoal ?? false} onChange={(e) => setV({ ...v, closeOnGoal: e.target.checked })} className="h-5 w-5 accent-[#7A2337]" data-close-on-goal />
+            Dejar de recibir aportes al llegar a la meta
+          </label>
+        </>
+      )}
       <Field label="Descripción (opcional)" wide><input className={inputCls} maxLength={400} value={v.description ?? ""} onChange={(e) => setV({ ...v, description: e.target.value })} /></Field>
       <Field label="Enlace a la tienda (opcional)" wide><input className={inputCls} type="url" placeholder="https://…" value={v.link ?? ""} onChange={(e) => setV({ ...v, link: e.target.value })} /></Field>
       <div className="flex items-center gap-3 sm:col-span-2">

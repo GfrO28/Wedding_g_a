@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useTransition, type ReactNode } from "reac
 import { createPortal } from "react-dom";
 import { Camera, Check, ChevronLeft, X } from "lucide-react";
 import { contributeAction, requestReceiptUploadAction } from "@/app/i/[slug]/gift-actions";
-import { fmtMoney, PAYMENT_LABELS, QUICK_AMOUNTS, remainingFor, type BankAccount, type Currency } from "@/lib/panel";
+import { fmtMoney, PAYMENT_LABELS, QUICK_AMOUNTS, remainingFor, type BankAccount, type Currency, type GiftCurrency } from "@/lib/panel";
 import type { MyContribution } from "@/lib/gifts";
 import { CopyButton } from "./CopyButton";
 
@@ -14,11 +14,11 @@ export type GiftView = {
   description: string | null;
   imageUrl: string | null;
   link: string | null;
-  currency: Currency;
+  currency: GiftCurrency; // "ANY": aporte libre en la moneda que elija el invitado
   goal: number | null;
   raised: number;
   closed: boolean; // llegó a la meta y no recibe más aportes
-  mine: number; // lo que ya aportó esta invitación
+  mine: string | null; // lo que ya aportó esta invitación ("S/ 150 · US$ 50")
 };
 // Solo los medios de pago que se muestran.
 export type PayView = {
@@ -57,7 +57,8 @@ export function GiftList({
         {gifts.map((g) => (
           <GiftCard key={g.id} gift={g} showRaised={showRaised} onGive={() => setOpen({ gift: g, step: "amount" })} />
         ))}
-        {guestName && mine.length > 0 && (
+        {/* Siempre a la vista en la invitación de cada invitado (vacío: lo indica). */}
+        {guestName && (
           <p className="text-center">
             <button type="button" onClick={() => setOpen({ gift: null, step: "mine" })} className="min-h-11 rounded-full bg-[var(--color-bg)] px-5 text-sm text-[var(--color-accent)] underline underline-offset-2 shadow-sm">
               Ver mis aportes
@@ -86,6 +87,8 @@ function GiftCard({ gift: g, showRaised, onGive }: { gift: GiftView; showRaised:
   const done = g.goal !== null && g.raised >= g.goal;
   const pct = g.goal ? Math.min(100, Math.round((g.raised / g.goal) * 100)) : 0;
   const left = remainingFor(g.goal, g.raised);
+  // Un regalo con meta siempre tiene moneda fija ("ANY" es solo para aportes libres).
+  const gc: Currency = g.currency === "USD" ? "USD" : "PEN";
   const btn = "flex min-h-11 shrink-0 items-center rounded-md px-5 text-sm font-medium";
   return (
     // Tarjeta de «papel»: se lee bien sobre cualquier fondo de la sección.
@@ -98,7 +101,7 @@ function GiftCard({ gift: g, showRaised, onGive }: { gift: GiftView; showRaised:
         <div className="min-w-0">
           <h3 className="font-medium text-[var(--color-fg)]">{g.name}</h3>
           <p className="text-xs text-[var(--color-muted)]" data-currency-note>
-            {g.currency === "USD" ? "En dólares · se abona en la cuenta en dólares" : "En soles"}
+            {g.currency === "USD" ? "En dólares · se abona en la cuenta en dólares" : g.currency === "ANY" ? "En soles o en dólares, como prefieras" : "En soles"}
             {g.goal === null && " · aporte libre"}
           </p>
           {g.description && <p className="text-sm text-[var(--color-muted)]">{g.description}</p>}
@@ -113,7 +116,7 @@ function GiftCard({ gift: g, showRaised, onGive }: { gift: GiftView; showRaised:
         <>
           {showRaised && (
             <p className="text-[15px] font-medium text-[var(--color-fg)]">
-              {fmtMoney(g.raised, g.currency)} <span className="font-normal text-[var(--color-muted)]">de {fmtMoney(g.goal, g.currency)}</span>
+              {fmtMoney(g.raised, gc)} <span className="font-normal text-[var(--color-muted)]">de {fmtMoney(g.goal, gc)}</span>
             </p>
           )}
           <div className="h-2 overflow-hidden rounded-full bg-[var(--color-border)]" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${g.name}: ${pct}%`}>
@@ -126,7 +129,7 @@ function GiftCard({ gift: g, showRaised, onGive }: { gift: GiftView; showRaised:
           {done ? (
             <span className="text-sm font-medium text-[var(--color-accent)]">¡Meta cumplida, gracias!</span>
           ) : (
-            [showRaised && left !== null ? `Faltan ${fmtMoney(left, g.currency)}` : null, g.mine > 0 ? `tú aportaste ${fmtMoney(g.mine, g.currency)}` : null].filter(Boolean).join(" · ")
+            [showRaised && left !== null ? `Faltan ${fmtMoney(left, gc)}` : null, g.mine ? `tú aportaste ${g.mine}` : null].filter(Boolean).join(" · ")
           )}
         </span>
         {!g.closed &&
@@ -166,8 +169,13 @@ function Flow({
   onClose: () => void;
 }) {
   const [step, setStep] = useState<Step>(firstStep);
-  const cur = gift?.currency ?? "PEN";
+  const choose = gift?.currency === "ANY";
+  const [cur, setCur] = useState<Currency>(gift?.currency === "USD" ? "USD" : "PEN");
   const [amount, setAmount] = useState<number>(QUICK_AMOUNTS[cur][0]);
+  const pickCurrency = (c: Currency) => {
+    setCur(c);
+    setAmount(QUICK_AMOUNTS[c][0]);
+  };
   const [method, setMethod] = useState<PenMethod | null>((["yape", "plin", "bank"] as const).find((m) => payment[m]) ?? null);
   const [op, setOp] = useState("");
   const [msg, setMsg] = useState("");
@@ -215,7 +223,7 @@ function Flow({
     if (!gift) return;
     setError(null);
     start(async () => {
-      const res = await contributeAction({ slug, giftId: gift.id, amount, operationNumber: op, receiptKey: receipt?.key ?? null, message: msg });
+      const res = await contributeAction({ slug, giftId: gift.id, amount, currency: cur, operationNumber: op, receiptKey: receipt?.key ?? null, message: msg });
       if (!res.ok) return setError(res.error);
       onSaved(res.mine);
       setStep("done");
@@ -231,9 +239,18 @@ function Flow({
       return (
         <>
           <Heading refEl={titleRef} kicker="Aporte a" title={gift.name}>
-            {cur === "USD" ? "Es en dólares: tu aporte va en dólares." : "Es en soles: tu aporte va en soles."}
+            {choose ? "Puedes aportar en soles o en dólares." : cur === "USD" ? "Es en dólares: tu aporte va en dólares." : "Es en soles: tu aporte va en soles."}
             {left !== null && left > 0 && ` Faltan ${money(left)} para la meta.`}
           </Heading>
+          {choose && (
+            <div role="radiogroup" aria-label="Moneda del aporte" className="grid grid-cols-2 gap-1.5 rounded-lg bg-[var(--color-border)] p-1" data-currency-choice>
+              {(["PEN", "USD"] as const).map((c) => (
+                <button key={c} type="button" role="radio" aria-checked={cur === c} onClick={() => pickCurrency(c)} className={`min-h-11 rounded-md text-sm ${cur === c ? "bg-white font-semibold text-[var(--color-fg)]" : "text-[var(--color-muted)]"}`}>
+                  {c === "PEN" ? "S/ Soles" : "US$ Dólares"}
+                </button>
+              ))}
+            </div>
+          )}
           <fieldset className="space-y-2.5">
             <legend className="mb-2.5 text-sm font-medium text-[var(--color-fg)]">¿Cuánto quieres aportar?</legend>
             <div className="grid grid-cols-2 gap-2">
@@ -403,6 +420,11 @@ function Flow({
         )}
         <section aria-label="Mis aportes" className="space-y-2.5" data-mine>
           {step === "done" && <h3 className="text-[15px] font-semibold">Mis aportes</h3>}
+          {mine.length === 0 && (
+            <p className="rounded-lg border border-dashed border-[var(--color-border)] px-3.5 py-4 text-center text-sm text-[var(--color-muted)]" data-mine-empty>
+              Todavía no has realizado ningún aporte.
+            </p>
+          )}
           {mine.map((c) => (
             <div key={c.id} className="flex items-center justify-between gap-2.5 rounded-lg border border-[var(--color-border)] px-3.5 py-3">
               <span className="min-w-0">
@@ -417,7 +439,7 @@ function Flow({
               </span>
             </div>
           ))}
-          <p className="text-xs text-[var(--color-muted)]">¿Te equivocaste en algo? Escríbenos y lo corregimos.</p>
+          {mine.length > 0 && <p className="text-xs text-[var(--color-muted)]">¿Te equivocaste en algo? Escríbenos y lo corregimos.</p>}
         </section>
         <span className="flex-1" />
         <button type="button" onClick={onClose} className="flex min-h-12 w-full items-center justify-center rounded-md border border-[var(--color-accent)] text-[15px] font-medium text-[var(--color-accent)]">

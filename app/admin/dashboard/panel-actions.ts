@@ -11,6 +11,7 @@ import { audit, destroyAdminSession, requireAdmin } from "@/lib/auth";
 import { deleteObject, getUploadUrl, publicUrlFor } from "@/lib/storage/r2";
 import {
   asCurrency,
+  asGiftCurrency,
   fmtMoney,
   GIFTS_DISPLAY_KEY,
   GUEST_TARGET_KEY,
@@ -20,7 +21,7 @@ import {
   paymentShown,
   sanitizeGiftsDisplay,
   withPaymentDefaults,
-  type Currency,
+  type GiftCurrency,
   type Payment,
   type PaymentMethod,
 } from "@/lib/panel";
@@ -127,8 +128,9 @@ export type GiftInput = {
   id?: string;
   name: string;
   description?: string;
-  amount?: number | null; // meta (sin meta: aporte libre)
-  currency?: Currency;
+  kind?: "goal" | "free"; // con meta o aporte libre
+  amount?: number | null; // la meta (solo "goal")
+  currency?: GiftCurrency; // "ANY" (el invitado elige) solo en un aporte libre
   closeOnGoal?: boolean;
   imageUrl?: string;
   link?: string;
@@ -143,14 +145,16 @@ export async function saveGiftAction(input: GiftInput): Promise<{ ok: boolean; e
   await guard();
   const name = clip(input.name, 120);
   if (!name) return { ok: false, error: "Falta el nombre del regalo." };
-  const amount = input.amount === null || input.amount === undefined || input.amount === ("" as unknown) ? null : Math.max(0, Math.round(Number(input.amount)) || 0) || null;
+  const free = input.kind === "free";
+  const amount = free ? null : Math.max(0, Math.round(Number(input.amount)) || 0) || null;
+  if (!free && !amount) return { ok: false, error: "Escribe la meta del regalo (o elige «Aporte libre»)." };
   const data = {
     name,
-    currency: asCurrency(input.currency),
+    currency: free ? asGiftCurrency(input.currency) : asCurrency(input.currency),
     description: orNull(input.description, 400),
     type: "fund",
     amount,
-    closeOnGoal: input.closeOnGoal === true,
+    closeOnGoal: !free && input.closeOnGoal === true,
     imageUrl: validUrl(input.imageUrl),
     link: validUrl(input.link),
   };

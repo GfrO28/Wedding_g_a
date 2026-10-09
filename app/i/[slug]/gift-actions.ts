@@ -34,6 +34,7 @@ export type ContributeInput = {
   slug: string;
   giftId: string;
   amount: number;
+  currency?: string; // solo cuenta en un aporte libre «el invitado elige»
   operationNumber: string;
   receiptKey?: string | null;
   message?: string;
@@ -75,7 +76,7 @@ export async function contributeAction(input: ContributeInput): Promise<{ ok: tr
     guestId: guest.id,
     contributorName: guest.fullName,
     amount,
-    currency: asCurrency(gift.currency),
+    currency: gift.currency === "ANY" ? asCurrency(input.currency) : asCurrency(gift.currency),
     operationNumber,
     receiptKey,
     message,
