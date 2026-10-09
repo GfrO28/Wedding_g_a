@@ -4,7 +4,7 @@ import { giftContributions, giftItems } from "@/lib/db/schema";
 import { getWeddingContent } from "@/lib/weddingContent";
 import { backdropOf } from "@/lib/textLayout";
 import { getJSON } from "@/lib/kv";
-import { DEFAULT_GIFTS_DISPLAY, dollars, GIFTS_DISPLAY_KEY, money, PAYMENT_LABELS, paymentShown, sanitizeGiftsDisplay, soles, type GiftsDisplay } from "@/lib/panel";
+import { asCurrency, DEFAULT_GIFTS_DISPLAY, fmtMoney, GIFTS_DISPLAY_KEY, PAYMENT_LABELS, paymentShown, raisedByGift, sanitizeGiftsDisplay, type GiftsDisplay } from "@/lib/panel";
 import { FadeIn } from "./FadeIn";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
 import { CopyButton } from "./CopyButton";
@@ -25,9 +25,7 @@ export async function getGiftsData() {
   const contributions = hasFunds
     ? await db.select().from(giftContributions).orderBy(desc(giftContributions.createdAt))
     : [];
-  const raised: Record<string, number> = {};
-  for (const c of contributions) raised[c.giftItemId] = (raised[c.giftItemId] ?? 0) + c.amount;
-  return { items, raised };
+  return { items, raised: raisedByGift(items, contributions) };
 }
 
 export async function Gifts({ slug }: { slug: string }) {
@@ -150,12 +148,13 @@ function ClaimGiftCard({ item, slug }: { item: GiftItem; slug: string }) {
       )}
       <div>
         <h3 className="font-medium text-[var(--color-fg)]">{item.name}</h3>
+        {asCurrency(item.currency) === "USD" && <p className="text-xs text-[var(--color-muted)]" data-usd-note>En dólares · abona en la cuenta en dólares</p>}
         {item.description && (
           <p className="text-sm text-[var(--color-muted)]">{item.description}</p>
         )}
         {item.amount && (
           <p className="text-sm text-[var(--color-muted)]">
-            Monto sugerido: {money(item.amount)}
+            Monto sugerido: {fmtMoney(item.amount, asCurrency(item.currency))}
           </p>
         )}
         {item.link && (
@@ -190,6 +189,7 @@ function FundGiftCard({
   showRaised?: boolean;
 }) {
   const target = item.amount ?? 0;
+  const cur = asCurrency(item.currency);
   const pct = target > 0 ? Math.min(100, Math.round((raised / target) * 100)) : 0;
   const complete = target > 0 && raised >= target;
 
@@ -200,17 +200,12 @@ function FundGiftCard({
         <img src={item.imageUrl} alt="" className="mx-auto mb-3 h-32 w-full rounded-md object-cover" loading="lazy" />
       )}
       <h3 className="font-medium text-[var(--color-fg)]">{item.name}</h3>
+      {asCurrency(item.currency) === "USD" && <p className="text-xs text-[var(--color-muted)]" data-usd-note>En dólares · abona en la cuenta en dólares</p>}
       {item.description && <p className="mt-1 text-sm text-[var(--color-muted)]">{item.description}</p>}
       {showRaised && (
         <p className="mt-4 text-2xl font-medium text-[var(--color-fg)]">
-          {soles(raised)}
-          {target > 0 && <span className="text-base font-normal text-[var(--color-muted)]"> de {soles(target)}</span>}
-        </p>
-      )}
-      {showRaised && (
-        <p className="text-sm text-[var(--color-muted)]" data-usd>
-          {dollars(raised)}
-          {target > 0 && <> de {dollars(target)}</>}
+          {fmtMoney(raised, cur)}
+          {target > 0 && <span className="text-base font-normal text-[var(--color-muted)]"> de {fmtMoney(target, cur)}</span>}
         </p>
       )}
       <div
@@ -228,7 +223,7 @@ function FundGiftCard({
         {complete ? (
           <span className="rounded-md bg-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-muted)]">¡Meta cumplida, gracias!</span>
         ) : (
-          <GiftContributionForm id={item.id} slug={slug} />
+          <GiftContributionForm id={item.id} slug={slug} currency={cur} />
         )}
       </div>
     </div>

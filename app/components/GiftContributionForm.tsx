@@ -6,12 +6,13 @@ import { contributeToGiftAction } from "@/app/i/[slug]/gift-actions";
 export function GiftContributionForm({
   id,
   slug,
+  currency = "PEN",
 }: {
   id: string;
   slug: string;
+  currency?: "PEN" | "USD";
 }) {
   const [open, setOpen] = useState(false);
-  const [currency, setCurrency] = useState<"PEN" | "USD">("PEN");
 
   if (!open) {
     return (
@@ -36,16 +37,6 @@ export function GiftContributionForm({
         autoFocus
         className="w-28 rounded-md border border-[var(--color-border)] px-2 py-1.5 text-sm"
       />
-      <select
-        name="currency"
-        aria-label="Moneda"
-        value={currency}
-        onChange={(e) => setCurrency(e.target.value as "PEN" | "USD")}
-        className="rounded-md border border-[var(--color-border)] bg-transparent px-1.5 py-1.5 text-sm"
-      >
-        <option value="PEN">S/</option>
-        <option value="USD">US$</option>
-      </select>
       <input
         type="number"
         name="amount"

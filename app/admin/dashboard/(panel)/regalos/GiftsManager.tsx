@@ -14,7 +14,7 @@ import {
   setGiftVisibleAction,
   type GiftInput,
 } from "../../panel-actions";
-import { dollars, isBank, money, PAYMENT_LABELS, PAYMENT_METHODS, paymentShown, USD_RATE, type GiftsDisplay, type Payment } from "@/lib/panel";
+import { CURRENCY_NAMES, fmtMoney, fmtTotals, inSoles, isBank, PAYMENT_LABELS, PAYMENT_METHODS, paymentShown, soles, type Currency, type GiftsDisplay, type Payment } from "@/lib/panel";
 
 export type GiftRow = {
   id: string;
@@ -22,6 +22,7 @@ export type GiftRow = {
   description: string | null;
   type: "claim" | "fund";
   amount: number | null;
+  currency: Currency;
   imageUrl: string | null;
   link: string | null;
   visible: boolean;
@@ -30,7 +31,7 @@ export type GiftRow = {
   raised: number;
   contributions: number;
 };
-export type ContributionRow = { id: string; giftId: string; who: string; amount: number; date: string; received: boolean };
+export type ContributionRow = { id: string; giftId: string; who: string; amount: number; currency: Currency; date: string; received: boolean };
 
 const when = (iso: string) => new Date(iso).toLocaleDateString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -42,14 +43,13 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
   const [pending, start] = useTransition();
   const run = (fn: () => Promise<unknown>) => start(async () => void (await fn()));
 
-  const total = contributions.reduce((n, c) => n + c.amount, 0);
   const claims = gifts.filter((g) => g.type === "claim");
   const toVerify = contributions.filter((c) => !c.received);
   const nameOf = (id: string) => gifts.find((g) => g.id === id)?.name ?? "—";
 
   // Aportes y reservas juntos, lo más nuevo primero.
   const rows = [
-    ...contributions.map((c) => ({ kind: "contrib" as const, id: c.id, giftId: c.giftId, who: c.who, amount: money(c.amount), date: c.date, received: c.received })),
+    ...contributions.map((c) => ({ kind: "contrib" as const, id: c.id, giftId: c.giftId, who: c.who, amount: fmtMoney(c.amount, c.currency), date: c.date, received: c.received })),
     ...claims.filter((g) => g.claimedAt).map((g) => ({ kind: "claim" as const, id: g.id, giftId: g.id, who: g.claimedByName ?? "—", amount: "Regalo completo", date: g.claimedAt!, received: true })),
   ]
     .filter((r) => !only || r.giftId === only)
@@ -76,9 +76,9 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
       </header>
 
       <section aria-label="Resumen" className="grid gap-3.5 sm:grid-cols-3">
-        <Kpi label="Recaudado" value={money(total)} hint={`en ${contributions.length} aportes`} />
+        <Kpi label="Recaudado" value={fmtTotals(contributions)} hint={`en ${contributions.length} aportes${contributions.some((c) => c.currency === "USD") && contributions.some((c) => c.currency === "PEN") ? ` · aprox. ${soles(inSoles(contributions))} en total` : ""}`} />
         <Kpi label="Regalos reservados" value={`${claims.filter((g) => g.claimedAt).length} de ${claims.length}`} hint={`${claims.filter((g) => !g.claimedAt).length} todavía disponibles`} />
-        <Kpi label="Por verificar" value={`${toVerify.length} aportes`} hint={`${money(toVerify.reduce((n, c) => n + c.amount, 0))} avisados, sin confirmar`} warn={toVerify.length > 0} />
+        <Kpi label="Por verificar" value={`${toVerify.length} aportes`} hint={`${fmtTotals(toVerify)} avisados, sin confirmar`} warn={toVerify.length > 0} />
       </section>
 
       <div className="grid gap-5 lg:grid-cols-2">
@@ -87,6 +87,11 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
         <section className="rounded-2xl border border-[#E7E1DB] bg-white p-5" aria-label="Medios de pago">
           <h2 className="text-[15px] font-semibold">Medios de pago</h2>
           <p className="text-sm text-[#6B6063]">Los invitados copian los datos con un toque</p>
+          {gifts.some((g) => g.currency === "USD" && g.visible) && !paymentShown(payment, "bankUsd") && (
+            <p className="mt-2 rounded-lg bg-[#FBF5E8] p-2.5 text-sm text-[#6E520F]" role="alert" data-usd-warning>
+              Tienes regalos en dólares, pero la «Transferencia en dólares» está oculta: complétala y muéstrala para que puedan abonar.
+            </p>
+          )}
           <div className="mt-3 flex flex-col gap-2.5">
             {PAYMENT_METHODS.map((k) => {
               const on = paymentShown(payment, k);
@@ -133,7 +138,7 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
                       <h3 className="font-semibold">{g.name}</h3>
                       <span className="whitespace-nowrap rounded-full bg-[#F6F3EF] px-2 py-0.5 text-[11px] text-[#4A4043]">{g.type === "fund" ? "Fondo" : "Reserva"}{g.visible ? "" : " · oculto"}</span>
                     </div>
-                    <p className="text-sm font-semibold">{g.type === "fund" ? `${money(g.raised)}${g.amount ? ` de ${money(g.amount)}` : ""}` : g.amount ? money(g.amount) : "Sin monto"}</p>
+                    <p className="text-sm font-semibold">{g.type === "fund" ? `${fmtMoney(g.raised, g.currency)}${g.amount ? ` de ${fmtMoney(g.amount, g.currency)}` : ""}` : g.amount ? fmtMoney(g.amount, g.currency) : "Sin monto"}</p>
                     {g.type === "fund" && (
                       <div className="h-2 overflow-hidden rounded-full bg-[#F1ECE6]"><div className="h-full bg-[#A87D22]" style={{ width: `${pct}%` }} /></div>
                     )}
@@ -284,6 +289,7 @@ function GiftForm({ gift, onClose }: { gift: GiftRow | null; onClose: () => void
     description: gift?.description ?? "",
     type: gift?.type ?? "claim",
     amount: gift?.amount ?? null,
+    currency: gift?.currency ?? "PEN",
     imageUrl: gift?.imageUrl ?? "",
     link: gift?.link ?? "",
   });
@@ -331,11 +337,16 @@ function GiftForm({ gift, onClose }: { gift: GiftRow | null; onClose: () => void
         ))}
       </fieldset>
       <Field label="Nombre"><input className={inputCls} required maxLength={120} value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} /></Field>
-      <Field label={v.type === "fund" ? "Meta (S/)" : "Monto sugerido (S/, opcional)"}>
-        <input className={inputCls} type="number" min={0} value={v.amount ?? ""} onChange={(e) => setV({ ...v, amount: e.target.value === "" ? null : Number(e.target.value) })} />
-        <span className="mt-1 block text-xs text-[#6B6063]" data-usd-hint>
-          {v.amount ? `Los invitados lo ven también en dólares: ${dollars(v.amount)} (a ${USD_RATE} por dólar)` : `En la invitación se muestra también en dólares (a ${USD_RATE} por dólar)`}
+      <Field label="Moneda">
+        <select className={inputCls} value={v.currency ?? "PEN"} onChange={(e) => setV({ ...v, currency: e.target.value as Currency })}>
+          {(["PEN", "USD"] as const).map((c) => <option key={c} value={c}>{CURRENCY_NAMES[c]}</option>)}
+        </select>
+        <span className="mt-1 block text-xs text-[#6B6063]" data-currency-hint>
+          {v.currency === "USD" ? "Se muestra en dólares y los invitados aportan en dólares." : "Se muestra en soles y los invitados aportan en soles."}
         </span>
+      </Field>
+      <Field label={`${v.type === "fund" ? "Meta" : "Monto sugerido"} (${v.currency === "USD" ? "US$" : "S/"}${v.type === "fund" ? "" : ", opcional"})`}>
+        <input className={inputCls} type="number" min={0} value={v.amount ?? ""} onChange={(e) => setV({ ...v, amount: e.target.value === "" ? null : Number(e.target.value) })} />
       </Field>
       <Field label="Descripción (opcional)" wide><input className={inputCls} maxLength={400} value={v.description ?? ""} onChange={(e) => setV({ ...v, description: e.target.value })} /></Field>
       <Field label="Enlace a la tienda (opcional)" wide><input className={inputCls} type="url" placeholder="https://…" value={v.link ?? ""} onChange={(e) => setV({ ...v, link: e.target.value })} /></Field>

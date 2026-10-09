@@ -34,15 +34,36 @@ export const reminderMessage = (name: string, link: string, deadline: string) =>
 
 /* ---------- Montos ---------- */
 
-// Los montos se guardan en soles; en dólares se muestran con un tipo de cambio fijo.
-export const USD_RATE = 3.5;
-export const soles = (n: number) => `S/ ${Math.round(n).toLocaleString("es-PE")}`;
-export const dollars = (n: number) => `US$ ${Math.round(n / USD_RATE).toLocaleString("es-PE")}`;
-// "S/ 350 (US$ 100)"
-export const money = (n: number) => `${soles(n)} (${dollars(n)})`;
-// Un aporte en dólares se guarda convertido a soles.
+// Cada regalo tiene su moneda: en esa se muestra, se aporta y se lleva la cuenta.
 export type Currency = "PEN" | "USD";
-export const toSoles = (amount: number, currency: Currency) => Math.round(currency === "USD" ? amount * USD_RATE : amount);
+export const asCurrency = (v: unknown): Currency => (v === "USD" ? "USD" : "PEN");
+export const CURRENCY_NAMES: Record<Currency, string> = { PEN: "Soles", USD: "Dólares" };
+const SYMBOL: Record<Currency, string> = { PEN: "S/", USD: "US$" };
+export const fmtMoney = (n: number, c: Currency = "PEN") => `${SYMBOL[c]} ${Math.round(n).toLocaleString("es-PE")}`;
+export const soles = (n: number) => fmtMoney(n, "PEN");
+// Tipo de cambio fijo: solo para totales aproximados y para un aporte que
+// quedó en otra moneda (si se cambió la moneda del regalo).
+export const USD_RATE = 3.5;
+export const convert = (n: number, from: Currency, to: Currency) => (from === to ? n : from === "USD" ? n * USD_RATE : n / USD_RATE);
+// Lo juntado por cada regalo, en la moneda del regalo.
+export function raisedByGift(gifts: { id: string; currency: string }[], contributions: { giftItemId: string; amount: number; currency: string }[]) {
+  const cur = new Map(gifts.map((g) => [g.id, asCurrency(g.currency)]));
+  const out: Record<string, number> = {};
+  for (const c of contributions) {
+    const to = cur.get(c.giftItemId);
+    if (to) out[c.giftItemId] = (out[c.giftItemId] ?? 0) + convert(c.amount, asCurrency(c.currency), to);
+  }
+  return out;
+}
+// Totales separados por moneda: "S/ 1,200 · US$ 300" (o "S/ 0").
+export function fmtTotals(rows: { amount: number; currency: string }[]) {
+  const t = { PEN: 0, USD: 0 };
+  for (const r of rows) t[asCurrency(r.currency)] += r.amount;
+  const parts = (["PEN", "USD"] as const).filter((c) => t[c]).map((c) => fmtMoney(t[c], c));
+  return parts.length ? parts.join(" · ") : fmtMoney(0);
+}
+// Todo pasado a soles con el tipo fijo (para un total aproximado).
+export const inSoles = (rows: { amount: number; currency: string }[]) => rows.reduce((n, r) => n + convert(r.amount, asCurrency(r.currency), "PEN"), 0);
 
 /* ---------- Medios de pago ---------- */
 

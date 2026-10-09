@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { giftContributions, giftItems, guestMessages, guests, rsvps } from "@/lib/db/schema";
 import { getWeddingContent } from "@/lib/weddingContent";
 import { getSettingsMap } from "@/lib/settings";
-import { GUEST_TARGET_KEY, money } from "@/lib/panel";
+import { convert, asCurrency, fmtTotals, GUEST_TARGET_KEY } from "@/lib/panel";
 import { approveMessageAction, deleteMessageAction } from "../actions";
 import { TargetEditor } from "./TargetEditor";
 
@@ -94,8 +94,11 @@ export default async function DashboardPage() {
   const funds = items.filter((i) => i.type === "fund");
   const claims = items.filter((i) => i.type !== "fund");
   const fundIds = new Set(funds.map((f) => f.id));
-  const raised = contributions.filter((c) => fundIds.has(c.giftItemId)).reduce((n, c) => n + c.amount, 0);
-  const fundTarget = funds.reduce((n, f) => n + (f.amount ?? 0), 0);
+  // Fondos en soles y en dólares: las cuentas van por separado; la barra usa el tipo fijo.
+  const fundContribs = contributions.filter((c) => fundIds.has(c.giftItemId));
+  const fundGoals = funds.map((f) => ({ amount: f.amount ?? 0, currency: f.currency }));
+  const raised = fundContribs.reduce((n, c) => n + convert(c.amount, asCurrency(c.currency), "PEN"), 0);
+  const fundTarget = fundGoals.reduce((n, f) => n + convert(f.amount, asCurrency(f.currency), "PEN"), 0);
   const toVerify = contributions.filter((c) => !c.received).length;
 
   // Mensajes y últimas respuestas.
@@ -229,7 +232,7 @@ export default async function DashboardPage() {
             <>
               <p className="mt-3 text-sm text-[#6B6063]">{funds.length === 1 ? funds[0].name : "Fondos"}</p>
               <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-[#F1ECE6]"><div className="h-full bg-[#A87D22]" style={{ width: `${pct(raised, fundTarget)}%` }} /></div>
-              <p className="mt-1.5 text-sm"><b>{money(raised)}</b>{fundTarget ? ` de ${money(fundTarget)}` : ""} · {contributions.filter((c) => fundIds.has(c.giftItemId)).length} aportes</p>
+              <p className="mt-1.5 text-sm"><b>{fmtTotals(fundContribs)}</b>{fundTarget ? ` de ${fmtTotals(fundGoals)}` : ""} · {fundContribs.length} aportes</p>
             </>
           )}
           <p className="mt-3 text-sm text-[#6B6063]">{claims.filter((c) => c.claimedAt).length} de {claims.length} regalos reservados</p>

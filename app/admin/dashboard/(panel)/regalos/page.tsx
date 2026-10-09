@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { giftContributions, giftItems } from "@/lib/db/schema";
 import { getWeddingContent } from "@/lib/weddingContent";
 import { getGiftsDisplay } from "@/app/components/Gifts";
+import { asCurrency, raisedByGift } from "@/lib/panel";
 import { GiftsManager, type ContributionRow, type GiftRow } from "./GiftsManager";
 
 export const dynamic = "force-dynamic";
@@ -14,18 +15,16 @@ export default async function GiftsPage() {
     db.select().from(giftContributions).orderBy(desc(giftContributions.createdAt)),
     getGiftsDisplay(),
   ]);
-  const raised: Record<string, number> = {};
+  const raised = raisedByGift(items, contributions);
   const counts: Record<string, number> = {};
-  for (const c of contributions) {
-    raised[c.giftItemId] = (raised[c.giftItemId] ?? 0) + c.amount;
-    counts[c.giftItemId] = (counts[c.giftItemId] ?? 0) + 1;
-  }
+  for (const c of contributions) counts[c.giftItemId] = (counts[c.giftItemId] ?? 0) + 1;
   const gifts: GiftRow[] = items.map((i) => ({
     id: i.id,
     name: i.name,
     description: i.description,
     type: i.type === "fund" ? "fund" : "claim",
     amount: i.amount,
+    currency: asCurrency(i.currency),
     imageUrl: i.imageUrl,
     link: i.link,
     visible: i.visible,
@@ -39,6 +38,7 @@ export default async function GiftsPage() {
     giftId: c.giftItemId,
     who: c.contributorName,
     amount: c.amount,
+    currency: asCurrency(c.currency),
     date: c.createdAt.toISOString(),
     received: c.received,
   }));

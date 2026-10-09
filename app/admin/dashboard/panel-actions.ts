@@ -10,6 +10,7 @@ import { makeSlug } from "@/lib/slug";
 import { audit, destroyAdminSession, requireAdmin } from "@/lib/auth";
 import { getUploadUrl, publicUrlFor } from "@/lib/storage/r2";
 import {
+  asCurrency,
   GIFTS_DISPLAY_KEY,
   GUEST_TARGET_KEY,
   isBank,
@@ -18,6 +19,7 @@ import {
   paymentShown,
   sanitizeGiftsDisplay,
   withPaymentDefaults,
+  type Currency,
   type Payment,
   type PaymentMethod,
 } from "@/lib/panel";
@@ -126,6 +128,7 @@ export type GiftInput = {
   description?: string;
   type: "claim" | "fund";
   amount?: number | null;
+  currency?: Currency;
   imageUrl?: string;
   link?: string;
 };
@@ -142,6 +145,7 @@ export async function saveGiftAction(input: GiftInput): Promise<{ ok: boolean; e
   const amount = input.amount === null || input.amount === undefined || input.amount === ("" as unknown) ? null : Math.max(0, Math.round(Number(input.amount)) || 0) || null;
   const data = {
     name,
+    currency: asCurrency(input.currency),
     description: orNull(input.description, 400),
     type: input.type === "fund" ? "fund" : "claim",
     amount,

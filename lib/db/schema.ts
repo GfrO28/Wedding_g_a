@@ -72,6 +72,8 @@ export const giftItems = pgTable("gift_items", {
   description: text("description"),
   type: text("type").notNull().default("claim"),
   amount: integer("amount"),
+  // Moneda del regalo ("PEN" o "USD"): en esa moneda se muestra y se aporta.
+  currency: text("currency").notNull().default("PEN"),
   claimedByName: text("claimed_by_name"),
   claimedAt: timestamp("claimed_at", { withTimezone: true }),
   imageUrl: text("image_url"),
@@ -90,6 +92,7 @@ export const giftContributions = pgTable("gift_contributions", {
     .references(() => giftItems.id, { onDelete: "cascade" }),
   contributorName: text("contributor_name").notNull(),
   amount: integer("amount").notNull(),
+  currency: text("currency").notNull().default("PEN"),
   // Los novios confirmaron que el dinero llegó.
   received: boolean("received").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true })
