@@ -1,6 +1,6 @@
 "use server";
 
-import { requireAdmin } from "@/lib/auth";
+import { audit, requireAdmin } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { siteSettings } from "@/lib/db/schema";
@@ -33,6 +33,7 @@ export async function resetThemeAction() {
       .onConflictDoUpdate({ target: siteSettings.key, set: { value: DEFAULT_THEME[key] } });
   }
 
+  await audit("Restableció los colores");
   revalidatePath("/", "layout");
   revalidatePath("/admin/dashboard");
 }

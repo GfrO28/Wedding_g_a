@@ -1,6 +1,6 @@
 "use server";
 
-import { requireAdmin } from "@/lib/auth";
+import { audit, requireAdmin } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -79,6 +79,7 @@ export async function deletePhotoByIdAction(id: string) {
 
   if (photo) {
     await deleteObject(photo.key).catch(() => {});
+    await audit("Borró una foto de la galería");
   }
 
   revalidatePath("/admin/dashboard");

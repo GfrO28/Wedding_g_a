@@ -104,8 +104,37 @@ export const siteSettings = pgTable("site_settings", {
 
 // Sesiones del panel de novios: cada ingreso crea una, con vencimiento. La
 // cookie guarda un código al azar y acá solo su huella (sha-256).
+// Personas con acceso al panel (los novios). La contraseña se guarda con scrypt;
+// queda vacía hasta que la persona acepta la invitación y elige la suya.
+export const adminUsers = pgTable("admin_users", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash"),
+  // Enlace para elegir contraseña (invitación u «olvidé mi contraseña»).
+  setupTokenHash: text("setup_token_hash"),
+  setupExpiresAt: timestamp("setup_expires_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+});
+
+// Dispositivos confirmados con el código por correo: no lo vuelven a pedir por un tiempo.
+export const adminDevices = pgTable("admin_devices", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => adminUsers.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
 export const adminSessions = pgTable("admin_sessions", {
   id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => adminUsers.id, { onDelete: "cascade" }),
+  // Al cerrar la sesión se olvida también su dispositivo (vuelve a pedir código).
+  deviceId: uuid("device_id").references(() => adminDevices.id, { onDelete: "set null" }),
   tokenHash: text("token_hash").notNull().unique(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
@@ -119,5 +148,30 @@ export const loginAttempts = pgTable("login_attempts", {
   id: uuid("id").primaryKey().defaultRandom(),
   ip: text("ip").notNull(),
   success: boolean("success").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Ingreso a medio camino: clave correcta, falta el código que llegó por correo.
+export const loginChallenges = pgTable("login_challenges", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => adminUsers.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  codeHash: text("code_hash").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+// Registro de cambios: quién hizo qué en el panel.
+export const auditLog = pgTable("audit_log", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => adminUsers.id, { onDelete: "set null" }),
+  userName: text("user_name"),
+  action: text("action").notNull(),
+  detail: text("detail"),
+  ip: text("ip"),
+  userAgent: text("user_agent"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

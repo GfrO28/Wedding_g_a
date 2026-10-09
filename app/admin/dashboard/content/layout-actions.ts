@@ -1,6 +1,6 @@
 "use server";
 
-import { requireAdmin } from "@/lib/auth";
+import { audit, requireAdmin } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { setJSON, setSetting } from "@/lib/kv";
 import { getSettingsMap } from "@/lib/settings";
@@ -59,6 +59,7 @@ export async function publishAction(): Promise<{ ok: boolean; published: Partial
     await setSetting(DRAFT_STYLES_KEY, "");
   }
   revalidatePath("/", "layout");
+  await audit("Publicó la invitación", Object.keys(published).length ? `${Object.keys(published).length} secciones` : null);
   return { ok: true, published };
 }
 
@@ -67,6 +68,7 @@ export async function discardDraftsAction(): Promise<{ ok: boolean }> {
   await requireAdmin();
   for (const s of LAYOUT_SECTIONS) await setSetting(draftLayoutKey(s), "");
   await setSetting(DRAFT_STYLES_KEY, "");
+  await audit("Descartó los cambios sin publicar");
   revalidatePath("/admin/dashboard/content");
   return { ok: true };
 }

@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { clientInfo, isAdminAuthed, lockedMinutes, MAX_FAILS } from "@/lib/auth";
 import { loginAction } from "./actions";
+import { AuthCard, buttonClass, inputClass, linkClass, Notice } from "./AuthCard";
 
 export default async function AdminLoginPage({ searchParams }: PageProps<"/admin">) {
   // Con una sesión válida no hace falta volver a entrar.
@@ -9,37 +11,37 @@ export default async function AdminLoginPage({ searchParams }: PageProps<"/admin
   // El bloqueo se calcula en vivo: al recargar pasado el plazo, se puede volver a intentar.
   const minutes = await lockedMinutes((await clientInfo()).ip);
   const locked = minutes > 0;
+  const error = locked ? null : params?.error;
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-[#F6F3EF] px-4">
-      <form action={loginAction} className="w-full max-w-sm space-y-4 rounded-2xl border border-[#E7E1DB] bg-white p-8 shadow-sm">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#7A2337] font-serif text-white">A&amp;G</div>
-        <div>
-          <h1 className="font-serif text-2xl text-[#221A1C]">Panel de novios</h1>
-          <p className="text-sm text-[#6B6063]">Acceso privado para los novios.</p>
-        </div>
+    <AuthCard title="Panel de novios" subtitle="Acceso privado para los novios.">
+      <form action={loginAction} className="space-y-3">
+        <label className="block">
+          <span className="sr-only">Correo</span>
+          <input type="email" name="email" placeholder="Correo" required autoComplete="username" disabled={locked} className={inputClass} />
+        </label>
         <label className="block">
           <span className="sr-only">Contraseña</span>
-          <input
-            type="password"
-            name="password"
-            placeholder="Contraseña"
-            required
-            autoComplete="current-password"
-            disabled={locked}
-            className="min-h-11 w-full rounded-lg border border-[#D9D1CA] px-3 text-sm focus:border-[#7A2337] focus:outline-none disabled:bg-[#F6F3EF]"
-          />
+          <input type="password" name="password" placeholder="Contraseña" required autoComplete="current-password" disabled={locked} className={inputClass} />
         </label>
-        {params?.error === "1" && !locked && <p className="text-sm text-red-700" role="alert">Contraseña incorrecta.</p>}
+        {error === "1" && <Notice>Correo o contraseña incorrectos.</Notice>}
+        {error === "expired" && <Notice tone="warn">El código venció o se ingresó mal demasiadas veces. Volvé a entrar para recibir uno nuevo.</Notice>}
+        {error === "mail" && <Notice>No se pudo enviar el código por correo. Probá de nuevo en un rato.</Notice>}
+        {params?.ok === "password" && !locked && <Notice tone="ok">Listo, tu contraseña quedó guardada. Ya podés entrar.</Notice>}
         {locked && (
-          <p className="rounded-lg bg-[#FBF5E8] p-3 text-sm text-[#6E520F]" role="alert">
+          <Notice tone="warn">
             Hubo {MAX_FAILS} intentos fallidos seguidos. Por seguridad, probá de nuevo en {minutes} {minutes === 1 ? "minuto" : "minutos"}.
-          </p>
+          </Notice>
         )}
-        <button type="submit" disabled={locked} className="min-h-11 w-full rounded-lg bg-[#7A2337] px-3 text-sm font-semibold text-white hover:bg-[#5A1828] disabled:opacity-50">
+        <button type="submit" disabled={locked} className={buttonClass}>
           Entrar
         </button>
       </form>
-    </main>
+      <p className="text-center">
+        <Link href="/admin/recuperar" className={linkClass}>
+          ¿Olvidaste tu contraseña?
+        </Link>
+      </p>
+    </AuthCard>
   );
 }

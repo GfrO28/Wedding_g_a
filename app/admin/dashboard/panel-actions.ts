@@ -7,14 +7,14 @@ import { db } from "@/lib/db";
 import { giftContributions, giftItems, guests } from "@/lib/db/schema";
 import { getJSON, setJSON, setSetting } from "@/lib/kv";
 import { makeSlug } from "@/lib/slug";
-import { destroyAdminSession, isAdminAuthed } from "@/lib/auth";
+import { audit, destroyAdminSession, requireAdmin } from "@/lib/auth";
 import { getUploadUrl, publicUrlFor } from "@/lib/storage/r2";
 import { GIFTS_DISPLAY_KEY, GUEST_TARGET_KEY, sanitizeGiftsDisplay } from "@/lib/panel";
 import { WEDDING as DEFAULTS } from "@/lib/content";
 
 // Todas las acciones del panel exigen la sesión de los novios.
 async function guard() {
-  if (!(await isAdminAuthed())) throw new Error("No autorizado");
+  await requireAdmin();
 }
 
 function revalidate() {
@@ -25,6 +25,7 @@ const clip = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(
 const orNull = (v: unknown, n: number) => clip(v, n) || null;
 
 export async function logoutAction() {
+  await audit("Cerró sesión");
   await destroyAdminSession();
   redirect("/admin");
 }
@@ -77,7 +78,8 @@ export async function saveGuestAction(input: GuestInput): Promise<{ ok: boolean;
 export async function deleteGuestsAction(ids: string[]) {
   await guard();
   if (!ids.length) return;
-  await db.delete(guests).where(inArray(guests.id, ids.slice(0, 500)));
+  const gone = await db.delete(guests).where(inArray(guests.id, ids.slice(0, 500))).returning({ name: guests.fullName });
+  await audit(gone.length === 1 ? "Borró un invitado" : `Borró ${gone.length} invitados`, gone.map((g) => g.name).join(", ").slice(0, 300));
   revalidate();
 }
 
@@ -97,7 +99,10 @@ export async function bulkUpdateGuestsAction(ids: string[], changes: { groupName
 export async function importGuestsAction(rows: GuestInput[]): Promise<{ ok: boolean; count: number }> {
   await guard();
   const clean = rows.slice(0, 1000).map(cleanGuest).filter((g) => g.fullName);
-  if (clean.length) await db.insert(guests).values(clean.map((g) => ({ ...g, slug: makeSlug(g.fullName) })));
+  if (clean.length) {
+    await db.insert(guests).values(clean.map((g) => ({ ...g, slug: makeSlug(g.fullName) })));
+    await audit(`Importó ${clean.length} invitados`);
+  }
   revalidate();
   return { ok: true, count: clean.length };
 }
@@ -144,7 +149,8 @@ export async function saveGiftAction(input: GiftInput): Promise<{ ok: boolean; e
 
 export async function deleteGiftAction(id: string) {
   await guard();
-  await db.delete(giftItems).where(eq(giftItems.id, id));
+  const [gift] = await db.delete(giftItems).where(eq(giftItems.id, id)).returning({ name: giftItems.name });
+  if (gift) await audit("Borró un regalo", gift.name);
   revalidate();
 }
 
@@ -156,7 +162,8 @@ export async function setGiftVisibleAction(id: string, visible: boolean) {
 
 export async function releaseGiftAction(id: string) {
   await guard();
-  await db.update(giftItems).set({ claimedByName: null, claimedAt: null }).where(eq(giftItems.id, id));
+  const [gift] = await db.update(giftItems).set({ claimedByName: null, claimedAt: null }).where(eq(giftItems.id, id)).returning({ name: giftItems.name });
+  if (gift) await audit("Liberó un regalo reservado", gift.name);
   revalidate();
 }
 
@@ -179,7 +186,8 @@ export async function setContributionReceivedAction(id: string, received: boolea
 
 export async function deleteContributionAction(id: string) {
   await guard();
-  await db.delete(giftContributions).where(and(eq(giftContributions.id, id)));
+  const [c] = await db.delete(giftContributions).where(and(eq(giftContributions.id, id))).returning({ who: giftContributions.contributorName, amount: giftContributions.amount });
+  if (c) await audit("Borró un aporte", `${c.who} · S/ ${c.amount}`);
   revalidate();
 }
 
@@ -215,5 +223,6 @@ export async function savePaymentMethodAction(method: "yape" | "plin" | "bank", 
     next.bank = { bank: clip(data.bank ?? current.bank.bank, 60), accountHolder: clip(data.accountHolder ?? current.bank.accountHolder, 80), accountNumber: clip(data.accountNumber ?? current.bank.accountNumber, 40), cci: clip(data.cci ?? current.bank.cci, 40), enabled };
   else next[method] = { phone: clip(data.phone ?? current[method].phone, 30), name: clip(data.name ?? current[method].name, 80), enabled };
   await setJSON("contentGiftsPayment", next);
+  await audit("Cambió los datos de pago", { yape: "Yape", plin: "Plin", bank: "Cuenta bancaria" }[method]);
   revalidate();
 }
