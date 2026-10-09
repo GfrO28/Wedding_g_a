@@ -31,3 +31,8 @@ export async function isAdminAuthed() {
 export function checkPassword(password: string) {
   return password === process.env.ADMIN_PASSWORD;
 }
+
+export async function destroyAdminSession() {
+  const store = await cookies();
+  store.delete(COOKIE_NAME);
+}

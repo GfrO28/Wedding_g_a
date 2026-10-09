@@ -22,6 +22,7 @@ import { ArtboardSection } from "@/app/components/ArtboardSection";
 import { DesktopFixedBackground, desktopPageProps } from "@/app/components/Slide";
 import { getDesktopBackground } from "@/lib/desktopBackgroundServer";
 import { getWeddingContent, type OrderedSection } from "@/lib/weddingContent";
+import { isAdminAuthed } from "@/lib/auth";
 import { Fragment, type ReactNode } from "react";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +39,11 @@ export default async function GuestInvitationPage({
     .limit(1);
 
   if (!guest) notFound();
+
+  // Primera vez que el invitado abre su enlace (no cuenta si la abren los novios con su sesión).
+  if (!guest.openedAt && !(await isAdminAuthed())) {
+    await db.update(guests).set({ openedAt: new Date() }).where(eq(guests.id, guest.id));
+  }
 
   const [existingRsvp] = await db
     .select()

@@ -14,6 +14,12 @@ export const guests = pgTable("guests", {
   groupName: text("group_name"),
   maxAttendees: integer("max_attendees").notNull().default(1),
   language: text("language").notNull().default("es"),
+  phone: text("phone"),
+  email: text("email"),
+  tableName: text("table_name"),
+  notes: text("notes"),
+  // Primera vez que el invitado abrió su enlace personal.
+  openedAt: timestamp("opened_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -68,6 +74,10 @@ export const giftItems = pgTable("gift_items", {
   amount: integer("amount"),
   claimedByName: text("claimed_by_name"),
   claimedAt: timestamp("claimed_at", { withTimezone: true }),
+  imageUrl: text("image_url"),
+  link: text("link"), // tienda donde se compra (opcional)
+  sortOrder: integer("sort_order").notNull().default(0),
+  visible: boolean("visible").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -80,6 +90,8 @@ export const giftContributions = pgTable("gift_contributions", {
     .references(() => giftItems.id, { onDelete: "cascade" }),
   contributorName: text("contributor_name").notNull(),
   amount: integer("amount").notNull(),
+  // Los novios confirmaron que el dinero llegó.
+  received: boolean("received").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

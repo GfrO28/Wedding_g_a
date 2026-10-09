@@ -794,20 +794,8 @@ export type LayoutSection = keyof typeof SECTIONS;
 export const LAYOUT_SECTIONS = Object.keys(SECTIONS) as LayoutSection[];
 
 // Versiones del contenido de una sección: cómo se muestra el panel principal.
-export const VARIANTS: Partial<Record<LayoutSection, { element: string; default: string; options: Record<string, string> }>> = {
-  gifts: {
-    element: "body",
-    default: "all",
-    options: {
-      all: "Todo: lista, luna de miel y datos de pago",
-      registry: "Solo lista de regalos",
-      fund: "Solo luna de miel (barra con el monto)",
-      payment: "Solo datos de pago",
-      "registry+payment": "Lista de regalos + datos de pago",
-      "fund+payment": "Luna de miel + datos de pago",
-    },
-  },
-};
+// (Regalos: lo que se muestra se elige en el panel, «Lista de regalos».)
+export const VARIANTS: Partial<Record<LayoutSection, { element: string; default: string; options: Record<string, string> }>> = {};
 
 // Itinerario: cada versión acomoda los pasos de una manera; después se mueven libres.
 export const ARRANGEMENTS = {

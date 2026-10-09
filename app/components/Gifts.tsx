@@ -1,8 +1,10 @@
-import { desc } from "drizzle-orm";
+import { asc, desc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { giftContributions, giftItems } from "@/lib/db/schema";
 import { getWeddingContent } from "@/lib/weddingContent";
-import { backdropOf, usedVariants } from "@/lib/textLayout";
+import { backdropOf } from "@/lib/textLayout";
+import { getJSON } from "@/lib/kv";
+import { DEFAULT_GIFTS_DISPLAY, GIFTS_DISPLAY_KEY, sanitizeGiftsDisplay, type GiftsDisplay } from "@/lib/panel";
 import { FadeIn } from "./FadeIn";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
 import { CopyButton } from "./CopyButton";
@@ -11,8 +13,14 @@ import { GiftContributionForm } from "./GiftContributionForm";
 import { Slide } from "./Slide";
 import { TextArtboard } from "./TextArtboard";
 
+// Qué partes muestra la sección (se elige en el panel, «Lista de regalos»).
+export async function getGiftsDisplay(): Promise<GiftsDisplay> {
+  return sanitizeGiftsDisplay(await getJSON(GIFTS_DISPLAY_KEY, DEFAULT_GIFTS_DISPLAY));
+}
+
+// Los regalos visibles, en el orden elegido en el panel.
 export async function getGiftsData() {
-  const items = await db.select().from(giftItems).orderBy(desc(giftItems.createdAt));
+  const items = (await db.select().from(giftItems).orderBy(asc(giftItems.sortOrder), desc(giftItems.createdAt))).filter((i) => i.visible);
   const hasFunds = items.some((i) => i.type === "fund");
   const contributions = hasFunds
     ? await db.select().from(giftContributions).orderBy(desc(giftContributions.createdAt))
@@ -23,19 +31,14 @@ export async function getGiftsData() {
 }
 
 export async function Gifts({ slug }: { slug: string }) {
-  const [{ items, raised }, WEDDING, layout, tokens] = await Promise.all([
+  const [{ items, raised }, WEDDING, layout, tokens, display] = await Promise.all([
     getGiftsData(),
     getWeddingContent(),
     getTextLayout("gifts"),
     getTokenValues(""),
+    getGiftsDisplay(),
   ]);
-  // Un bloque por cada versión que use el diseño (celular y PC pueden diferir).
-  const blocks = Object.fromEntries(
-    usedVariants("gifts", layout).map((v) => [
-      `body:${v}`,
-      <GiftsBody key={v} variant={v} items={items} raised={raised} payment={WEDDING.gifts.payment} slug={slug} />,
-    ]),
-  );
+  const blocks = { body: <GiftsBody display={display} items={items} raised={raised} payment={WEDDING.gifts.payment} slug={slug} /> };
 
   return (
     <Slide bgImage={backdropOf(layout)} fullBleed>
@@ -46,24 +49,24 @@ export async function Gifts({ slug }: { slug: string }) {
 
 type Payment = Awaited<ReturnType<typeof getWeddingContent>>["gifts"]["payment"];
 
-// variant: "all", "registry", "fund", "payment" o combinaciones con "+".
+// display: qué partes se ven (lista, fondos, datos de pago) y si se muestran los montos juntados.
 // preview: en el editor, las partes vacías muestran un aviso en vez de nada.
 export function GiftsBody({
-  variant = "all",
+  display = DEFAULT_GIFTS_DISPLAY,
   items,
   raised,
   payment,
   slug,
   preview = false,
 }: {
-  variant?: string;
+  display?: GiftsDisplay;
   items: GiftItem[];
   raised: Record<string, number>;
   payment: Payment;
   slug: string;
   preview?: boolean;
 }) {
-  const parts = variant === "all" ? ["registry", "fund", "payment"] : variant.split("+");
+  const parts = (["registry", "fund", "payment"] as const).filter((p) => display[p]);
   const registry = items.filter((i) => i.type !== "fund");
   const funds = items.filter((i) => i.type === "fund");
   const empty = (msg: string) =>
@@ -83,7 +86,7 @@ export function GiftsBody({
             </div>
           </FadeIn>
         ) : (
-          empty("Todavía no hay regalos en la lista. Se cargan en el panel de Regalos.")
+          empty("Todavía no hay regalos en la lista. Se cargan en el panel, «Lista de regalos».")
         ))}
 
       {parts.includes("fund") &&
@@ -91,12 +94,12 @@ export function GiftsBody({
           <FadeIn delay={0.15}>
             <div className="space-y-4">
               {funds.map((item) => (
-                <FundGiftCard key={item.id} item={item} raised={raised[item.id] ?? 0} slug={slug} />
+                <FundGiftCard key={item.id} item={item} raised={raised[item.id] ?? 0} slug={slug} showRaised={display.showRaised} />
               ))}
             </div>
           </FadeIn>
         ) : (
-          empty("Todavía no hay un fondo de luna de miel. Crealo en el panel de Regalos como «fondo» con su monto meta.")
+          empty("Todavía no hay un fondo de luna de miel. Crealo en el panel, «Lista de regalos», como «Fondo» con su monto meta.")
         ))}
 
       {parts.includes("payment") && (
@@ -137,6 +140,11 @@ type GiftItem = typeof giftItems.$inferSelect;
 function ClaimGiftCard({ item, slug }: { item: GiftItem; slug: string }) {
   return (
     <div className="flex flex-col justify-between gap-3 rounded-lg border border-[var(--color-border)] p-4 @lg:flex-row @lg:items-center">
+      <div className="flex items-center gap-3">
+      {item.imageUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={item.imageUrl} alt="" className="h-16 w-16 shrink-0 rounded-md object-cover" loading="lazy" />
+      )}
       <div>
         <h3 className="font-medium text-[var(--color-fg)]">{item.name}</h3>
         {item.description && (
@@ -147,6 +155,12 @@ function ClaimGiftCard({ item, slug }: { item: GiftItem; slug: string }) {
             Monto sugerido: S/ {item.amount}
           </p>
         )}
+        {item.link && (
+          <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-sm text-[var(--color-accent)] underline underline-offset-2">
+            Ver en la tienda
+          </a>
+        )}
+      </div>
       </div>
       {item.claimedAt ? (
         <span className="shrink-0 rounded-md bg-[var(--color-border)] px-4 py-2 text-center text-sm text-[var(--color-muted)]">
@@ -166,10 +180,12 @@ function FundGiftCard({
   item,
   raised,
   slug,
+  showRaised = true,
 }: {
   item: GiftItem;
   raised: number;
   slug: string;
+  showRaised?: boolean;
 }) {
   const target = item.amount ?? 0;
   const pct = target > 0 ? Math.min(100, Math.round((raised / target) * 100)) : 0;
@@ -177,12 +193,18 @@ function FundGiftCard({
 
   return (
     <div className="rounded-lg border border-[var(--color-border)] p-5 text-center">
+      {item.imageUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={item.imageUrl} alt="" className="mx-auto mb-3 h-32 w-full rounded-md object-cover" loading="lazy" />
+      )}
       <h3 className="font-medium text-[var(--color-fg)]">{item.name}</h3>
       {item.description && <p className="mt-1 text-sm text-[var(--color-muted)]">{item.description}</p>}
-      <p className="mt-4 text-2xl font-medium text-[var(--color-fg)]">
-        {soles(raised)}
-        {target > 0 && <span className="text-base font-normal text-[var(--color-muted)]"> de {soles(target)}</span>}
-      </p>
+      {showRaised && (
+        <p className="mt-4 text-2xl font-medium text-[var(--color-fg)]">
+          {soles(raised)}
+          {target > 0 && <span className="text-base font-normal text-[var(--color-muted)]"> de {soles(target)}</span>}
+        </p>
+      )}
       <div
         className="mt-3 h-3 w-full overflow-hidden rounded-full bg-[var(--color-border)]"
         role="progressbar"

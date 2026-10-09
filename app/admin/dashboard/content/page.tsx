@@ -9,15 +9,13 @@ import { getDesktopBackground } from "@/lib/desktopBackgroundServer";
 import {
   updateDatesAction,
   updateDressCodeAction,
-  updateGiftsAction,
   updateMapsAction,
 } from "./content-actions";
 import { MusicUploader } from "./MusicUploader";
 import { EditorShell, type EditorSection } from "./EditorShell";
 import { Divider } from "@/app/components/Divider";
-import { VARIANTS } from "@/lib/textLayout";
 import { AccommodationBody } from "@/app/components/Accommodation";
-import { GiftsBody, getGiftsData } from "@/app/components/Gifts";
+import { GiftsBody, getGiftsData, getGiftsDisplay } from "@/app/components/Gifts";
 import { RSVPPreviewBody } from "@/app/components/RSVPForm";
 import { ItineraryStepsEditor } from "./ItineraryStepsEditor";
 import { Hint } from "./Hint";
@@ -27,13 +25,14 @@ import { MessagesBody, getApprovedMessages } from "@/app/components/GuestMessage
 export const dynamic = "force-dynamic";
 
 export default async function ContentEditorPage() {
-  const [w, envelope, { published, drafts, styles }, tokens, allPhotos, gifts, approvedMessages] = await Promise.all([
+  const [w, envelope, { published, drafts, styles }, tokens, allPhotos, gifts, giftsDisplay, approvedMessages] = await Promise.all([
     getWeddingContent(),
     getEnvelopeSettings(),
     getEditorLayouts(),
     getTokenValues("Invitado de ejemplo"),
     db.select().from(photos).orderBy(desc(photos.createdAt)),
     getGiftsData(),
+    getGiftsDisplay(),
     getApprovedMessages(),
   ]);
 
@@ -69,12 +68,7 @@ export default async function ContentEditorPage() {
   const blocks: Record<string, Record<string, ReactNode>> = {
     blessing: { divider: <Divider scaled /> },
     accommodation: { body: <AccommodationBody hotels={w.accommodation} /> },
-    gifts: Object.fromEntries(
-      Object.keys(VARIANTS.gifts!.options).map((v) => [
-        `body:${v}`,
-        <GiftsBody key={v} variant={v} items={gifts.items} raised={gifts.raised} payment={w.gifts.payment} slug="preview" preview />,
-      ]),
-    ),
+    gifts: { body: <GiftsBody display={giftsDisplay} items={gifts.items} raised={gifts.raised} payment={w.gifts.payment} slug="preview" preview /> },
     rsvp: { body: <RSVPPreviewBody maxAttendees={2} /> },
     messages: { body: <MessagesBody messages={approvedMessages} slug="preview" /> },
   };
@@ -151,24 +145,7 @@ export default async function ContentEditorPage() {
     ),
     gifts: (
       <Stack>
-        <Group title="Datos de pago">
-          <form action={updateGiftsAction} className="flex flex-col gap-3">
-            <input type="hidden" name="message" value={w.gifts.message} />
-            <PayToggle name="yapeOn" label="Mostrar Yape" on={w.gifts.payment.yape.enabled !== false} />
-            <Field label="Yape: número"><input name="yapePhone" defaultValue={w.gifts.payment.yape.phone} className={inputClass} /></Field>
-            <Field label="Yape: a nombre de"><input name="yapeName" defaultValue={w.gifts.payment.yape.name} className={inputClass} /></Field>
-            <PayToggle name="plinOn" label="Mostrar Plin" on={w.gifts.payment.plin.enabled !== false} />
-            <Field label="Plin: número"><input name="plinPhone" defaultValue={w.gifts.payment.plin.phone} className={inputClass} /></Field>
-            <Field label="Plin: a nombre de"><input name="plinName" defaultValue={w.gifts.payment.plin.name} className={inputClass} /></Field>
-            <PayToggle name="bankOn" label="Mostrar transferencia bancaria" on={w.gifts.payment.bank.enabled !== false} />
-            <Field label="Banco"><input name="bankName" defaultValue={w.gifts.payment.bank.bank} className={inputClass} /></Field>
-            <Field label="Titular"><input name="bankHolder" defaultValue={w.gifts.payment.bank.accountHolder} className={inputClass} /></Field>
-            <Field label="Número de cuenta"><input name="bankAccount" defaultValue={w.gifts.payment.bank.accountNumber} className={inputClass} /></Field>
-            <Field label="CCI"><input name="bankCci" defaultValue={w.gifts.payment.bank.cci} className={inputClass} /></Field>
-            <SaveButton />
-          </form>
-        </Group>
-        <Hint id="gifts"><p className="text-xs text-neutral-500">El mensaje se edita sobre el lienzo. La lista de regalos (reservas y fondos) se administra desde el panel principal.</p></Hint>
+        <Hint id="gifts-panel"><p className="text-sm text-neutral-500">Los regalos, los fondos, los medios de pago y qué se muestra en esta sección se configuran en el panel, <a href="/admin/dashboard/regalos" className="underline">Lista de regalos</a>. Acá se edita el diseño: el mensaje y los textos sobre el lienzo.</p></Hint>
         <BgHint />
       </Stack>
     ),
@@ -256,15 +233,5 @@ function SaveButton() {
     <button type="submit" className="w-fit rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700">
       Guardar
     </button>
-  );
-}
-
-// Interruptor de un medio de pago (se guarda con el botón Guardar del formulario).
-function PayToggle({ name, label, on }: { name: string; label: string; on: boolean }) {
-  return (
-    <label className="mt-1 flex items-center gap-2 text-sm font-medium text-neutral-800">
-      <input type="checkbox" name={name} defaultChecked={on} className="h-4 w-4 accent-neutral-900" />
-      {label}
-    </label>
   );
 }

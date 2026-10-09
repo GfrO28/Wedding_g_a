@@ -2,28 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { guestMessages, guests } from "@/lib/db/schema";
+import { guestMessages } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { makeSlug } from "@/lib/slug";
+import { isAdminAuthed } from "@/lib/auth";
 
-export async function createGuestAction(formData: FormData) {
-  const fullName = String(formData.get("fullName") ?? "").trim();
-  const groupName = String(formData.get("groupName") ?? "").trim() || null;
-  const maxAttendees = Number(formData.get("maxAttendees") ?? 1) || 1;
-
-  if (!fullName) return;
-
-  await db.insert(guests).values({
-    fullName,
-    groupName,
-    maxAttendees,
-    slug: makeSlug(fullName),
-  });
-
-  revalidatePath("/admin/dashboard");
-}
-
+// Moderación de los mensajes de los invitados (solo con la sesión de los novios).
 export async function approveMessageAction(formData: FormData) {
+  if (!(await isAdminAuthed())) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
 
@@ -32,14 +17,15 @@ export async function approveMessageAction(formData: FormData) {
     .set({ approved: true })
     .where(eq(guestMessages.id, id));
 
-  revalidatePath("/admin/dashboard");
+  revalidatePath("/", "layout");
 }
 
 export async function deleteMessageAction(formData: FormData) {
+  if (!(await isAdminAuthed())) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
 
   await db.delete(guestMessages).where(eq(guestMessages.id, id));
 
-  revalidatePath("/admin/dashboard");
+  revalidatePath("/", "layout");
 }
