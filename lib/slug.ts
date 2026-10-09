@@ -7,6 +7,7 @@ export function makeSlug(fullName: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 
-  const suffix = crypto.randomUUID().slice(0, 6);
+  // 10 caracteres al azar: el link no se puede adivinar.
+  const suffix = crypto.randomUUID().replace(/-/g, "").slice(0, 10);
   return `${base}-${suffix}`;
 }

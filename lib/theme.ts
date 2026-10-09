@@ -34,5 +34,8 @@ export function themeToCssVars(theme: Theme) {
   --color-border: ${theme.border};
   --color-accent: ${theme.accent};
   --color-accent-fg: ${theme.accentForeground};
+  /* Texto de la paleta para superficies de «papel» (un bloque puede cambiar --color-fg). */
+  --paper-fg: ${theme.foreground};
+  --paper-muted: ${theme.muted};
 }`;
 }

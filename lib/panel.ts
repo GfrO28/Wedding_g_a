@@ -5,12 +5,14 @@ export const GUEST_TARGET_KEY = "guestTarget";
 
 // Qué muestra la sección Regalos de la invitación.
 export const GIFTS_DISPLAY_KEY = "giftsDisplay";
-export type GiftsDisplay = { registry: boolean; fund: boolean; payment: boolean; showRaised: boolean };
-export const DEFAULT_GIFTS_DISPLAY: GiftsDisplay = { registry: true, fund: true, payment: true, showRaised: true };
+export type GiftsDisplay = { gifts: boolean; payment: boolean; showRaised: boolean };
+export const DEFAULT_GIFTS_DISPLAY: GiftsDisplay = { gifts: true, payment: true, showRaised: true };
 export function sanitizeGiftsDisplay(v: unknown): GiftsDisplay {
   const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
-  const b = (k: keyof GiftsDisplay) => (typeof o[k] === "boolean" ? (o[k] as boolean) : DEFAULT_GIFTS_DISPLAY[k]);
-  return { registry: b("registry"), fund: b("fund"), payment: b("payment"), showRaised: b("showRaised") };
+  const b = (k: string, d: boolean) => (typeof o[k] === "boolean" ? (o[k] as boolean) : d);
+  // Antes había «lista para reservar» y «fondos» por separado: se ve si estaba alguna de las dos.
+  const legacy = typeof o.registry === "boolean" || typeof o.fund === "boolean" ? o.registry !== false || o.fund !== false : true;
+  return { gifts: b("gifts", legacy), payment: b("payment", true), showRaised: b("showRaised", true) };
 }
 
 // Grupos sugeridos (se puede escribir cualquier otro).
@@ -44,6 +46,10 @@ export const soles = (n: number) => fmtMoney(n, "PEN");
 // Tipo de cambio fijo: solo para totales aproximados y para un aporte que
 // quedó en otra moneda (si se cambió la moneda del regalo).
 export const USD_RATE = 3.5;
+// Montos rápidos al aportar (siempre se puede escribir otro).
+export const QUICK_AMOUNTS: Record<Currency, number[]> = { USD: [100, 200, 500, 1000], PEN: [200, 500, 1000] };
+// Lo que falta para la meta (null: sin meta).
+export const remainingFor = (goal: number | null, raised: number) => (goal ? Math.max(0, goal - raised) : null);
 export const convert = (n: number, from: Currency, to: Currency) => (from === to ? n : from === "USD" ? n * USD_RATE : n / USD_RATE);
 // Lo juntado por cada regalo, en la moneda del regalo.
 export function raisedByGift(gifts: { id: string; currency: string }[], contributions: { giftItemId: string; amount: number; currency: string }[]) {

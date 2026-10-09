@@ -3,9 +3,9 @@
 import { useState, useTransition, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Download, ImagePlus, Loader2, X } from "lucide-react";
 import {
+  deleteContributionAction,
   deleteGiftAction,
   moveGiftAction,
-  releaseGiftAction,
   requestGiftImageUploadAction,
   saveGiftAction,
   saveGiftsDisplayAction,
@@ -20,18 +20,29 @@ export type GiftRow = {
   id: string;
   name: string;
   description: string | null;
-  type: "claim" | "fund";
-  amount: number | null;
+  amount: number | null; // meta (null: aporte libre)
   currency: Currency;
+  closeOnGoal: boolean;
   imageUrl: string | null;
   link: string | null;
   visible: boolean;
-  claimedByName: string | null;
-  claimedAt: string | null;
   raised: number;
   contributions: number;
 };
-export type ContributionRow = { id: string; giftId: string; who: string; amount: number; currency: Currency; date: string; received: boolean };
+export type ContributionRow = {
+  id: string;
+  giftId: string;
+  who: string;
+  group: string | null;
+  amount: number;
+  currency: Currency;
+  operationNumber: string | null;
+  receiptUrl: string | null;
+  message: string | null;
+  date: string;
+  received: boolean;
+};
+type Status = "pending" | "received" | "all";
 
 const when = (iso: string) => new Date(iso).toLocaleDateString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -40,28 +51,27 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
   const [editing, setEditing] = useState<GiftRow | "new" | null>(null);
   const [payEdit, setPayEdit] = useState<keyof Payment | null>(null);
   const [only, setOnly] = useState<string>("");
+  const [status, setStatus] = useState<Status>(contributions.some((c) => !c.received) ? "pending" : "all");
   const [pending, start] = useTransition();
   const run = (fn: () => Promise<unknown>) => start(async () => void (await fn()));
 
-  const claims = gifts.filter((g) => g.type === "claim");
   const toVerify = contributions.filter((c) => !c.received);
+  const received = contributions.filter((c) => c.received);
+  const withGoal = gifts.filter((g) => g.amount);
+  const completed = withGoal.filter((g) => g.raised >= (g.amount ?? 0));
   const nameOf = (id: string) => gifts.find((g) => g.id === id)?.name ?? "—";
 
-  // Aportes y reservas juntos, lo más nuevo primero.
-  const rows = [
-    ...contributions.map((c) => ({ kind: "contrib" as const, id: c.id, giftId: c.giftId, who: c.who, amount: fmtMoney(c.amount, c.currency), date: c.date, received: c.received })),
-    ...claims.filter((g) => g.claimedAt).map((g) => ({ kind: "claim" as const, id: g.id, giftId: g.id, who: g.claimedByName ?? "—", amount: "Regalo completo", date: g.claimedAt!, received: true })),
-  ]
-    .filter((r) => !only || r.giftId === only)
-    .sort((a, b) => b.date.localeCompare(a.date));
+  // Lo más nuevo primero (ya viene ordenado).
+  const rows = contributions.filter((c) => (!only || c.giftId === only) && (status === "all" || (status === "pending" ? !c.received : c.received)));
 
   function exportCsv() {
     const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const lines = rows.map((r) => [r.who, nameOf(r.giftId), r.amount, new Date(r.date).toLocaleString("es-PE"), r.kind === "claim" ? "Reservado" : r.received ? "Recibido" : "Por verificar"].map(esc).join(";"));
-    const blob = new Blob(["﻿" + [["Invitado", "Regalo / fondo", "Monto", "Fecha", "Estado"].map(esc).join(";"), ...lines].join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const head = ["Invitado", "Grupo", "Regalo", "Monto", "N.º de operación", "Mensaje", "Fecha", "Estado"];
+    const lines = rows.map((r) => [r.who, r.group, nameOf(r.giftId), fmtMoney(r.amount, r.currency), r.operationNumber, r.message, new Date(r.date).toLocaleString("es-PE"), r.received ? "Recibido" : "Por verificar"].map(esc).join(";"));
+    const blob = new Blob(["\ufeff" + [head.map(esc).join(";"), ...lines].join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "aportes-y-reservas.csv";
+    a.download = "aportes.csv";
     a.click();
   }
 
@@ -76,9 +86,9 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
       </header>
 
       <section aria-label="Resumen" className="grid gap-3.5 sm:grid-cols-3">
-        <Kpi label="Recaudado" value={fmtTotals(contributions)} hint={`en ${contributions.length} aportes${contributions.some((c) => c.currency === "USD") && contributions.some((c) => c.currency === "PEN") ? ` · aprox. ${soles(inSoles(contributions))} en total` : ""}`} />
-        <Kpi label="Regalos reservados" value={`${claims.filter((g) => g.claimedAt).length} de ${claims.length}`} hint={`${claims.filter((g) => !g.claimedAt).length} todavía disponibles`} />
-        <Kpi label="Por verificar" value={`${toVerify.length} aportes`} hint={`${fmtTotals(toVerify)} avisados, sin confirmar`} warn={toVerify.length > 0} />
+        <Kpi label="Recibido" value={fmtTotals(received)} hint={`en ${received.length} aportes${received.some((c) => c.currency === "USD") && received.some((c) => c.currency === "PEN") ? ` · aprox. ${soles(inSoles(received))} en total` : ""}`} />
+        <Kpi label="Por verificar" value={`${toVerify.length} ${toVerify.length === 1 ? "aviso" : "avisos"}`} hint={toVerify.length ? `${fmtTotals(toVerify)} sin confirmar` : "Todo al día"} warn={toVerify.length > 0} />
+        <Kpi label="Regalos completados" value={`${completed.length} de ${withGoal.length}`} hint={completed.length ? completed.map((g) => g.name).join(", ") : "Ninguno llegó a su meta todavía"} />
       </section>
 
       <div className="grid gap-5 lg:grid-cols-2">
@@ -116,9 +126,9 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
         </section>
       </div>
 
-      <section aria-label="Regalos y fondos">
+      <section aria-label="Regalos">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-[17px] font-semibold">Regalos y fondos</h2>
+          <h2 className="text-[17px] font-semibold">Regalos</h2>
           <p className="text-sm text-[#6B6063]">Con las flechas cambias el orden en la invitación</p>
         </div>
         {gifts.length ? (
@@ -136,19 +146,21 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
                   <div className="flex flex-1 flex-col gap-1.5 p-4">
                     <div className="flex items-baseline justify-between gap-2">
                       <h3 className="font-semibold">{g.name}</h3>
-                      <span className="whitespace-nowrap rounded-full bg-[#F6F3EF] px-2 py-0.5 text-[11px] text-[#4A4043]">{g.type === "fund" ? "Fondo" : "Reserva"}{g.visible ? "" : " · oculto"}</span>
+                      <span className="whitespace-nowrap rounded-full bg-[#F6F3EF] px-2 py-0.5 text-[11px] text-[#4A4043]">
+                        {g.currency === "USD" ? "Dólares" : "Soles"}
+                        {g.visible ? "" : " · oculto"}
+                      </span>
                     </div>
-                    <p className="text-sm font-semibold">{g.type === "fund" ? `${fmtMoney(g.raised, g.currency)}${g.amount ? ` de ${fmtMoney(g.amount, g.currency)}` : ""}` : g.amount ? fmtMoney(g.amount, g.currency) : "Sin monto"}</p>
-                    {g.type === "fund" && (
+                    <p className="text-sm font-semibold">{g.amount ? `${fmtMoney(g.raised, g.currency)} de ${fmtMoney(g.amount, g.currency)}` : `${fmtMoney(g.raised, g.currency)} · aporte libre`}</p>
+                    {g.amount ? (
                       <div className="h-2 overflow-hidden rounded-full bg-[#F1ECE6]"><div className="h-full bg-[#A87D22]" style={{ width: `${pct}%` }} /></div>
-                    )}
-                    <p className={`text-sm ${g.claimedAt ? "text-[#7A2337]" : "text-[#6B6063]"}`}>
-                      {g.type === "fund" ? `${g.contributions} aportes` : g.claimedAt ? `Reservado por ${g.claimedByName}` : "Disponible"}
+                    ) : null}
+                    <p className={`text-sm ${g.amount && g.raised >= g.amount ? "font-semibold text-[#2F6B45]" : "text-[#6B6063]"}`}>
+                      {g.amount && g.raised >= g.amount ? (g.closeOnGoal ? "Meta cumplida · ya no recibe aportes" : "Meta cumplida · sigue abierto") : `${g.contributions} ${g.contributions === 1 ? "aporte" : "aportes"}`}
                     </p>
                     <div className="mt-auto flex flex-wrap gap-2 pt-2">
                       <SmallBtn onClick={() => setEditing(g)}>Editar</SmallBtn>
-                      {g.type === "claim" && g.claimedAt && <SmallBtn onClick={() => window.confirm(`¿Liberar «${g.name}»? Vuelve a estar disponible.`) && run(() => releaseGiftAction(g.id))}>Liberar</SmallBtn>}
-                      {g.type === "fund" && <SmallBtn onClick={() => { setOnly(g.id); document.getElementById("aportes")?.scrollIntoView({ behavior: "smooth" }); }}>Ver aportes</SmallBtn>}
+                      <SmallBtn onClick={() => { setOnly(g.id); setStatus("all"); document.getElementById("aportes")?.scrollIntoView({ behavior: "smooth" }); }}>Ver aportes</SmallBtn>
                       <SmallBtn onClick={() => run(() => setGiftVisibleAction(g.id, !g.visible))}>{g.visible ? "Ocultar" : "Mostrar"}</SmallBtn>
                       <span className="ml-auto flex gap-1">
                         <IconBtn label={`Subir «${g.name}»`} disabled={i === 0 || pending} onClick={() => run(() => moveGiftAction(g.id, -1))}><ArrowUp size={15} /></IconBtn>
@@ -161,15 +173,15 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
             })}
           </div>
         ) : (
-          <p className="rounded-2xl border border-dashed border-[#D9D1CA] bg-white p-8 text-center text-sm text-[#6B6063]">Todavía no hay regalos. Agrega uno con «+ Agregar regalo»: puede ser un regalo para reservar entero o un fondo (como la luna de miel) donde cada invitado aporta lo que quiera.</p>
+          <p className="rounded-2xl border border-dashed border-[#D9D1CA] bg-white p-8 text-center text-sm text-[#6B6063]">Todavía no hay regalos. Agrega uno con «+ Agregar regalo»: cada regalo tiene una meta (o es un aporte libre) y los invitados aportan lo que quieran desde su invitación.</p>
         )}
       </section>
 
-      <section id="aportes" className="rounded-2xl border border-[#E7E1DB] bg-white" aria-label="Aportes y reservas">
+      <section id="aportes" className="rounded-2xl border border-[#E7E1DB] bg-white" aria-label="Aportes">
         <div className="flex flex-wrap items-center justify-between gap-2.5 px-5 py-4">
           <div>
-            <h2 className="text-[15px] font-semibold">Aportes y reservas</h2>
-            <p className="text-sm text-[#6B6063]">Lo que avisaron los invitados desde la invitación. Marca «recibido» cuando te llegue el dinero.</p>
+            <h2 className="text-[15px] font-semibold">Aportes</h2>
+            <p className="text-sm text-[#6B6063]">Cada aviso llega desde el link de su invitación. Márcalo como recibido cuando lo veas en tu cuenta.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <label className="sr-only" htmlFor="filtro-regalo">Filtrar por regalo</label>
@@ -180,35 +192,58 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
             <SmallBtn onClick={exportCsv}><Download size={14} /> Exportar</SmallBtn>
           </div>
         </div>
+        <div className="flex flex-wrap gap-2 px-5 pb-3" role="group" aria-label="Estado">
+          {([["pending", "Por verificar", toVerify.length], ["received", "Recibidos", received.length], ["all", "Todos", contributions.length]] as const).map(([k, label, n]) => (
+            <button key={k} type="button" aria-pressed={status === k} onClick={() => setStatus(k)} className={`min-h-9 rounded-full border px-3.5 text-[13px] font-medium ${status === k ? "border-[#221A1C] bg-[#221A1C] text-white" : "border-[#D9D1CA] bg-white text-[#4A4043] hover:bg-[#FBF9F7]"}`}>
+              {label} {n}
+            </button>
+          ))}
+        </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] border-collapse text-sm">
+          <table className="w-full min-w-[860px] border-collapse text-sm">
             <thead>
               <tr className="text-left text-xs text-[#6B6063]">
-                {["Invitado", "Regalo / fondo", "Monto", "Fecha", "Estado", ""].map((h, i) => <th key={i} className="border-b border-[#E7E1DB] px-3 py-2.5 font-semibold">{h}</th>)}
+                {["Invitado", "Regalo", "Monto", "N.º de operación", "Foto", "Fecha", "Estado", ""].map((h, i) => <th key={i} className="border-b border-[#E7E1DB] px-3 py-2.5 font-semibold">{h}</th>)}
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={`${r.kind}-${r.id}`} className="border-b border-[#F1ECE6]" data-contrib={r.id}>
-                  <td className="px-3 py-3 font-semibold">{r.who}</td>
+                <tr key={r.id} className="border-b border-[#F1ECE6] align-top" data-contrib={r.id}>
+                  <td className="px-3 py-3">
+                    <span className="font-semibold">{r.who}</span>
+                    {r.group && <span className="block text-xs text-[#6B6063]">{r.group}</span>}
+                    {r.message && <span className="mt-1 block max-w-[240px] text-xs italic text-[#4A4043]">«{r.message}»</span>}
+                  </td>
                   <td className="px-3 py-3">{nameOf(r.giftId)}</td>
-                  <td className="px-3 py-3">{r.amount}</td>
+                  <td className="px-3 py-3 font-semibold">{fmtMoney(r.amount, r.currency)}</td>
+                  <td className="px-3 py-3 tabular-nums">{r.operationNumber ?? <span className="text-[#6B6063]">—</span>}</td>
+                  <td className="px-3 py-3">
+                    {r.receiptUrl ? (
+                      <a href={r.receiptUrl} target="_blank" rel="noopener noreferrer" className="block h-11 w-11 overflow-hidden rounded-md border border-[#E7E1DB]" aria-label={`Ver la constancia de ${r.who}`}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={r.receiptUrl} alt="" className="h-full w-full object-cover" />
+                      </a>
+                    ) : (
+                      <span className="text-xs text-[#6B6063]">Sin foto</span>
+                    )}
+                  </td>
                   <td className="px-3 py-3 text-[13px] text-[#6B6063]">{when(r.date)}</td>
                   <td className="px-3 py-3">
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${r.kind === "contrib" && !r.received ? "bg-[#F6EBD3] text-[#6E520F]" : "bg-[#F3E6E9] text-[#7A2337]"}`}>
-                      {r.kind === "claim" ? "Reservado" : r.received ? "Recibido" : "Por verificar"}
-                    </span>
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${r.received ? "bg-[#E6F2EA] text-[#2F6B45]" : "bg-[#F6EBD3] text-[#6E520F]"}`}>{r.received ? "Recibido" : "Por verificar"}</span>
                   </td>
                   <td className="px-3 py-3">
-                    {r.kind === "contrib" ? (
-                      <SmallBtn onClick={() => run(() => setContributionReceivedAction(r.id, !r.received))}>{r.received ? "Deshacer" : "Marcar recibido"}</SmallBtn>
-                    ) : (
-                      <SmallBtn onClick={() => window.confirm("¿Liberar este regalo?") && run(() => releaseGiftAction(r.id))}>Liberar</SmallBtn>
-                    )}
+                    <span className="flex flex-wrap gap-1.5">
+                      {r.received ? (
+                        <SmallBtn onClick={() => run(() => setContributionReceivedAction(r.id, false))}>Deshacer</SmallBtn>
+                      ) : (
+                        <button type="button" onClick={() => run(() => setContributionReceivedAction(r.id, true))} className="min-h-9 rounded-md bg-[#7A2337] px-3 text-xs font-semibold text-white hover:bg-[#5A1828]">Marcar recibido</button>
+                      )}
+                      <SmallBtn onClick={() => window.confirm(`¿Eliminar el aviso de ${r.who} por ${fmtMoney(r.amount, r.currency)}?`) && run(() => deleteContributionAction(r.id))}>Eliminar</SmallBtn>
+                    </span>
                   </td>
                 </tr>
               ))}
-              {!rows.length && <tr><td colSpan={6} className="px-5 py-8 text-center text-sm text-[#6B6063]">Todavía no hay aportes ni reservas.</td></tr>}
+              {!rows.length && <tr><td colSpan={8} className="px-5 py-8 text-center text-sm text-[#6B6063]">{contributions.length ? "No hay avisos con este filtro." : "Todavía no hay aportes."}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -250,9 +285,8 @@ function DisplayCard({ display, message }: { display: GiftsDisplay; message: str
     <section className="rounded-2xl border border-[#E7E1DB] bg-white p-5" aria-label="Qué se muestra">
       <h2 className="text-[15px] font-semibold">Qué se muestra en la invitación</h2>
       <div className="mt-2 flex flex-col">
-        {row("registry", "Lista de regalos para reservar")}
-        {row("fund", "Fondos (luna de miel), con barra de avance")}
-        {row("payment", "Datos para transferir")}
+        {row("gifts", "Regalos, con su barra de avance")}
+        {row("payment", "Datos para transferir (al final de la sección)")}
         {row("showRaised", "Mostrar el monto recaudado a los invitados")}
       </div>
       <form
@@ -287,8 +321,8 @@ function GiftForm({ gift, onClose }: { gift: GiftRow | null; onClose: () => void
     id: gift?.id,
     name: gift?.name ?? "",
     description: gift?.description ?? "",
-    type: gift?.type ?? "claim",
     amount: gift?.amount ?? null,
+    closeOnGoal: gift?.closeOnGoal ?? false,
     currency: gift?.currency ?? "PEN",
     imageUrl: gift?.imageUrl ?? "",
     link: gift?.link ?? "",
@@ -324,18 +358,6 @@ function GiftForm({ gift, onClose }: { gift: GiftRow | null; onClose: () => void
       }}
       data-gift-form
     >
-      <fieldset className="flex flex-wrap gap-2 sm:col-span-2">
-        <legend className="mb-1.5 text-[13px] text-[#4A4043]">Tipo</legend>
-        {([
-          ["claim", "Reserva", "Un invitado lo regala entero"],
-          ["fund", "Fondo", "Cada invitado aporta lo que quiera (ej.: luna de miel)"],
-        ] as const).map(([k, label, help]) => (
-          <label key={k} className={`flex flex-1 cursor-pointer flex-col rounded-lg border p-3 text-sm ${v.type === k ? "border-[#7A2337] bg-[#F3E6E9]" : "border-[#D9D1CA]"}`}>
-            <span className="flex items-center gap-2 font-semibold"><input type="radio" name="type" checked={v.type === k} onChange={() => setV({ ...v, type: k })} className="accent-[#7A2337]" />{label}</span>
-            <span className="text-xs text-[#6B6063]">{help}</span>
-          </label>
-        ))}
-      </fieldset>
       <Field label="Nombre"><input className={inputCls} required maxLength={120} value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} /></Field>
       <Field label="Moneda">
         <select className={inputCls} value={v.currency ?? "PEN"} onChange={(e) => setV({ ...v, currency: e.target.value as Currency })}>
@@ -345,9 +367,14 @@ function GiftForm({ gift, onClose }: { gift: GiftRow | null; onClose: () => void
           {v.currency === "USD" ? "Se muestra en dólares y los invitados aportan en dólares." : "Se muestra en soles y los invitados aportan en soles."}
         </span>
       </Field>
-      <Field label={`${v.type === "fund" ? "Meta" : "Monto sugerido"} (${v.currency === "USD" ? "US$" : "S/"}${v.type === "fund" ? "" : ", opcional"})`}>
+      <Field label={`Meta (${v.currency === "USD" ? "US$" : "S/"}, opcional)`}>
         <input className={inputCls} type="number" min={0} value={v.amount ?? ""} onChange={(e) => setV({ ...v, amount: e.target.value === "" ? null : Number(e.target.value) })} />
+        <span className="mt-1 block text-xs text-[#6B6063]">Sin meta, es un aporte libre (sin barra de avance).</span>
       </Field>
+      <label className="flex min-h-11 items-center gap-2.5 text-sm sm:col-span-2">
+        <input type="checkbox" checked={v.closeOnGoal ?? false} disabled={!v.amount} onChange={(e) => setV({ ...v, closeOnGoal: e.target.checked })} className="h-5 w-5 accent-[#7A2337]" data-close-on-goal />
+        Dejar de recibir aportes al llegar a la meta
+      </label>
       <Field label="Descripción (opcional)" wide><input className={inputCls} maxLength={400} value={v.description ?? ""} onChange={(e) => setV({ ...v, description: e.target.value })} /></Field>
       <Field label="Enlace a la tienda (opcional)" wide><input className={inputCls} type="url" placeholder="https://…" value={v.link ?? ""} onChange={(e) => setV({ ...v, link: e.target.value })} /></Field>
       <div className="flex items-center gap-3 sm:col-span-2">

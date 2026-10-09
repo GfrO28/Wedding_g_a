@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { giftContributions, giftItems, guestMessages, guests, rsvps } from "@/lib/db/schema";
 import { getWeddingContent } from "@/lib/weddingContent";
 import { getSettingsMap } from "@/lib/settings";
-import { convert, asCurrency, fmtTotals, GUEST_TARGET_KEY } from "@/lib/panel";
+import { convert, asCurrency, fmtTotals, GUEST_TARGET_KEY, raisedByGift } from "@/lib/panel";
 import { approveMessageAction, deleteMessageAction } from "../actions";
 import { TargetEditor } from "./TargetEditor";
 
@@ -91,14 +91,12 @@ export default async function DashboardPage() {
   const diets = count(yes.map((r) => r.diet));
 
   // Regalos.
-  const funds = items.filter((i) => i.type === "fund");
-  const claims = items.filter((i) => i.type !== "fund");
-  const fundIds = new Set(funds.map((f) => f.id));
-  // Fondos en soles y en dólares: las cuentas van por separado; la barra usa el tipo fijo.
-  const fundContribs = contributions.filter((c) => fundIds.has(c.giftItemId));
-  const fundGoals = funds.map((f) => ({ amount: f.amount ?? 0, currency: f.currency }));
-  const raised = fundContribs.reduce((n, c) => n + convert(c.amount, asCurrency(c.currency), "PEN"), 0);
+  // Soles y dólares van por separado; la barra usa el tipo fijo.
+  const fundGoals = items.filter((i) => i.amount).map((f) => ({ amount: f.amount ?? 0, currency: f.currency }));
+  const raised = contributions.reduce((n, c) => n + convert(c.amount, asCurrency(c.currency), "PEN"), 0);
   const fundTarget = fundGoals.reduce((n, f) => n + convert(f.amount, asCurrency(f.currency), "PEN"), 0);
+  const raisedBy = raisedByGift(items, contributions);
+  const completed = items.filter((i) => i.amount && (raisedBy[i.id] ?? 0) >= i.amount).length;
   const toVerify = contributions.filter((c) => !c.received).length;
 
   // Mensajes y últimas respuestas.
@@ -228,14 +226,15 @@ export default async function DashboardPage() {
 
       <div className="grid gap-5 lg:grid-cols-3">
         <Card title="Regalos" aside={<Link href="/admin/dashboard/regalos" className="text-sm text-[#7A2337] underline">Ver lista</Link>}>
-          {funds.length > 0 && (
+          {items.length > 0 ? (
             <>
-              <p className="mt-3 text-sm text-[#6B6063]">{funds.length === 1 ? funds[0].name : "Fondos"}</p>
-              <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-[#F1ECE6]"><div className="h-full bg-[#A87D22]" style={{ width: `${pct(raised, fundTarget)}%` }} /></div>
-              <p className="mt-1.5 text-sm"><b>{fmtTotals(fundContribs)}</b>{fundTarget ? ` de ${fmtTotals(fundGoals)}` : ""} · {fundContribs.length} aportes</p>
+              {fundTarget > 0 && <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-[#F1ECE6]"><div className="h-full bg-[#A87D22]" style={{ width: `${pct(raised, fundTarget)}%` }} /></div>}
+              <p className="mt-1.5 text-sm"><b>{fmtTotals(contributions)}</b>{fundTarget ? ` de ${fmtTotals(fundGoals)}` : ""} · {contributions.length} aportes</p>
+              <p className="mt-3 text-sm text-[#6B6063]">{completed} de {fundGoals.length} regalos completados</p>
             </>
+          ) : (
+            <p className="mt-3 text-sm text-[#6B6063]">Todavía no hay regalos cargados.</p>
           )}
-          <p className="mt-3 text-sm text-[#6B6063]">{claims.filter((c) => c.claimedAt).length} de {claims.length} regalos reservados</p>
           {toVerify > 0 && <p className="mt-1 text-sm text-[#6E520F]">{toVerify} aportes por verificar</p>}
         </Card>
 

@@ -8,9 +8,10 @@ import { giftContributions, giftItems, guests } from "@/lib/db/schema";
 import { getJSON, setJSON, setSetting } from "@/lib/kv";
 import { makeSlug } from "@/lib/slug";
 import { audit, destroyAdminSession, requireAdmin } from "@/lib/auth";
-import { getUploadUrl, publicUrlFor } from "@/lib/storage/r2";
+import { deleteObject, getUploadUrl, publicUrlFor } from "@/lib/storage/r2";
 import {
   asCurrency,
+  fmtMoney,
   GIFTS_DISPLAY_KEY,
   GUEST_TARGET_KEY,
   isBank,
@@ -126,9 +127,9 @@ export type GiftInput = {
   id?: string;
   name: string;
   description?: string;
-  type: "claim" | "fund";
-  amount?: number | null;
+  amount?: number | null; // meta (sin meta: aporte libre)
   currency?: Currency;
+  closeOnGoal?: boolean;
   imageUrl?: string;
   link?: string;
 };
@@ -147,8 +148,9 @@ export async function saveGiftAction(input: GiftInput): Promise<{ ok: boolean; e
     name,
     currency: asCurrency(input.currency),
     description: orNull(input.description, 400),
-    type: input.type === "fund" ? "fund" : "claim",
+    type: "fund",
     amount,
+    closeOnGoal: input.closeOnGoal === true,
     imageUrl: validUrl(input.imageUrl),
     link: validUrl(input.link),
   };
@@ -175,13 +177,6 @@ export async function setGiftVisibleAction(id: string, visible: boolean) {
   revalidate();
 }
 
-export async function releaseGiftAction(id: string) {
-  await guard();
-  const [gift] = await db.update(giftItems).set({ claimedByName: null, claimedAt: null }).where(eq(giftItems.id, id)).returning({ name: giftItems.name });
-  if (gift) await audit("Liberó un regalo reservado", gift.name);
-  revalidate();
-}
-
 // Subir o bajar un regalo en el orden de la invitación.
 export async function moveGiftAction(id: string, dir: -1 | 1) {
   await guard();
@@ -201,8 +196,11 @@ export async function setContributionReceivedAction(id: string, received: boolea
 
 export async function deleteContributionAction(id: string) {
   await guard();
-  const [c] = await db.delete(giftContributions).where(and(eq(giftContributions.id, id))).returning({ who: giftContributions.contributorName, amount: giftContributions.amount });
-  if (c) await audit("Borró un aporte", `${c.who} · S/ ${c.amount}`);
+  const [c] = await db.delete(giftContributions).where(and(eq(giftContributions.id, id))).returning();
+  if (c) {
+    if (c.receiptKey) await deleteObject(c.receiptKey).catch(() => {});
+    await audit("Borró un aporte", `${c.contributorName} · ${fmtMoney(c.amount, asCurrency(c.currency))}`);
+  }
   revalidate();
 }
 

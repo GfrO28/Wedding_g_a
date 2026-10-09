@@ -1,15 +1,15 @@
-import { asc, desc } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { giftContributions, giftItems } from "@/lib/db/schema";
+import { giftContributions, giftItems, guests } from "@/lib/db/schema";
 import { getWeddingContent } from "@/lib/weddingContent";
 import { backdropOf } from "@/lib/textLayout";
 import { getJSON } from "@/lib/kv";
-import { asCurrency, DEFAULT_GIFTS_DISPLAY, fmtMoney, GIFTS_DISPLAY_KEY, PAYMENT_LABELS, paymentShown, raisedByGift, sanitizeGiftsDisplay, type GiftsDisplay } from "@/lib/panel";
+import { myContributions, type MyContribution } from "@/lib/gifts";
+import { asCurrency, DEFAULT_GIFTS_DISPLAY, GIFTS_DISPLAY_KEY, PAYMENT_LABELS, paymentShown, raisedByGift, sanitizeGiftsDisplay, type GiftsDisplay, type Payment } from "@/lib/panel";
 import { FadeIn } from "./FadeIn";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
 import { CopyButton } from "./CopyButton";
-import { GiftClaimForm } from "./GiftClaimForm";
-import { GiftContributionForm } from "./GiftContributionForm";
+import { GiftList, type GiftView, type PayView } from "./GiftList";
 import { Slide } from "./Slide";
 import { TextArtboard } from "./TextArtboard";
 
@@ -18,25 +18,56 @@ export async function getGiftsDisplay(): Promise<GiftsDisplay> {
   return sanitizeGiftsDisplay(await getJSON(GIFTS_DISPLAY_KEY, DEFAULT_GIFTS_DISPLAY));
 }
 
-// Los regalos visibles, en el orden elegido en el panel.
-export async function getGiftsData() {
-  const items = (await db.select().from(giftItems).orderBy(asc(giftItems.sortOrder), desc(giftItems.createdAt))).filter((i) => i.visible);
-  const hasFunds = items.some((i) => i.type === "fund");
-  const contributions = hasFunds
-    ? await db.select().from(giftContributions).orderBy(desc(giftContributions.createdAt))
-    : [];
-  return { items, raised: raisedByGift(items, contributions) };
+// Los regalos visibles, en el orden elegido en el panel, con lo juntado por cada
+// uno y (si hay invitación) lo que aportó esa invitación.
+export async function getGiftsData(guestId?: string | null): Promise<GiftView[]> {
+  const [items, contributions] = await Promise.all([
+    db.select().from(giftItems).where(eq(giftItems.visible, true)).orderBy(asc(giftItems.sortOrder), desc(giftItems.createdAt)),
+    db.select().from(giftContributions),
+  ]);
+  const raised = raisedByGift(items, contributions);
+  const mine = raisedByGift(items, guestId ? contributions.filter((c) => c.guestId === guestId) : []);
+  return items.map((i) => {
+    const goal = i.amount && i.amount > 0 ? i.amount : null;
+    const r = raised[i.id] ?? 0;
+    return {
+      id: i.id,
+      name: i.name,
+      description: i.description,
+      imageUrl: i.imageUrl,
+      link: i.link,
+      currency: asCurrency(i.currency),
+      goal,
+      raised: r,
+      closed: i.closeOnGoal && goal !== null && r >= goal,
+      mine: mine[i.id] ?? 0,
+    };
+  });
+}
+
+// Solo los medios de pago que se muestran a los invitados.
+export function payView(p: Payment): PayView {
+  return {
+    yape: paymentShown(p, "yape") ? p.yape : undefined,
+    plin: paymentShown(p, "plin") ? p.plin : undefined,
+    bank: paymentShown(p, "bank") ? p.bank : undefined,
+    bankUsd: paymentShown(p, "bankUsd") ? p.bankUsd : undefined,
+  };
 }
 
 export async function Gifts({ slug }: { slug: string }) {
-  const [{ items, raised }, WEDDING, layout, tokens, display] = await Promise.all([
-    getGiftsData(),
+  const [guest] = slug === "preview" ? [] : await db.select({ id: guests.id, fullName: guests.fullName }).from(guests).where(eq(guests.slug, slug)).limit(1);
+  const [gifts, WEDDING, layout, tokens, display, mine] = await Promise.all([
+    getGiftsData(guest?.id),
     getWeddingContent(),
     getTextLayout("gifts"),
     getTokenValues(""),
     getGiftsDisplay(),
+    guest ? myContributions(guest.id) : Promise.resolve([] as MyContribution[]),
   ]);
-  const blocks = { body: <GiftsBody display={display} items={items} raised={raised} payment={WEDDING.gifts.payment} slug={slug} /> };
+  const blocks = {
+    body: <GiftsBody display={display} gifts={gifts} payment={WEDDING.gifts.payment} slug={slug} guestName={guest?.fullName ?? null} mine={mine} />,
+  };
 
   return (
     <Slide bgImage={backdropOf(layout)} fullBleed>
@@ -45,77 +76,51 @@ export async function Gifts({ slug }: { slug: string }) {
   );
 }
 
-type Payment = Awaited<ReturnType<typeof getWeddingContent>>["gifts"]["payment"];
-
-// display: qué partes se ven (lista, fondos, datos de pago) y si se muestran los montos juntados.
+// display: qué partes se ven (regalos, datos de pago) y si se muestran los montos juntados.
 // preview: en el editor, las partes vacías muestran un aviso en vez de nada.
 export function GiftsBody({
   display = DEFAULT_GIFTS_DISPLAY,
-  items,
-  raised,
+  gifts,
   payment,
   slug,
+  guestName = null,
+  mine = [],
   preview = false,
 }: {
   display?: GiftsDisplay;
-  items: GiftItem[];
-  raised: Record<string, number>;
+  gifts: GiftView[];
   payment: Payment;
   slug: string;
+  guestName?: string | null;
+  mine?: MyContribution[];
   preview?: boolean;
 }) {
-  const parts = (["registry", "fund", "payment"] as const).filter((p) => display[p]);
-  const registry = items.filter((i) => i.type !== "fund");
-  const funds = items.filter((i) => i.type === "fund");
-  const empty = (msg: string) =>
-    preview ? (
-      <p className="rounded-lg border border-dashed border-[var(--color-border)] p-4 text-center text-sm text-[var(--color-muted)]">{msg}</p>
-    ) : null;
-
+  const showPayment = display.payment && (["yape", "plin", "bank", "bankUsd"] as const).some((k) => paymentShown(payment, k));
   return (
     <div className="space-y-8 px-1 py-2">
-      {parts.includes("registry") &&
-        (registry.length > 0 ? (
+      {display.gifts &&
+        (gifts.length > 0 ? (
           <FadeIn delay={0.1}>
-            <div className="space-y-3">
-              {registry.map((item) => (
-                <ClaimGiftCard key={item.id} item={item} slug={slug} />
-              ))}
-            </div>
+            <GiftList gifts={gifts} payment={payView(payment)} guestName={guestName} slug={slug} showRaised={display.showRaised} mine={mine} />
           </FadeIn>
-        ) : (
-          empty("Todavía no hay regalos en la lista. Se cargan en el panel, «Lista de regalos».")
-        ))}
+        ) : preview ? (
+          <p className="rounded-lg border border-dashed border-[var(--color-border)] p-4 text-center text-sm text-[var(--color-muted)]">
+            Todavía no hay regalos. Se cargan en el panel, «Lista de regalos».
+          </p>
+        ) : null)}
 
-      {parts.includes("fund") &&
-        (funds.length > 0 ? (
-          <FadeIn delay={0.15}>
-            <div className="space-y-4">
-              {funds.map((item) => (
-                <FundGiftCard key={item.id} item={item} raised={raised[item.id] ?? 0} slug={slug} showRaised={display.showRaised} />
-              ))}
-            </div>
-          </FadeIn>
-        ) : (
-          empty("Todavía no hay un fondo de luna de miel. Créalo en el panel, «Lista de regalos», como «Fondo» con su monto meta.")
-        ))}
-
-      {parts.includes("payment") && (
+      {showPayment && (
         <FadeIn delay={0.2}>
           <div className="mx-auto max-w-sm space-y-4 rounded-lg border border-[var(--color-border)] p-6 text-left text-sm">
-            {payment.yape.enabled !== false && (
-              <div>
-                <p className="mb-1 font-medium text-[var(--color-fg)]">Yape</p>
-                <Row label="Número" value={payment.yape.phone} copyable />
-                <Row label="A nombre de" value={payment.yape.name} />
-              </div>
-            )}
-            {payment.plin.enabled !== false && (
-              <div>
-                <p className="mb-1 font-medium text-[var(--color-fg)]">Plin</p>
-                <Row label="Número" value={payment.plin.phone} copyable />
-                <Row label="A nombre de" value={payment.plin.name} />
-              </div>
+            {(["yape", "plin"] as const).map(
+              (k) =>
+                paymentShown(payment, k) && (
+                  <div key={k} data-pay={k}>
+                    <p className="mb-1 font-medium text-[var(--color-fg)]">{PAYMENT_LABELS[k]}</p>
+                    <Row label="Número" value={payment[k].phone} copyable />
+                    <Row label="A nombre de" value={payment[k].name} />
+                  </div>
+                ),
             )}
             {(["bank", "bankUsd"] as const).map(
               (k) =>
@@ -136,109 +141,7 @@ export function GiftsBody({
   );
 }
 
-type GiftItem = typeof giftItems.$inferSelect;
-
-function ClaimGiftCard({ item, slug }: { item: GiftItem; slug: string }) {
-  return (
-    <div className="flex flex-col justify-between gap-3 rounded-lg border border-[var(--color-border)] p-4 @lg:flex-row @lg:items-center">
-      <div className="flex items-center gap-3">
-      {item.imageUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={item.imageUrl} alt="" className="h-16 w-16 shrink-0 rounded-md object-cover" loading="lazy" />
-      )}
-      <div>
-        <h3 className="font-medium text-[var(--color-fg)]">{item.name}</h3>
-        {asCurrency(item.currency) === "USD" && <p className="text-xs text-[var(--color-muted)]" data-usd-note>En dólares · abona en la cuenta en dólares</p>}
-        {item.description && (
-          <p className="text-sm text-[var(--color-muted)]">{item.description}</p>
-        )}
-        {item.amount && (
-          <p className="text-sm text-[var(--color-muted)]">
-            Monto sugerido: {fmtMoney(item.amount, asCurrency(item.currency))}
-          </p>
-        )}
-        {item.link && (
-          <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-sm text-[var(--color-accent)] underline underline-offset-2">
-            Ver en la tienda
-          </a>
-        )}
-      </div>
-      </div>
-      {item.claimedAt ? (
-        <span className="shrink-0 rounded-md bg-[var(--color-border)] px-4 py-2 text-center text-sm text-[var(--color-muted)]">
-          Reservado por {item.claimedByName}
-        </span>
-      ) : (
-        <GiftClaimForm id={item.id} slug={slug} />
-      )}
-    </div>
-  );
-}
-
-
-// Barra de llenado (luna de miel u otro fondo) con el monto juntado a la vista.
-function FundGiftCard({
-  item,
-  raised,
-  slug,
-  showRaised = true,
-}: {
-  item: GiftItem;
-  raised: number;
-  slug: string;
-  showRaised?: boolean;
-}) {
-  const target = item.amount ?? 0;
-  const cur = asCurrency(item.currency);
-  const pct = target > 0 ? Math.min(100, Math.round((raised / target) * 100)) : 0;
-  const complete = target > 0 && raised >= target;
-
-  return (
-    <div className="rounded-lg border border-[var(--color-border)] p-5 text-center">
-      {item.imageUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={item.imageUrl} alt="" className="mx-auto mb-3 h-32 w-full rounded-md object-cover" loading="lazy" />
-      )}
-      <h3 className="font-medium text-[var(--color-fg)]">{item.name}</h3>
-      {asCurrency(item.currency) === "USD" && <p className="text-xs text-[var(--color-muted)]" data-usd-note>En dólares · abona en la cuenta en dólares</p>}
-      {item.description && <p className="mt-1 text-sm text-[var(--color-muted)]">{item.description}</p>}
-      {showRaised && (
-        <p className="mt-4 text-2xl font-medium text-[var(--color-fg)]">
-          {fmtMoney(raised, cur)}
-          {target > 0 && <span className="text-base font-normal text-[var(--color-muted)]"> de {fmtMoney(target, cur)}</span>}
-        </p>
-      )}
-      <div
-        className="mt-3 h-3 w-full overflow-hidden rounded-full bg-[var(--color-border)]"
-        role="progressbar"
-        aria-valuenow={pct}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label={`${item.name}: ${pct}%`}
-      >
-        <div className="h-full rounded-full bg-[var(--color-accent)] transition-[width] duration-700" style={{ width: `${pct}%` }} />
-      </div>
-      {target > 0 && <p className="mt-1 text-xs text-[var(--color-muted)]">{pct}% de la meta</p>}
-      <div className="mt-4 flex justify-center">
-        {complete ? (
-          <span className="rounded-md bg-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-muted)]">¡Meta cumplida, gracias!</span>
-        ) : (
-          <GiftContributionForm id={item.id} slug={slug} currency={cur} />
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Row({
-  label,
-  value,
-  copyable,
-}: {
-  label: string;
-  value: string;
-  copyable?: boolean;
-}) {
+function Row({ label, value, copyable }: { label: string; value: string; copyable?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-[var(--color-muted)]">{label}</span>

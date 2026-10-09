@@ -26,12 +26,14 @@ export function publicUrlFor(key: string) {
   return `${r2PublicBase()}/${key}`;
 }
 
-// Genera una URL firmada para que el admin suba un archivo directo desde el navegador
-export async function getUploadUrl(key: string, contentType: string) {
+// Genera una URL firmada para subir un archivo directo desde el navegador. Con
+// contentLength, la firma exige ese tamaño exacto (para limitar lo que suben los invitados).
+export async function getUploadUrl(key: string, contentType: string, contentLength?: number) {
   const command = new PutObjectCommand({
     Bucket: BUCKET,
     Key: key,
     ContentType: contentType,
+    ...(contentLength ? { ContentLength: contentLength } : {}),
   });
   return getSignedUrl(r2, command, { expiresIn: 300 });
 }

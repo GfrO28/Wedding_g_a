@@ -68,7 +68,7 @@ export default async function ContentEditorPage() {
   const blocks: Record<string, Record<string, ReactNode>> = {
     blessing: { divider: <Divider scaled /> },
     accommodation: { body: <AccommodationBody hotels={w.accommodation} /> },
-    gifts: { body: <GiftsBody display={giftsDisplay} items={gifts.items} raised={gifts.raised} payment={w.gifts.payment} slug="preview" preview /> },
+    gifts: { body: <GiftsBody display={giftsDisplay} gifts={gifts} payment={w.gifts.payment} slug="preview" preview /> },
     rsvp: { body: <RSVPPreviewBody maxAttendees={2} /> },
     messages: { body: <MessagesBody messages={approvedMessages} slug="preview" /> },
   };

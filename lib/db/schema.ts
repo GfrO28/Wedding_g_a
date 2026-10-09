@@ -64,13 +64,14 @@ export const photos = pgTable("photos", {
     .defaultNow(),
 });
 
-// type "claim": un invitado reserva el regalo entero (amount = monto sugerido).
-// type "fund": varios invitados aportan montos parciales (amount = monto objetivo).
+// Cada regalo recibe aportes de los invitados hasta su meta (amount, opcional:
+// sin meta es un aporte libre). type, claimedByName y claimedAt son de cuando
+// existían las reservas: ya no se usan (quedan para no romper datos viejos).
 export const giftItems = pgTable("gift_items", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   description: text("description"),
-  type: text("type").notNull().default("claim"),
+  type: text("type").notNull().default("fund"),
   amount: integer("amount"),
   // Moneda del regalo ("PEN" o "USD"): en esa moneda se muestra y se aporta.
   currency: text("currency").notNull().default("PEN"),
@@ -80,6 +81,8 @@ export const giftItems = pgTable("gift_items", {
   link: text("link"), // tienda donde se compra (opcional)
   sortOrder: integer("sort_order").notNull().default(0),
   visible: boolean("visible").notNull().default(true),
+  // Al llegar a la meta deja de recibir aportes (si no, sigue abierto).
+  closeOnGoal: boolean("close_on_goal").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -91,8 +94,14 @@ export const giftContributions = pgTable("gift_contributions", {
     .notNull()
     .references(() => giftItems.id, { onDelete: "cascade" }),
   contributorName: text("contributor_name").notNull(),
+  // La invitación desde la que se avisó el aporte.
+  guestId: uuid("guest_id").references(() => guests.id, { onDelete: "set null" }),
   amount: integer("amount").notNull(),
   currency: text("currency").notNull().default("PEN"),
+  operationNumber: text("operation_number"),
+  // Foto de la constancia en el almacenamiento (clave, no URL: solo la ve el panel).
+  receiptKey: text("receipt_key"),
+  message: text("message"),
   // Los novios confirmaron que el dinero llegó.
   received: boolean("received").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true })
