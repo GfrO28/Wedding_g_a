@@ -13,6 +13,7 @@ import {
   boardsFor,
   coversBoard,
   elementStyle,
+  enterOrder,
   EXTENTS,
   extentOf,
   fillTokens,
@@ -32,6 +33,15 @@ import {
 
 // Contenido de los bloques: algo fijo o una función del objeto (p. ej. el sobre usa su color).
 export type Blocks = Record<string, ReactNode | ((el: TextElement) => ReactNode)>;
+
+// Clase de la animación de aparición de un objeto (null: aparece sin animación).
+export function entranceClass(el: TextElement, full: boolean): string | null {
+  if (el.enter === "none") return null;
+  if (full) return "ae-bg";
+  return `ae-${el.enter}`;
+}
+// Segundos de espera según el turno: el fondo enseguida, después de a uno.
+export const entranceDelay = (step: number) => (step === 0 ? 0 : 0.3 + Math.min(step - 1, 24) * 0.14);
 
 // Las fotos y los mapas ocupan toda su caja; el resto mide lo que su contenido.
 export const isSized = (el: TextElement) =>
@@ -301,19 +311,22 @@ export function TextArtboard({
       transform: `scale(${fitK})`,
       transformOrigin: "0 0",
     };
+    const order = animate ? enterOrder(layout[orientation], A) : null;
     content = (
       <div ref={boardRef} style={boardStyle}>
         {byZ(layout[orientation])
           .filter((el) => !el.hidden && !el.removed)
-          .map((el, i) => {
+          .map((el) => {
             const full = coversBoard(el, A);
+            const cls = animate ? entranceClass(el, full) : null;
             return (
             <div key={el.id} data-el={full ? "fill" : ""} style={{ ...elementStyle(el), ...(full ? cover : null), ...(dim?.includes(el.id) ? { opacity: 0, transition: "opacity .35s" } : null) } as CSSProperties}>
               <div
-                className={animate && inView && !full ? "artboard-in" : undefined}
+                className={cls && inView ? cls : undefined}
+                data-ae={cls && inView ? "" : undefined}
                 style={{
                   ...(isSized(el) ? { height: "100%" } : null),
-                  ...(animate && !full ? (inView ? { animationDelay: `${Math.min(i, 12) * 0.1}s` } : { opacity: 0 }) : null),
+                  ...(cls ? (inView ? { animationDelay: `${entranceDelay(order?.get(el.id) ?? 0)}s` } : { opacity: 0 }) : null),
                 }}
               >
                 <ElementContent el={el} tokens={tokens} blocks={blocks} onOpenPhoto={setLightbox} />

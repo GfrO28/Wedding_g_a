@@ -56,3 +56,48 @@
 @media (prefers-reduced-motion: reduce) {
   .fenv-seal { animation: none !important; }
 }
+
+/* Aparición de los objetos (ver ENTRANCES en lib/textLayout.ts). El retraso
+   de cada uno lo pone el lienzo según el orden de aparición. */
+@keyframes enter-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes enter-fade-up { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: none; } }
+@keyframes enter-fade-down { from { opacity: 0; transform: translateY(-40px); } to { opacity: 1; transform: none; } }
+@keyframes enter-fade-left { from { opacity: 0; transform: translateX(-60px); } to { opacity: 1; transform: none; } }
+@keyframes enter-fade-right { from { opacity: 0; transform: translateX(60px); } to { opacity: 1; transform: none; } }
+@keyframes enter-zoom-in { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
+@keyframes enter-zoom-out { from { opacity: 0; transform: scale(1.35); } to { opacity: 1; transform: none; } }
+@keyframes enter-blur { from { opacity: 0; filter: blur(14px); } to { opacity: 1; filter: blur(0); } }
+@keyframes enter-reveal { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes enter-typewriter { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes enter-rotate { from { opacity: 0; transform: rotate(-12deg) scale(0.85); } to { opacity: 1; transform: none; } }
+@keyframes enter-flip { from { opacity: 0; transform: perspective(800px) rotateX(75deg); } to { opacity: 1; transform: perspective(800px) rotateX(0); } }
+@keyframes enter-bounce {
+  0% { opacity: 0; transform: translateY(60px); }
+  60% { opacity: 1; transform: translateY(-10px); }
+  80% { transform: translateY(4px); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes enter-pop {
+  0% { opacity: 0; transform: scale(0.4); }
+  70% { opacity: 1; transform: scale(1.08); }
+  100% { opacity: 1; transform: none; }
+}
+.ae-fade { animation: enter-fade 0.9s ease-out both; }
+.ae-fade-up { animation: enter-fade-up 0.8s cubic-bezier(.2,.7,.2,1) both; }
+.ae-fade-down { animation: enter-fade-down 0.8s cubic-bezier(.2,.7,.2,1) both; }
+.ae-fade-left { animation: enter-fade-left 0.8s cubic-bezier(.2,.7,.2,1) both; }
+.ae-fade-right { animation: enter-fade-right 0.8s cubic-bezier(.2,.7,.2,1) both; }
+.ae-zoom-in { animation: enter-zoom-in 0.8s cubic-bezier(.2,.7,.2,1) both; }
+.ae-zoom-out { animation: enter-zoom-out 0.9s cubic-bezier(.2,.7,.2,1) both; }
+.ae-blur { animation: enter-blur 1s ease-out both; }
+.ae-reveal { animation: enter-reveal 1s cubic-bezier(.6,0,.2,1) both; }
+.ae-typewriter { animation: enter-typewriter 1.6s steps(28, end) both; }
+.ae-rotate { animation: enter-rotate 0.9s cubic-bezier(.2,.7,.2,1) both; }
+.ae-flip { animation: enter-flip 0.9s cubic-bezier(.2,.7,.2,1) both; }
+.ae-bounce { animation: enter-bounce 1s ease-out both; }
+.ae-pop { animation: enter-pop 0.7s ease-out both; }
+.ae-auto { animation: artboard-in 0.7s ease-out both; }
+.ae-bg { animation: enter-fade 0.8s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  [data-ae] { animation: enter-fade 0.4s ease-out both !important; }
+}

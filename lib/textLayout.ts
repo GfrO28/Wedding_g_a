@@ -94,6 +94,7 @@ export type TextElement = {
   // Cuenta regresiva: tipografía ("" = la de los números) y mayúsculas de las etiquetas (días, hs…).
   labelFont: FontKey | "";
   labelUpper: boolean;
+  enter: EnterKey; // efecto de aparición (ENTRANCES)
   fontSize: number;
   font: FontKey;
   color: string;
@@ -150,6 +151,49 @@ export const EFFECTS = {
   glow: "Brillo",
 } as const;
 export type EffectKey = keyof typeof EFFECTS;
+
+// Efectos de aparición de cada objeto cuando la sección entra en pantalla.
+export const ENTRANCES = {
+  auto: "Predeterminado (subir suave)",
+  none: "Sin animación",
+  fade: "Desvanecer",
+  "fade-up": "Subir",
+  "fade-down": "Bajar",
+  "fade-left": "Entrar desde la izquierda",
+  "fade-right": "Entrar desde la derecha",
+  "zoom-in": "Acercar",
+  "zoom-out": "Alejar",
+  blur: "Desenfoque",
+  reveal: "Revelar (cortina)",
+  typewriter: "Máquina de escribir",
+  rotate: "Girar",
+  flip: "Voltear",
+  bounce: "Rebote",
+  pop: "Aparecer con salto",
+} as const;
+export type EnterKey = keyof typeof ENTRANCES;
+
+// Orden de aparición: primero el fondo y el velo (lo que tapa toda la
+// diapositiva), después los títulos, después los subtítulos y el resto en el
+// orden del panel de Capas (de arriba hacia abajo).
+const TITLE_STYLES = ["titulos", "nombres"], SUBTITLE_STYLES = ["antetitulo", "detalle"];
+export function enterGroup(el: TextElement, A: { w: number; h: number }): number {
+  if (coversBoard(el, A)) return 0;
+  if (el.kind === "text" || el.kind === "link") {
+    if ((el.style && TITLE_STYLES.includes(el.style)) || ["title", "names", "placesTitle", "thanks"].includes(el.id)) return 1;
+    if ((el.style && SUBTITLE_STYLES.includes(el.style)) || ["eyebrow", "date", "subtitle"].includes(el.id) || /subt[íi]tulo|antet[íi]tulo/i.test(el.name)) return 2;
+  }
+  return 3;
+}
+// Paso de cada objeto en la secuencia (0, 1, 2…). El fondo y el velo comparten el 0.
+export function enterOrder(list: TextElement[], A: { w: number; h: number }): Map<string, number> {
+  const shown = list.filter((e) => !e.hidden && !e.removed);
+  const sorted = [...shown].sort((a, b) => enterGroup(a, A) - enterGroup(b, A) || b.z - a.z);
+  const out = new Map<string, number>();
+  let step = 0;
+  for (const e of sorted) out.set(e.id, enterGroup(e, A) === 0 ? 0 : ++step);
+  return out;
+}
 
 /* ---------- Objetos agregados desde el editor ---------- */
 
@@ -413,7 +457,7 @@ const base = {
   kind: "text" as const, align: "center" as const, letterSpacing: 0, lineHeight: 1.15,
   weight: 400, italic: false, uppercase: false, rotation: 0, hidden: false, style: null,
   ref: "", src: "", frame: "none" as FrameKey, variant: "", z: 0, opacity: 1, locked: false, removed: false, effect: "none" as EffectKey, layer: "",
-  labelFont: "" as FontKey | "", labelUpper: true,
+  labelFont: "" as FontKey | "", labelUpper: true, enter: "auto" as EnterKey,
 };
 type Spec = Partial<TextElement> & Pick<TextElement, "id" | "name" | "text" | "fontSize" | "font" | "color">;
 const el = (s: Spec & { x?: number; y?: number; w?: number; h?: number }): TextElement => ({ ...base, x: 0, y: 0, w: 600, h: 0, ...s });
@@ -826,6 +870,7 @@ function cleanElement(d: TextElement, s: Record<string, unknown>, A: Board): Tex
     style: null,
     labelFont: typeof s.labelFont === "string" && (s.labelFont === "" || s.labelFont in FONTS) ? (s.labelFont as FontKey | "") : d.labelFont,
     labelUpper: typeof s.labelUpper === "boolean" ? s.labelUpper : d.labelUpper,
+    enter: typeof s.enter === "string" && s.enter in ENTRANCES ? (s.enter as EnterKey) : d.enter,
   };
   if (d.kind === "shape" && typeof s.variant === "string" && s.variant in SHAPES) clean.variant = s.variant;
   if (d.kind === "ornament" && (ORNAMENT_KEYS as readonly string[]).includes(s.variant as string)) clean.variant = s.variant as string;

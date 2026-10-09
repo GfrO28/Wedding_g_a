@@ -76,6 +76,7 @@ function VideoIntro({ layout, tokens, seal, images }: { layout: TextLayout; toke
         layout={layout}
         tokens={tokens}
         orientationFrom="viewport"
+        animate
         dim={stage === "closed" ? undefined : ["hint"]}
         blocks={{
           envelope: (el) => (

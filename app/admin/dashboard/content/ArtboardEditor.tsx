@@ -37,6 +37,7 @@ import {
   MoreHorizontal,
   Paintbrush,
   Pencil,
+  Sparkles,
   Plus,
   Redo2,
   RotateCcw,
@@ -56,7 +57,7 @@ import {
   Unlink,
   X,
 } from "lucide-react";
-import { ElementContent, isSized, TextArtboard, type Blocks } from "@/app/components/TextArtboard";
+import { ElementContent, entranceClass, entranceDelay, isSized, TextArtboard, type Blocks } from "@/app/components/TextArtboard";
 import { Ornament, ORNAMENT_LABELS } from "@/app/components/ornaments";
 import { requestDesignImageUploadAction } from "./zone-actions";
 import { setItineraryStepIconAction } from "./content-actions";
@@ -85,6 +86,9 @@ import {
   veilElement,
   coversBoard,
   toPasteable,
+  ENTRANCES,
+  enterOrder,
+  type EnterKey,
   FRAMES,
   EFFECTS,
   type EffectKey,
@@ -174,7 +178,7 @@ const clone = (l: TextLayout): TextLayout => JSON.parse(JSON.stringify(l));
 // Lo que se ve igual en celular y PC: el texto, la tipografía, el color, el
 // formato, el estilo, el borde y la versión. La posición, el tamaño, la
 // alineación, el giro y si está oculto son de cada formato.
-const SHARED_PROPS = [...STYLE_PROPS, "text", "style", "frame", "variant", "opacity", "effect", "labelFont", "labelUpper"] as const;
+const SHARED_PROPS = [...STYLE_PROPS, "text", "style", "frame", "variant", "opacity", "effect", "labelFont", "labelUpper", "enter"] as const;
 const otherOf = (o: Orientation): Orientation => (o === "portrait" ? "landscape" : "portrait");
 
 // Aplica en el otro formato la parte compartida de un cambio.
@@ -276,6 +280,14 @@ export function ArtboardEditor({
   // Clic en un objeto bloqueado (como el fondo): se elige al soltar si no se
   // arrastró un recuadro de selección desde ahí.
   const fillClick = useRef<string | null>(null);
+  // Vista previa de la aparición: de algunos objetos (al elegir el efecto) o de toda la sección en orden.
+  const [play, setPlay] = useState<{ ids: string[] | null; n: number } | null>(null);
+  const playTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function preview(ids: string[] | null) {
+    if (playTimer.current) clearTimeout(playTimer.current);
+    setPlay((p) => ({ ids, n: (p?.n ?? 0) + 1 }));
+    playTimer.current = setTimeout(() => setPlay(null), ids ? 2200 : 6500);
+  }
   const [hist, setHist] = useState({ undo: 0, redo: 0 });
   const syncHist = () => setHist({ undo: past.current.length, redo: future.current.length });
 
@@ -1271,6 +1283,8 @@ export function ArtboardEditor({
   const handle = 10 / (k || 1);
   // Varios seleccionados: lo que tienen en común los textos.
   const selEls = elements.filter((e) => sel.includes(e.id));
+  const enterSteps = enterOrder(elements, A);
+  const animated = section !== "envelope"; // el sobre clásico tiene su propia animación
   const selTexts = selEls.filter(isTexty);
 
   return (
@@ -1395,6 +1409,17 @@ export function ArtboardEditor({
             <button type="button" onClick={() => setClipNote(null)} aria-label="Cerrar aviso" className="text-neutral-400 hover:text-neutral-700"><X size={12} /></button>
           </span>
         )}
+        {animated && !cover && (
+          <button
+            type="button"
+            onClick={() => preview(null)}
+            title="Ver cómo aparecen los objetos al llegar a esta sección (en orden)"
+            className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-50"
+            data-play-section
+          >
+            <Sparkles size={14} /> Ver animación
+          </button>
+        )}
         <div className="ml-auto flex items-center gap-1.5">
           {actions}
           <button
@@ -1498,6 +1523,15 @@ export function ArtboardEditor({
             <ToolButton label="Centrar verticalmente" onClick={() => alignGroup("vcenter")}><AlignCenterHorizontal size={15} /></ToolButton>
             <ToolButton label="Alinear abajo" onClick={() => alignGroup("bottom")}><AlignEndHorizontal size={15} /></ToolButton>
             <span className="mx-0.5 h-5 w-px bg-neutral-200" aria-hidden />
+            {animated && (
+              <EnterSelect
+                value={selEls.every((e) => e.enter === selEls[0]?.enter) ? selEls[0]?.enter ?? "auto" : null}
+                onChange={(v) => {
+                  patchMany(selEls.map((e) => e.id), { enter: v });
+                  preview(selEls.map((e) => e.id));
+                }}
+              />
+            )}
             <ToolButton label="Cortar (Ctrl+X): para pegarlos en otra sección" onClick={() => toClipboard(true)}><Scissors size={14} /></ToolButton>
             <ToolButton label="Copiar (Ctrl+C)" onClick={() => toClipboard(false)}><Copy size={14} /></ToolButton>
             <ToolButton label="Eliminar los seleccionados (Supr)" onClick={() => removeMany(sel)}><Trash2 size={14} /></ToolButton>
@@ -1535,6 +1569,8 @@ export function ArtboardEditor({
             onLive={(c) => livePatch(selected.id, c)}
             onLiveEnd={endLive}
             onCut={selected.kind !== "panel" ? () => toClipboard(true) : undefined}
+            enterStep={animated ? enterSteps.get(selected.id) ?? null : null}
+            onEnter={animated ? (v) => { patch(selected.id, { enter: v }); preview([selected.id]); } : undefined}
             onCopyFormat={isTexty(selected) ? () => setPainter(Object.fromEntries(FORMAT_KEYS.map((k) => [k, selected[k]])) as Format) : undefined}
             onOpenContent={selected.kind === "map" && isCustom(selected) ? () => onOpenContent?.(selected.id) : undefined}
           />
@@ -1612,7 +1648,16 @@ export function ArtboardEditor({
                       onDone={() => { finishEdit(); areaRef.current?.focus({ preventScroll: true }); }}
                     />
                   ) : (
-                    <div style={{ pointerEvents: "none", minHeight: "0.5em", ...(isSized(el) ? { height: "100%" } : null) }}>
+                    <div
+                      key={play && (!play.ids || play.ids.includes(el.id)) ? `${el.id}-${play.n}` : el.id}
+                      className={play && (!play.ids || play.ids.includes(el.id)) ? entranceClass(el, covers(el)) ?? undefined : undefined}
+                      style={{
+                        pointerEvents: "none",
+                        minHeight: "0.5em",
+                        ...(isSized(el) ? { height: "100%" } : null),
+                        ...(play && !play.ids ? { animationDelay: `${entranceDelay(enterSteps.get(el.id) ?? 0)}s` } : null),
+                      }}
+                    >
                       <ElementContent el={el} tokens={tokens} blocks={blocks} />
                     </div>
                   )}
@@ -1740,7 +1785,11 @@ function ContextToolbar({
   onCopyFormat,
   onOpenContent,
   onCut,
+  enterStep,
+  onEnter,
 }: {
+  enterStep?: number | null;
+  onEnter?: (v: EnterKey) => void;
   el: TextElement;
   orientation: Orientation;
   tokens: string[];
@@ -2048,6 +2097,17 @@ function ContextToolbar({
         </>
       )}
 
+      {onEnter && (
+        <span className="flex items-center gap-1">
+          <EnterSelect value={el.enter} onChange={onEnter} />
+          {enterStep !== null && enterStep !== undefined && (
+            <span className="text-[11px] tabular-nums text-neutral-400" title="Turno en que aparece: primero el fondo, después títulos, subtítulos y el resto según las capas" data-enter-step>
+              {enterStep === 0 ? "1.º (fondo)" : `${enterStep + 1}.º`}
+            </span>
+          )}
+        </span>
+      )}
+
       <div className="relative" data-popover>
         <ToolButton label="Avanzado" active={popover === "advanced"} onClick={() => toggle("advanced")}><SlidersHorizontal size={14} /></ToolButton>
         {popover === "advanced" && (
@@ -2088,6 +2148,24 @@ function ContextToolbar({
         </span>
       )}
     </>
+  );
+}
+
+// Efecto de aparición (null: los seleccionados tienen efectos distintos).
+function EnterSelect({ value, onChange }: { value: EnterKey | null; onChange: (v: EnterKey) => void }) {
+  return (
+    <select
+      aria-label="Aparición"
+      title="Cómo aparece al llegar a la sección"
+      className="h-8 max-w-[11rem] rounded-md border border-neutral-300 px-2 text-sm"
+      value={value ?? ""}
+      onChange={(e) => e.target.value && onChange(e.target.value as EnterKey)}
+    >
+      {value === null && <option value="">Aparición: varias</option>}
+      {(Object.keys(ENTRANCES) as EnterKey[]).map((k) => (
+        <option key={k} value={k}>Aparición: {ENTRANCES[k]}</option>
+      ))}
+    </select>
   );
 }
 
