@@ -18,12 +18,13 @@ export const ENVELOPE_CONFIG = {
   // juntan en el centro (tip). "cover" es el armado anterior (3:4 recortado).
   layout: { reference: { w: 768, h: 1024 }, sideTipTarget: 0.53, maxFlapDepth: 0.5, coverSafety: 1.04, fit: "stretch" as "cover" | "stretch", tip: 0.505 },
   seal: { sizeVmin: 16, minPx: 72, maxPx: 200 },
-  hint: "Toca el sello",
+  hint: "Tocá el sello para abrir",
   angles: { side: 160, topBottom: 170 },
   timing: {
+    // La superior y la inferior arrancan cuando las laterales van por la mitad (0.5 + 1.2 / 2).
     hintOut: [0, 0.25], prep: [0, 0.4], right: [0.4, 1.2], left: [0.5, 1.2],
-    topBottom: [1.4, 1.2], zoom: [1.4, 1.4], text: 1.6, letter: 0.6, stagger: 0.04,
-    cleanup: 2.8, hold: 2.5, textOut: 0.6, crossfade: 0.8, reduced: 0.6,
+    topBottom: [1.05, 1.2], zoom: [1.05, 1.4], text: 1.3, letter: 0.6, stagger: 0.04,
+    cleanup: 2.45, hold: 2.5, textOut: 0.6, crossfade: 0.8, reduced: 0.6,
   },
 } as const;
 
@@ -371,6 +372,7 @@ export type MountOptions = {
   tip?: number; // dónde se juntan las puntas (fracción del ancho; por defecto la del config)
   colors?: { background?: string; hint?: string }; // interior del sobre y texto «Toca el sello»
   onOpen?: () => void;
+  onReveal?: () => void; // terminó el mensaje de la tarjeta: la intro empieza a desvanecerse
   onComplete?: () => void;
 };
 
@@ -452,7 +454,10 @@ export function mountEnvelope(container: HTMLElement, G: Geometry, opts: MountOp
     `<button type="button" aria-label="Abrir invitación" style="position:absolute;inset:0;padding:0;border:0;background:transparent;border-radius:50%;clip-path:circle(50%);cursor:pointer;pointer-events:auto"></button>`;
   const seal = sealWrap.querySelector("button")!;
   const sealImg = sealWrap.querySelector("img")!;
-  seal.addEventListener("focus", () => (seal.style.outline = "3px solid #f6e3b4"));
+  // El contorno de foco solo aparece al navegar con teclado (no al tocarlo).
+  seal.style.outline = "none";
+  seal.style.setProperty("-webkit-tap-highlight-color", "transparent");
+  seal.addEventListener("focus", () => (seal.style.outline = seal.matches(":focus-visible") ? "3px solid #f6e3b4" : "none"));
   seal.addEventListener("blur", () => (seal.style.outline = "none"));
   seal.style.outlineOffset = "-3px";
 
@@ -475,8 +480,11 @@ export function mountEnvelope(container: HTMLElement, G: Geometry, opts: MountOp
   hint.textContent = C.hint;
   Object.assign(hint.style, {
     position: "absolute", left: W / 2 + "px", top: H / 2 + D / 2 + Math.max(10, vmin * 2) + "px", transform: "translateX(-50%)",
-    fontSize: Math.max(14, vmin * 3) + "px", fontStyle: "italic", color: opts.colors?.hint ?? "#efe8dd", whiteSpace: "nowrap", pointerEvents: "none",
+    fontSize: Math.max(14, vmin * 3) + "px", fontStyle: "italic", color: "#fff8ee", whiteSpace: "nowrap", pointerEvents: "none",
     letterSpacing: ".04em", fontFamily: `var(--font-envelope), "Cormorant Garamond", serif`,
+    // Pastilla oscura translúcida: se lee sobre papel claro u oscuro.
+    background: "rgba(25, 14, 10, .42)", padding: ".3em 1em .35em", borderRadius: "999px",
+    backdropFilter: "blur(3px)", textShadow: "0 1px 2px rgba(0,0,0,.35)", boxShadow: "0 2px 10px rgba(0,0,0,.18)",
   });
   scene.appendChild(hint);
 
@@ -495,7 +503,7 @@ export function mountEnvelope(container: HTMLElement, G: Geometry, opts: MountOp
   container.appendChild(intro);
 
   tweens.push(gsap.to(sealWrap, { scale: 1.04, duration: 1.2, ease: "sine.inOut", yoyo: true, repeat: -1 }));
-  tweens.push(gsap.fromTo(hint, { opacity: 0.9 }, { opacity: 0.35, duration: 1.1, ease: "sine.inOut", yoyo: true, repeat: -1 }));
+  tweens.push(gsap.fromTo(hint, { opacity: 1 }, { opacity: 0.65, duration: 1.1, ease: "sine.inOut", yoyo: true, repeat: -1 }));
 
   const flaps = [top, bottom, right, left];
   const fronts = flaps.map((fl) => fl.querySelector<HTMLElement>("[data-front]")!);
@@ -518,6 +526,7 @@ export function mountEnvelope(container: HTMLElement, G: Geometry, opts: MountOp
         .to(flaps, { opacity: 0, duration: t.reduced, ease: "power1.inOut" }, 0)
         .set(flaps, { display: "none" }, t.reduced)
         .to(words, { opacity: 0, duration: t.textOut }, t.reduced + t.hold)
+        .call(() => opts.onReveal?.(), [], ">")
         .to(intro, { opacity: 0, duration: t.crossfade }, ">");
     } else {
       tl.to(hint, { opacity: 0, duration: t.hintOut[1] }, t.hintOut[0])
@@ -533,7 +542,8 @@ export function mountEnvelope(container: HTMLElement, G: Geometry, opts: MountOp
         .to(letters, { opacity: 1, filter: "blur(0px)", y: 0, duration: t.letter, ease: "power2.out", stagger: { each: t.stagger, from: "random" } }, t.text)
         .set(flaps, { display: "none" }, t.cleanup)
         .to(words, { opacity: 0, filter: "blur(6px)", duration: t.textOut, ease: "power1.in" }, textEnd + t.hold)
-        .to(intro, { opacity: 0, duration: t.crossfade, ease: "power1.inOut" }, ">");
+        .call(() => opts.onReveal?.(), [], ">")
+        .to(intro, { opacity: 0, duration: t.crossfade, ease: "power1.inOut" }, "<");
     }
     tl.play();
   });

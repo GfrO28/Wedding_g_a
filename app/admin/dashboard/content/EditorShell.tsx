@@ -5,7 +5,7 @@ import { ArrowLeft, Check, ChevronDown, ChevronUp, ExternalLink, Loader2, MapPin
 import { ENVELOPE_DESIGNS, envelopeColors, type EnvelopeDesign, type EnvelopeSlot, type VideoEnvelopeAssets } from "@/lib/envelopeAssets";
 import { VideoEnvelopeImagesPanel, videoEnvelopeImages } from "./VideoEnvelopeImagesPanel";
 import { FramedEnvelope } from "@/app/components/FramedEnvelope";
-import { applyStyles, backdropOf, ENVELOPE_VIDEO_BG, isCustom, LAYOUT_SECTIONS, mapSourceOf, pickStyle, withDynamic, type LayoutSection, type TextElement, type TextLayout, type TextStyle, type TokenValues } from "@/lib/textLayout";
+import { applyStyles, backdropOf, ENVELOPE_VIDEO_BG, isCustom, LAYOUT_SECTIONS, mapSourceOf, withDynamic, type LayoutSection, type TextElement, type TextLayout, type TextStyle, type TokenValues } from "@/lib/textLayout";
 import { ArtboardEditor, type CanvasCover, type Clip, type EditorApi } from "./ArtboardEditor";
 import { GalleryPhotosPanel, type LibraryPhoto } from "./GalleryPhotosPanel";
 import { DesktopBackgroundPanel } from "./DesktopBackgroundPanel";
@@ -13,7 +13,6 @@ import type { DesktopBackground } from "@/lib/desktopBackground";
 import { EnvelopeCard, EnvelopeClosed } from "./EnvelopeCanvas";
 import { EnvelopeImagesPanel } from "./EnvelopeImagesPanel";
 import { discardDraftsAction, publishAction, saveDraftAction, saveStylesDraftAction } from "./layout-actions";
-import { StylesPanel } from "./StylesPanel";
 import { Hint } from "./Hint";
 import { saveSectionOrderAction, setEnvelopeDesignAction, toggleZoneEnabledAction } from "./zone-actions";
 
@@ -181,19 +180,6 @@ export function EditorShell({
     [flush],
   );
 
-  // Al borrar un estilo, sus textos se quedan como se veían, pero sin estilo.
-  function deleteStyle(id: string) {
-    const style = styles.find((s) => s.id === id);
-    if (!style) return;
-    for (const s of LAYOUT_SECTIONS) {
-      const l = layouts[s];
-      if (![...l.portrait, ...l.landscape].some((e) => e.style === id)) continue;
-      const unlink = (list: TextLayout["portrait"]) => list.map((e) => (e.style === id ? { ...e, ...pickStyle(style), style: null } : e));
-      handleChange(s, { portrait: unlink(l.portrait), landscape: unlink(l.landscape) });
-    }
-    handleStylesChange(styles.filter((s) => s.id !== id));
-  }
-
   const design = designOf(current);
   const onDesignChange = useCallback((l: TextLayout) => design && handleChange(design, l), [design, handleChange]);
 
@@ -344,9 +330,17 @@ export function EditorShell({
             className={`flex flex-col items-center gap-1.5 rounded-lg border p-2 text-xs ${envDesign === d ? "border-blue-500 bg-blue-50 text-blue-900" : "border-neutral-200 text-neutral-700 hover:bg-neutral-50"}`}
           >
             {d === "classic" ? (
-              <span className="relative block h-16 w-10 overflow-hidden rounded-sm" style={{ background: paperColors.background }}>
-                <span className="absolute inset-x-0 top-0 h-1/2 bg-[#6b2333]" style={{ clipPath: "polygon(0 0,100% 0,50% 100%)" }} />
-                <span className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#c9a24f]" />
+              // El sobre cerrado completo: las cuatro solapas del color del papel y el sello.
+              <span className="relative block h-16 w-10 overflow-hidden rounded-sm shadow-sm">
+                <svg viewBox="0 0 40 64" className="absolute inset-0 h-full w-full" aria-hidden>
+                  <polygon points="0,0 40,0 20,32" fill={paper} style={{ filter: "brightness(.9)" }} />
+                  <polygon points="0,64 40,64 20,32" fill={paper} style={{ filter: "brightness(.84)" }} />
+                  <polygon points="0,0 20,32 0,64" fill={paper} />
+                  <polygon points="40,0 20,32 40,64" fill={paper} style={{ filter: "brightness(.95)" }} />
+                  <path d="M0,0 L20,32 L0,64 M40,0 L20,32 L40,64" fill="none" stroke="rgba(0,0,0,.25)" strokeWidth=".6" />
+                </svg>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={envelopeAssets.seal} alt="" className="absolute left-1/2 top-1/2 w-3.5 -translate-x-1/2 -translate-y-1/2" />
               </span>
             ) : (
               <span className="relative flex h-16 w-10 items-center justify-center overflow-hidden rounded-sm bg-gradient-to-b from-neutral-500 to-neutral-800">
@@ -389,8 +383,6 @@ export function EditorShell({
       />
     ) : current.id === "desktop" ? (
       <DesktopBackgroundPanel initial={desktopBackground} sampleImage={backdropOf(layouts.hero)} />
-    ) : current.id === "styles" ? (
-      <StylesPanel styles={styles} usage={styleUsage} tokens={tokens} onChange={handleStylesChange} onDelete={deleteStyle} />
     ) : (
       panels[current.id]
     );
@@ -462,7 +454,7 @@ export function EditorShell({
                         className={`flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left text-sm ${!isOn && !active ? "text-neutral-400" : ""}`}
                       >
                         <span className="truncate">{s.label}</span>
-                        {((designOf(s) && unpublished(designOf(s)!)) || (s.id === "styles" && stylesUnpublished)) && (
+                        {((designOf(s) && unpublished(designOf(s)!))) && (
                           <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? "bg-amber-300" : "bg-amber-500"}`} title="Cambios sin publicar" />
                         )}
                       </button>

@@ -3,7 +3,6 @@ import { db } from "@/lib/db";
 import { photos } from "@/lib/db/schema";
 import { desc } from "drizzle-orm";
 import { getWeddingContent } from "@/lib/weddingContent";
-import { getTheme } from "@/lib/theme";
 import { getEnvelopeSettings } from "@/lib/envelope";
 import { getEditorLayouts, getTokenValues } from "@/lib/textLayoutServer";
 import { getDesktopBackground } from "@/lib/desktopBackgroundServer";
@@ -14,7 +13,6 @@ import {
   updateMapsAction,
 } from "./content-actions";
 import { MusicUploader } from "./MusicUploader";
-import { ThemeEditor } from "../ThemeEditor";
 import { EditorShell, type EditorSection } from "./EditorShell";
 import { Divider } from "@/app/components/Divider";
 import { VARIANTS } from "@/lib/textLayout";
@@ -29,9 +27,8 @@ import { MessagesBody, getApprovedMessages } from "@/app/components/GuestMessage
 export const dynamic = "force-dynamic";
 
 export default async function ContentEditorPage() {
-  const [w, theme, envelope, { published, drafts, styles }, tokens, allPhotos, gifts, approvedMessages] = await Promise.all([
+  const [w, envelope, { published, drafts, styles }, tokens, allPhotos, gifts, approvedMessages] = await Promise.all([
     getWeddingContent(),
-    getTheme(),
     getEnvelopeSettings(),
     getEditorLayouts(),
     getTokenValues("Invitado de ejemplo"),
@@ -62,8 +59,6 @@ export default async function ContentEditorPage() {
     { id: "messages", label: "Mensajes", group: "sections", zone: "messages", enabled: w.zoneEnabled.messages, design: "messages", background: bg() },
     { id: "footer", label: "Pie de página", group: "sections", zone: "footer", enabled: w.zoneEnabled.footer, design: "footer", background: bg() },
     { id: "music", label: "Música", group: "general", zone: "music", enabled: w.zoneEnabled.music },
-    { id: "palette", label: "Paleta de colores", group: "general" },
-    { id: "styles", label: "Estilos de texto", group: "general" },
     { id: "desktop", label: "Fondo para PC", group: "general" },
   ];
   // Las secciones del cuerpo van en el orden elegido (el sobre primero, el pie al final).
@@ -204,7 +199,6 @@ export default async function ContentEditorPage() {
     messages: <p className="text-sm text-neutral-500">Los mensajes de los invitados se aprueban desde el panel principal.</p>,
     footer: <Hint id="canvas-texts"><p className="text-sm text-neutral-500">Los textos se editan sobre el lienzo: doble clic en un texto para escribir.</p></Hint>,
     music: <MusicUploader music={w.music} />,
-    palette: <ThemeEditor theme={theme} />,
   };
 
   return (

@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Ornament } from "./ornaments";
 import { Countdown } from "./Countdown";
 import { isVideo } from "./BgMedia";
+import { useIntroReady } from "./introGate";
 import {
   ARTBOARDS,
   byZ,
@@ -220,6 +221,7 @@ export function TextArtboard({
   forceOrientation,
   page = false,
   dim,
+  waitIntro = true,
 }: {
   layout: TextLayout;
   tokens: TokenValues;
@@ -230,6 +232,7 @@ export function TextArtboard({
   forceOrientation?: Orientation;
   page?: boolean;
   dim?: string[]; // objetos que se desvanecen (p. ej. «Tocá para abrir» al abrir el sobre)
+  waitIntro?: boolean; // false: no espera al sobre (el sobre con video es la intro misma)
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -237,6 +240,9 @@ export function TextArtboard({
   const [inView, setInView] = useState(!animate);
   const [grow, setGrow] = useState(1);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  // Con el sobre de apertura en pantalla, las apariciones esperan a que termine.
+  const introReady = useIntroReady();
+  const playing = inView && (introReady || !waitIntro);
 
   // La aparición se dispara cuando la sección entra en pantalla.
   useEffect(() => {
@@ -322,11 +328,11 @@ export function TextArtboard({
             return (
             <div key={el.id} data-el={full ? "fill" : ""} style={{ ...elementStyle(el), ...(full ? cover : null), ...(dim?.includes(el.id) ? { opacity: 0, transition: "opacity .35s" } : null) } as CSSProperties}>
               <div
-                className={cls && inView ? cls : undefined}
-                data-ae={cls && inView ? "" : undefined}
+                className={cls && playing ? cls : undefined}
+                data-ae={cls && playing ? "" : undefined}
                 style={{
                   ...(isSized(el) ? { height: "100%" } : null),
-                  ...(cls ? (inView ? { animationDelay: `${entranceDelay(order?.get(el.id) ?? 0)}s` } : { opacity: 0 }) : null),
+                  ...(cls ? (playing ? { animationDelay: `${entranceDelay(order?.get(el.id) ?? 0)}s` } : { opacity: 0 }) : null),
                 }}
               >
                 <ElementContent el={el} tokens={tokens} blocks={blocks} onOpenPhoto={setLightbox} />

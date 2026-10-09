@@ -6,6 +6,7 @@ import { ENVELOPE_VIDEO_BG, type TextLayout, type TokenValues } from "@/lib/text
 import { DEFAULT_ENVELOPE_PAPER, envelopeColors, type EnvelopeDesign, type VideoEnvelopeAssets } from "@/lib/envelopeAssets";
 import { TextArtboard } from "./TextArtboard";
 import { FramedEnvelope, type FramedEnvelopeImages } from "./FramedEnvelope";
+import { markIntroDone } from "./introGate";
 
 export const PLAY_MUSIC_EVENT = "invitation:play-music";
 
@@ -61,7 +62,10 @@ function VideoIntro({ layout, tokens, seal, images }: { layout: TextLayout; toke
     window.dispatchEvent(new Event(PLAY_MUSIC_EVENT));
     setStage("opening");
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    setTimeout(() => setStage("leaving"), reduced ? 300 : OPEN_MS);
+    setTimeout(() => {
+      setStage("leaving");
+      markIntroDone();
+    }, reduced ? 300 : OPEN_MS);
     setTimeout(() => setStage("done"), (reduced ? 300 : OPEN_MS) + FADE_MS);
   }
 
@@ -69,6 +73,7 @@ function VideoIntro({ layout, tokens, seal, images }: { layout: TextLayout; toke
   return (
     <div
       className="fixed inset-0 z-50 overflow-hidden"
+      data-envelope-intro
       data-video-intro={stage}
       style={{ width: "100vw", height: "100dvh", background: ENVELOPE_VIDEO_BG, opacity: stage === "leaving" ? 0 : 1, transition: `opacity ${FADE_MS}ms ease` }}
     >
@@ -77,6 +82,7 @@ function VideoIntro({ layout, tokens, seal, images }: { layout: TextLayout; toke
         tokens={tokens}
         orientationFrom="viewport"
         animate
+        waitIntro={false}
         dim={stage === "closed" ? undefined : ["hint"]}
         blocks={{
           envelope: (el) => (
@@ -106,6 +112,7 @@ function ClassicIntro({
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("skipIntro") === "1") {
+      markIntroDone();
       setDone(true);
       return;
     }
@@ -140,8 +147,10 @@ function ClassicIntro({
           colors: envelopeColors(paper),
           debug,
           onOpen: () => window.dispatchEvent(new Event(PLAY_MUSIC_EVENT)),
+          onReveal: markIntroDone,
           onComplete: () => {
             finished = true;
+            markIntroDone();
             document.body.style.overflow = prevOverflow;
             setDone(true);
           },
@@ -175,6 +184,7 @@ function ClassicIntro({
     <div
       ref={ref}
       className="fixed inset-0 z-50 overflow-hidden"
+      data-envelope-intro
       style={{ width: "100vw", height: "100dvh", background: colors.background }}
     />
   );
