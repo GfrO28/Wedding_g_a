@@ -2,24 +2,25 @@ import { gsap } from "gsap";
 import { artboardFit, elementStyle, fillTokens, type TextLayout, type TokenValues } from "@/lib/textLayout";
 import { DEFAULT_ENVELOPE_ANIM, type EnvelopeAnim } from "@/lib/envelopeAssets";
 
-// Tiempos de la apertura según los parámetros editables (velocidad, cuándo
-// arrancan la superior e inferior, duración del mensaje y acercamiento).
+// Tiempos de la apertura según los parámetros editables. Cada solapa arranca
+// siempre en el mismo momento; lo que cambia es cuánto tarda en levantarse.
 function timingFor(a: EnvelopeAnim) {
-  const base = ENVELOPE_CONFIG.timing, k = 1 / a.speed;
-  const right: [number, number] = [0.4 * k, 1.2 * k], left: [number, number] = [0.5 * k, 1.2 * k];
+  const base = ENVELOPE_CONFIG.timing;
+  const right: [number, number] = [0.4, a.sideDur], left: [number, number] = [0.5, a.sideDur];
   const tbStart = left[0] + a.overlap * left[1];
   return {
     ...base,
-    prep: [0, 0.4 * k] as const,
+    prep: [0, 0.4] as const,
     right, left,
-    topBottom: [tbStart, 1.2 * k] as const,
-    zoom: [tbStart, 1.4 * k] as const,
+    topBottom: [tbStart, a.tbDur] as const,
+    zoom: [tbStart, a.tbDur + 0.2] as const,
     zoomScale: 1 + a.zoom,
-    text: tbStart + 0.25 * k,
+    // La tarjeta se ve en cuanto la superior e inferior empiezan a levantarse.
+    text: tbStart + Math.min(0.5, 0.2 * a.tbDur),
     // El mensaje aparece siempre a su ritmo (no depende de la velocidad de las solapas).
     letter: 0.6,
     stagger: 0.04,
-    cleanup: tbStart + 1.4 * k,
+    cleanup: tbStart + a.tbDur + 0.05,
     hold: a.hold,
   };
 }
@@ -33,9 +34,7 @@ export function phasesFor(a: EnvelopeAnim, letters: number): EnvelopePhases {
   const fadeStart = textEnd + t.hold + t.textOut;
   return { flapsEnd, textStart: t.text, textEnd, fadeStart, end: fadeStart + t.crossfade };
 }
-// Duración de la apertura de las solapas (s) ⇄ velocidad.
-export const flapsDuration = (a: EnvelopeAnim) => phasesFor(a, 1).flapsEnd;
-export const speedForDuration = (seconds: number, overlap: number) => (0.5 + overlap * 1.2 + 1.2) / seconds;
+
 
 export type EnvelopeAssets = {
   flapLeft: string;

@@ -51,12 +51,14 @@ export function envelopeAssetUrl(slot: EnvelopeSlot, storedUrl: string | undefin
 }
 
 // Animación del sobre (se edita en el panel del sobre clásico).
-// speed: velocidad de las solapas (1 = normal) · overlap: en qué momento de la
-// apertura lateral arrancan la superior y la inferior (0 = juntas, 1 = al
-// terminar) · hold: segundos que se lee el mensaje · zoom: acercamiento al
-// abrir · heroDelay: segundos de espera, después del sobre, antes de animar la portada.
-export type EnvelopeAnim = { speed: number; overlap: number; hold: number; zoom: number; heroDelay: number };
-export const DEFAULT_ENVELOPE_ANIM: EnvelopeAnim = { speed: 1, overlap: 0.5, hold: 2.5, zoom: 0.06, heroDelay: 0.6 };
+// sideDur / tbDur: segundos que tarda en levantarse cada solapa lateral y la
+// superior e inferior (más segundos = se levantan más despacio; el momento en
+// que arrancan no cambia) · overlap: en qué momento del recorrido de las
+// laterales arrancan la superior y la inferior (0 = juntas, 1 = al terminar) ·
+// hold: segundos que se lee el mensaje · zoom: acercamiento al abrir ·
+// heroDelay: segundos de espera, después del sobre, antes de animar la portada.
+export type EnvelopeAnim = { sideDur: number; tbDur: number; overlap: number; hold: number; zoom: number; heroDelay: number };
+export const DEFAULT_ENVELOPE_ANIM: EnvelopeAnim = { sideDur: 1.2, tbDur: 1.2, overlap: 0.5, hold: 2.5, zoom: 0.06, heroDelay: 0.6 };
 export const ENVELOPE_ANIM_KEY = "envelopeAnim";
 const clampN = (v: unknown, lo: number, hi: number, d: number) =>
   typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d;
@@ -64,7 +66,8 @@ export function sanitizeEnvelopeAnim(v: unknown): EnvelopeAnim {
   const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
   const d = DEFAULT_ENVELOPE_ANIM;
   return {
-    speed: clampN(o.speed, 0.2, 2.5, d.speed),
+    sideDur: clampN(o.sideDur, 0.4, 5, d.sideDur),
+    tbDur: clampN(o.tbDur, 0.4, 5, d.tbDur),
     overlap: clampN(o.overlap, 0, 1, d.overlap),
     hold: clampN(o.hold, 0.5, 8, d.hold),
     zoom: clampN(o.zoom, 0, 0.2, d.zoom),

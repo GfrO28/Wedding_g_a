@@ -2,7 +2,7 @@
 
 import { DEFAULT_ENVELOPE_ANIM, type EnvelopeAnim } from "@/lib/envelopeAssets";
 import { setEnvelopeAnimAction } from "./zone-actions";
-import { flapsDuration, phasesFor, speedForDuration } from "@/app/components/envelope/engine";
+import { phasesFor } from "@/app/components/envelope/engine";
 
 // Guardado diferido (al dejar de mover el control).
 function saveLater(next: EnvelopeAnim) {
@@ -21,26 +21,7 @@ export function EnvelopeAnimPanel({ anim, onChange, classic, letters }: { anim: 
     onChange(next);
     saveLater(next);
   }
-  const duration = flapsDuration(anim);
   const p = phasesFor(anim, letters);
-  const slider = (label: string, value: number, min: number, max: number, step: number, show: string, onSet: (v: number) => void, key: string, help?: string) => (
-    <label className="flex flex-col gap-0.5" data-anim={key}>
-      <span className="flex items-baseline justify-between text-xs text-neutral-700">
-        {label} <b className="font-medium tabular-nums text-neutral-900">{show}</b>
-      </span>
-      <input
-        type="range"
-        aria-label={label}
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onSet(Number(e.target.value))}
-        className="accent-neutral-900"
-      />
-      {help && <span className="text-[11px] leading-snug text-neutral-400">{help}</span>}
-    </label>
-  );
   const row = (label: string, key: keyof EnvelopeAnim, min: number, max: number, step: number, show: (v: number) => string, help?: string) => (
     <label className="flex flex-col gap-0.5" data-anim={key}>
       <span className="flex items-baseline justify-between text-xs text-neutral-700">
@@ -53,11 +34,7 @@ export function EnvelopeAnimPanel({ anim, onChange, classic, letters }: { anim: 
         max={max}
         step={step}
         value={anim[key]}
-        onChange={(e) => {
-          const v = Number(e.target.value);
-          // Cambiar cuándo arrancan la superior e inferior no cambia la duración de la apertura.
-          set(key === "overlap" ? { overlap: v, speed: speedForDuration(duration, v) } : { [key]: v });
-        }}
+        onChange={(e) => set({ [key]: Number(e.target.value) })}
         className="accent-neutral-900"
       />
       {help && <span className="text-[11px] leading-snug text-neutral-400">{help}</span>}
@@ -73,7 +50,8 @@ export function EnvelopeAnimPanel({ anim, onChange, classic, letters }: { anim: 
       </div>
       {classic && (
         <>
-          {slider("Duración de la apertura de las solapas", Math.round(duration * 10) / 10, 1.5, 6, 0.1, `${fmt(duration)} s`, (v) => set({ speed: speedForDuration(v, anim.overlap) }), "speed", "Desde que se toca el sello hasta que las cuatro solapas quedan abiertas. El mensaje aparece siempre a su ritmo.")}
+          {row("Las laterales se levantan en", "sideDur", 0.6, 4, 0.1, (v) => `${fmt(v)} s`, "Cuánto tarda cada solapa lateral en levantarse. Más segundos = más despacio (arrancan siempre en el mismo momento).")}
+          {row("La superior e inferior se levantan en", "tbDur", 0.6, 4, 0.1, (v) => `${fmt(v)} s`)}
           {row("Superior e inferior arrancan", "overlap", 0, 1, 0.05, (v) => (v === 0 ? "junto con las laterales" : v === 1 ? "al terminar las laterales" : `al ${Math.round(v * 100)}% de las laterales`))}
           {row("Tiempo para leer el mensaje", "hold", 1, 6, 0.5, (v) => `${fmt(v)} s`)}
           {row("Acercamiento al abrir", "zoom", 0, 0.15, 0.01, (v) => `${Math.round(v * 100)}%`)}
