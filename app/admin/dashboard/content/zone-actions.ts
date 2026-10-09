@@ -60,7 +60,7 @@ export async function requestZoneImageUploadAction(
   await requireAdmin();
   if (!isZoneKey(zone)) return { error: "Zona inválida.", uploadUrl: null, publicUrl: null };
   if (!ZONE_BG_TYPES.includes(contentType)) {
-    return { error: "Subí una imagen (JPG, PNG o WebP) o un video (MP4 o WebM).", uploadUrl: null, publicUrl: null };
+    return { error: "Sube una imagen (JPG, PNG o WebP) o un video (MP4 o WebM).", uploadUrl: null, publicUrl: null };
   }
   const key = `zones/${zone}-${crypto.randomUUID()}-${safeName(filename)}`;
   const uploadUrl = await getUploadUrl(key, contentType);
@@ -95,7 +95,7 @@ export async function requestMusicUploadAction(
 ): Promise<UploadRequest> {
   await requireAdmin();
   if (!ALLOWED_AUDIO_TYPES.includes(contentType)) {
-    return { error: "Subí un archivo de audio (mp3, wav u ogg).", uploadUrl: null, publicUrl: null };
+    return { error: "Sube un archivo de audio (mp3, wav u ogg).", uploadUrl: null, publicUrl: null };
   }
   const key = `music/${crypto.randomUUID()}-${safeName(filename)}`;
   const uploadUrl = await getUploadUrl(key, contentType);
@@ -132,7 +132,7 @@ export async function requestEnvelopeUploadAction(
   await requireAdmin();
   if (!isEnvelopeSlot(slot)) return { error: "Pieza inválida.", uploadUrl: null, publicUrl: null };
   if (!ENVELOPE_TYPES.includes(contentType)) {
-    return { error: "Subí un PNG (o WebP) con fondo transparente.", uploadUrl: null, publicUrl: null };
+    return { error: "Sube un PNG (o WebP) con fondo transparente.", uploadUrl: null, publicUrl: null };
   }
   const key = `envelope/${slot}-${crypto.randomUUID()}-${safeName(filename)}`;
   const uploadUrl = await getUploadUrl(key, contentType);
@@ -154,7 +154,7 @@ export async function requestVideoEnvelopeUploadAction(slot: string, filename: s
   await requireAdmin();
   if (!isVideoEnvelopeSlot(slot)) return { error: "Pieza inválida.", uploadUrl: null, publicUrl: null };
   if (!VIDEO_ENVELOPE_TYPES.includes(contentType)) {
-    return { error: "Subí un PNG o WebP (con transparencia) o un JPG.", uploadUrl: null, publicUrl: null };
+    return { error: "Sube un PNG o WebP (con transparencia) o un JPG.", uploadUrl: null, publicUrl: null };
   }
   const key = `envelope/${slot}-${crypto.randomUUID()}-${safeName(filename)}`;
   const uploadUrl = await getUploadUrl(key, contentType);
@@ -214,7 +214,7 @@ export async function resetEnvelopeImageAction(slot: string) {
 export async function requestDesignImageUploadAction(filename: string, contentType: string): Promise<UploadRequest> {
   await requireAdmin();
   if (!ZONE_BG_TYPES.includes(contentType)) {
-    return { error: "Subí una imagen (JPG, PNG o WebP) o un video (MP4 o WebM).", uploadUrl: null, publicUrl: null };
+    return { error: "Sube una imagen (JPG, PNG o WebP) o un video (MP4 o WebM).", uploadUrl: null, publicUrl: null };
   }
   const key = `design/${crypto.randomUUID()}-${safeName(filename)}`;
   const uploadUrl = await getUploadUrl(key, contentType);

@@ -202,7 +202,7 @@ function CustomMap({ el }: { el: TextElement }) {
     </a>
   ) : (
     <div className={box} style={{ fontSize: Math.max(14, Math.min(el.w, el.h) * 0.06) }}>
-      Cargá la dirección o el link del mapa en «Contenido»
+      Carga la dirección o el link del mapa en «Contenido»
     </div>
   );
 }
@@ -263,7 +263,7 @@ export function TextArtboard({
   orientationFrom?: "container" | "viewport";
   forceOrientation?: Orientation;
   page?: boolean;
-  dim?: string[]; // objetos que se desvanecen (p. ej. «Tocá para abrir» al abrir el sobre)
+  dim?: string[]; // objetos que se desvanecen (p. ej. «Toca para abrir» al abrir el sobre)
   waitIntro?: boolean; // false: no espera al sobre (el sobre con video es la intro misma)
 }) {
   const ref = useRef<HTMLDivElement>(null);

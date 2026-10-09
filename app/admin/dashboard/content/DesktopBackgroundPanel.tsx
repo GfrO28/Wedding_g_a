@@ -22,7 +22,7 @@ export function DesktopBackgroundPanel({ initial, sampleImage }: { initial: Desk
       setValue(await saveDesktopBackgroundAction(next));
       setSaved(true);
     } catch {
-      setError("No se pudo guardar. Probá de nuevo.");
+      setError("No se pudo guardar. Prueba de nuevo.");
     } finally {
       setSaving(false);
     }
@@ -35,10 +35,10 @@ export function DesktopBackgroundPanel({ initial, sampleImage }: { initial: Desk
       const req = await requestDesignImageUploadAction(file.name, file.type);
       if (!req.uploadUrl || !req.publicUrl) return setError(req.error ?? "No se pudo preparar la subida.");
       const put = await fetch(req.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
-      if (!put.ok) return setError("No se pudo subir la imagen. Probá de nuevo.");
+      if (!put.ok) return setError("No se pudo subir la imagen. Prueba de nuevo.");
       await save({ ...value, mode: "image", image: req.publicUrl });
     } catch {
-      setError("No se pudo subir la imagen. Revisá tu conexión.");
+      setError("No se pudo subir la imagen. Revisa tu conexión.");
     } finally {
       setSaving(false);
     }
@@ -82,7 +82,7 @@ export function DesktopBackgroundPanel({ initial, sampleImage }: { initial: Desk
               {value.mode === m && <Check size={10} />}
             </span>
             {DESKTOP_MODES[m]}
-            {m === "image" && !value.image && <span className="ml-auto text-xs text-neutral-500">Subí una imagen abajo</span>}
+            {m === "image" && !value.image && <span className="ml-auto text-xs text-neutral-500">Sube una imagen abajo</span>}
           </button>
         ))}
       </div>

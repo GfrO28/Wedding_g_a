@@ -88,7 +88,7 @@ export function RSVPBody({
     return (
       <div className="px-1 py-2 text-center">
         <p className="text-[var(--color-muted)]">
-          Ya registramos tu confirmación. Podés volver a esta página para
+          Ya registramos tu confirmación. Puedes volver a esta página para
           actualizarla cuando quieras.
         </p>
         <button

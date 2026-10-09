@@ -194,7 +194,7 @@ export async function deleteContributionAction(id: string) {
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 export async function requestGiftImageUploadAction(filename: string, contentType: string) {
   await guard();
-  if (!IMAGE_TYPES.includes(contentType)) return { error: "Subí una imagen JPG, PNG o WebP.", uploadUrl: null, publicUrl: null };
+  if (!IMAGE_TYPES.includes(contentType)) return { error: "Sube una imagen JPG, PNG o WebP.", uploadUrl: null, publicUrl: null };
   const key = `gifts/${crypto.randomUUID()}-${filename.toLowerCase().replace(/[^a-z0-9.-]+/g, "-").slice(0, 60)}`;
   return { error: null, uploadUrl: await getUploadUrl(key, contentType), publicUrl: publicUrlFor(key) };
 }

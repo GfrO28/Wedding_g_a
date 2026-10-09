@@ -200,7 +200,7 @@ export function EditorShell({
     const saved = await flush();
     if (!saved) {
       setPublishing(false);
-      setNotice("No se pudo guardar el borrador. Revisá tu conexión y probá de nuevo.");
+      setNotice("No se pudo guardar el borrador. Revisa tu conexión y prueba de nuevo.");
       return;
     }
     const res = await publishAction();
@@ -209,7 +209,7 @@ export function EditorShell({
       setPublishedState(layouts);
       setPublishedStyles(styles);
       setNotice("Publicado: los invitados ya ven estos cambios.");
-    } else setNotice("No se pudo publicar. Probá de nuevo.");
+    } else setNotice("No se pudo publicar. Prueba de nuevo.");
   }
 
   async function discard() {
@@ -228,7 +228,7 @@ export function EditorShell({
   // Eliminar una sección la saca de la invitación (sus datos y su diseño
   // quedan guardados, así se puede volver a agregar tal cual).
   async function removeSection(s: EditorSection) {
-    if (!s.zone || !window.confirm(`¿Eliminar la sección «${s.label}» de la invitación? Podés volver a agregarla desde «+ Agregar sección».`)) return;
+    if (!s.zone || !window.confirm(`¿Eliminar la sección «${s.label}» de la invitación? Puedes volver a agregarla desde «+ Agregar sección».`)) return;
     setEnabled((e) => ({ ...e, [s.id]: false }));
     if (currentId === s.id) setCurrentId(sections.find((x) => x.group === "sections" && x.id !== s.id && (!x.zone || enabled[x.id]))?.id ?? "music");
     await toggleZoneEnabledAction(s.zone, false);
@@ -281,7 +281,7 @@ export function EditorShell({
     ? {
         closedLabel: "Sobre cerrado",
         openLabel: "Tarjeta (textos)",
-        hint: "Así lo ven los invitados. Tocá el sello para ver la animación; al terminar pasás a editar los textos de la tarjeta.",
+        hint: "Así lo ven los invitados. Toca el sello para ver la animación; al terminar pasas a editar los textos de la tarjeta.",
         render: ({ width, height, layout, onOpened }) => (
           <EnvelopeClosed assets={envelopeAssets} layout={layout} tokens={tokens} width={width} height={height} onOpened={onOpened} colors={paperColors} anim={anim} />
         ),
@@ -305,7 +305,7 @@ export function EditorShell({
         <button
           type="button"
           onClick={() => {
-            if (window.confirm(`¿Aplicar el diseño original a «${current.label}»? Lo que acomodaste se reemplaza (podés deshacerlo con Ctrl+Z).`)) editorApi.current?.restoreOriginal();
+            if (window.confirm(`¿Aplicar el diseño original a «${current.label}»? Lo que acomodaste se reemplaza (puedes deshacerlo con Ctrl+Z).`)) editorApi.current?.restoreOriginal();
           }}
           className="shrink-0 rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium hover:bg-neutral-50"
         >
@@ -315,7 +315,7 @@ export function EditorShell({
     </section>
   ) : null;
 
-  // Mapas agregados en esta sección: su dirección o link se carga acá.
+  // Mapas agregados en esta sección: su dirección o link se carga aquí.
   const mapObjects = design ? layouts[design].portrait.filter((e) => e.kind === "map" && isCustom(e) && !e.ref) : [];
 
   const designPicker = isEnvelope && (
@@ -357,7 +357,7 @@ export function EditorShell({
       </div>
       <p className="text-[11px] leading-snug text-neutral-500">
         {envDesign === "video"
-          ? "Poné el video con «+ Agregar → Imagen → Usar de fondo». Los textos, el sobre y la cuenta regresiva se acomodan en el lienzo; el sobre se abre al tocarlo. Cambiar de versión se publica al instante."
+          ? "Pon el video con «+ Agregar → Imagen → Usar de fondo». Los textos, el sobre y la cuenta regresiva se acomodan en el lienzo; el sobre se abre al tocarlo. Cambiar de versión se publica al instante."
           : "Las solapas se abren a pantalla completa y muestran la tarjeta con los textos. Cambiar de versión se publica al instante."}
       </p>
     </section>
@@ -776,7 +776,7 @@ function MapField({ el, index, focus, onFocused, onSave }: { el: TextElement; in
               onSave(value.trim());
             }
           }}
-          placeholder="Av. Siempre Viva 742, Lima · o pegá el link de Google Maps"
+          placeholder="Av. Siempre Viva 742, Lima · o pega el link de Google Maps"
           className="w-full resize-y rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm"
         />
       </label>
@@ -786,11 +786,11 @@ function MapField({ el, index, focus, onFocused, onSave }: { el: TextElement; in
         </button>
         <span className="text-[11px] leading-snug text-neutral-500">
           {!value.trim()
-            ? "Tip: en Google Maps → Compartir → «Insertar un mapa», copiá el código y pegalo acá."
+            ? "Tip: en Google Maps → Compartir → «Insertar un mapa», copia el código y pégalo aquí."
             : src.embed
               ? "✓ Se ve el mapa."
               : src.open
-                ? "Este link no se puede mostrar adentro (se verá un botón «Ver el mapa»). Para ver el mapa, pegá la dirección o el código de «Insertar un mapa»."
+                ? "Este link no se puede mostrar adentro (se verá un botón «Ver el mapa»). Para ver el mapa, pega la dirección o el código de «Insertar un mapa»."
                 : "No se reconoce el link."}
         </span>
       </div>

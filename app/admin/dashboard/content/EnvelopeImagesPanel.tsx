@@ -107,7 +107,7 @@ export function EnvelopeImagesPanel({
       }
       const put = await fetch(req.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
       if (!put.ok) {
-        setError("No se pudo subir la imagen. Probá de nuevo.");
+        setError("No se pudo subir la imagen. Prueba de nuevo.");
         return;
       }
       const { assetUrl } = await saveEnvelopeImageAction(slot, req.publicUrl);
@@ -121,7 +121,7 @@ export function EnvelopeImagesPanel({
         return true;
       }
     } catch {
-      setError("No se pudo subir la imagen. Revisá tu conexión y probá de nuevo.");
+      setError("No se pudo subir la imagen. Revisa tu conexión y prueba de nuevo.");
     } finally {
       if (!keepBusy) setBusy(null);
     }
@@ -207,7 +207,7 @@ export function EnvelopeImagesPanel({
       </section>
 
       <p className="text-xs text-neutral-500">
-        O subí tus propias imágenes: PNG o WebP con fondo transparente. La animación mide la forma de cada pieza (la bisagra y la punta) y la
+        O sube tus propias imágenes: PNG o WebP con fondo transparente. La animación mide la forma de cada pieza (la bisagra y la punta) y la
         agranda hasta cubrir la pantalla. Con la proporción y el tamaño recomendados (calculados para celulares
         grandes y monitores 2K) coincide justo con la animación. Las plantillas traen la bisagra y la punta
         marcadas. En WebP pesan mucho menos y el sobre carga más rápido.

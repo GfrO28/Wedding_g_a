@@ -15,7 +15,7 @@ export default async function VerifyPage({ searchParams }: PageProps<"/admin/ver
   const params = await searchParams;
 
   return (
-    <AuthCard title="Revisá tu correo" subtitle={<>Es la primera vez que entrás desde este dispositivo. Te mandamos un código de 6 dígitos a <strong>{mask(pending.user.email)}</strong>.</>}>
+    <AuthCard title="Revisa tu correo" subtitle={<>Es la primera vez que entras desde este dispositivo. Te mandamos un código de 6 dígitos a <strong>{mask(pending.user.email)}</strong>.</>}>
       <form action={verifyCodeAction} className="space-y-3">
         <label className="block">
           <span className="sr-only">Código</span>
@@ -31,8 +31,8 @@ export default async function VerifyPage({ searchParams }: PageProps<"/admin/ver
             className={`${inputClass} text-center font-mono text-lg tracking-[0.4em]`}
           />
         </label>
-        {params?.error === "1" && <Notice>Código incorrecto. Revisá el último correo que te llegó.</Notice>}
-        {params?.error === "mail" && <Notice>No se pudo enviar el correo. Probá de nuevo en un rato.</Notice>}
+        {params?.error === "1" && <Notice>Código incorrecto. Revisa el último correo que te llegó.</Notice>}
+        {params?.error === "mail" && <Notice>No se pudo enviar el correo. Prueba de nuevo en un rato.</Notice>}
         {params?.sent === "1" && <Notice tone="ok">Te mandamos un código nuevo.</Notice>}
         <button type="submit" className={buttonClass}>
           Confirmar

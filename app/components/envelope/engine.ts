@@ -53,7 +53,7 @@ export const ENVELOPE_CONFIG = {
   // juntan en el centro (tip). "cover" es el armado anterior (3:4 recortado).
   layout: { reference: { w: 768, h: 1024 }, sideTipTarget: 0.53, maxFlapDepth: 0.5, coverSafety: 1.04, fit: "stretch" as "cover" | "stretch", tip: 0.505 },
   seal: { sizeVmin: 16, minPx: 72, maxPx: 200 },
-  hint: "Tocá el sello para abrir",
+  hint: "Toca el sello para abrir",
   angles: { side: 160, topBottom: 170 },
   // Luz para las sombras: viene de la izquierda, un poco de arriba y de frente.
   light: { x: -0.55, y: -0.25, z: 0.8 },
@@ -535,7 +535,7 @@ export function mountEnvelope(container: HTMLElement, G: Geometry, opts: MountOp
   flapLayer.append(shadows[0], shadows[1], top, bottom, shadows[2], shadows[3], right, left);
   scene.appendChild(flapLayer);
 
-  // Aviso «Tocá el sello para abrir»: es un texto del lienzo del sobre (se
+  // Aviso «Toca el sello para abrir»: es un texto del lienzo del sobre (se
   // edita su texto, posición y formato, en celular y PC por separado).
   const hint = document.createElement("div");
   Object.assign(hint.style, {

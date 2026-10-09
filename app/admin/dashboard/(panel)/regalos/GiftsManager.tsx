@@ -118,7 +118,7 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
       <section aria-label="Regalos y fondos">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-[17px] font-semibold">Regalos y fondos</h2>
-          <p className="text-sm text-[#6B6063]">Con las flechas cambiás el orden en la invitación</p>
+          <p className="text-sm text-[#6B6063]">Con las flechas cambias el orden en la invitación</p>
         </div>
         {gifts.length ? (
           <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
@@ -160,7 +160,7 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
             })}
           </div>
         ) : (
-          <p className="rounded-2xl border border-dashed border-[#D9D1CA] bg-white p-8 text-center text-sm text-[#6B6063]">Todavía no hay regalos. Agregá uno con «+ Agregar regalo»: puede ser un regalo para reservar entero o un fondo (como la luna de miel) donde cada invitado aporta lo que quiera.</p>
+          <p className="rounded-2xl border border-dashed border-[#D9D1CA] bg-white p-8 text-center text-sm text-[#6B6063]">Todavía no hay regalos. Agrega uno con «+ Agregar regalo»: puede ser un regalo para reservar entero o un fondo (como la luna de miel) donde cada invitado aporta lo que quiera.</p>
         )}
       </section>
 
@@ -168,7 +168,7 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
         <div className="flex flex-wrap items-center justify-between gap-2.5 px-5 py-4">
           <div>
             <h2 className="text-[15px] font-semibold">Aportes y reservas</h2>
-            <p className="text-sm text-[#6B6063]">Lo que avisaron los invitados desde la invitación. Marcá «recibido» cuando te llegue el dinero.</p>
+            <p className="text-sm text-[#6B6063]">Lo que avisaron los invitados desde la invitación. Marca «recibido» cuando te llegue el dinero.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <label className="sr-only" htmlFor="filtro-regalo">Filtrar por regalo</label>

@@ -298,7 +298,7 @@ export function LayersPanel({
               ))}
               {target && target.index >= visible.length && <span className="pointer-events-none h-0.5 rounded bg-blue-500" data-drop-line />}
             </ul>
-            <p className="mt-1 px-1 text-[10px] uppercase tracking-wide text-neutral-400">Atrás · arrastrá desde ⠿ para cambiar el orden o la capa</p>
+            <p className="mt-1 px-1 text-[10px] uppercase tracking-wide text-neutral-400">Atrás · arrastra desde ⠿ para cambiar el orden o la capa</p>
           </>
         ) : (
           TYPES.map((t) => {

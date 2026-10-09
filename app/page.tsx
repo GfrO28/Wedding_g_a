@@ -8,7 +8,7 @@ export default async function Home() {
         {WEDDING.partner1} &amp; {WEDDING.partner2}
       </h1>
       <p className="max-w-sm text-[var(--color-muted)]">
-        Esta invitación es personal. Buscá el link que te enviamos por
+        Esta invitación es personal. Busca el link que te enviamos por
         WhatsApp o email para ver los detalles y confirmar tu asistencia.
       </p>
     </main>

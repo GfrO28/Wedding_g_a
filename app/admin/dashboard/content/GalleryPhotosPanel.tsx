@@ -11,9 +11,9 @@ export const GALLERY_DRAG_TYPE = "application/x-gallery-photo";
 
 export const toItem = (p: LibraryPhoto): GalleryItem => ({ key: p.id, src: p.url, alt: p.alt ?? "" });
 
-// Biblioteca de la galería: acá se suben y se borran las fotos. Se pasan a la
-// diapositiva arrastrándolas al lienzo (o con +); quitarlas de la diapositiva
-// no las borra de acá.
+// Biblioteca de la galería: aquí se suben y se borran las fotos. Se pasan a la
+// diapositiva arrastrandolas al lienzo (o con +); quitarlas de la diapositiva
+// no las borra de aquí.
 export function GalleryPhotosPanel({
   photos,
   placed,
@@ -52,7 +52,7 @@ export function GalleryPhotosPanel({
         list = [row, ...list];
         onPhotosChange(list);
       } catch {
-        setError(`No se pudo subir ${file.name}. Revisá tu conexión.`);
+        setError(`No se pudo subir ${file.name}. Revisa tu conexión.`);
       }
     }
     setBusy(false);
@@ -70,9 +70,9 @@ export function GalleryPhotosPanel({
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-neutral-600">
-        <span className="font-medium">Arrastrá una foto al lienzo</span> para ponerla en la diapositiva, o tocá{" "}
-        <Plus size={12} className="inline" />. Para sacarla de la diapositiva, seleccionala y tocá el tachito (o Supr): sigue
-        guardada acá.
+        <span className="font-medium">Arrastra una foto al lienzo</span> para ponerla en la diapositiva, o toca{" "}
+        <Plus size={12} className="inline" />. Para sacarla de la diapositiva, selecciónala y toca el tachito (o Supr): sigue
+        guardada aquí.
       </p>
 
       <label
@@ -108,7 +108,7 @@ export function GalleryPhotosPanel({
                   e.dataTransfer.effectAllowed = "copy";
                 }}
                 className="group relative aspect-square cursor-grab overflow-hidden rounded-lg border border-neutral-200 bg-neutral-100 active:cursor-grabbing"
-                title="Arrastrala al lienzo"
+                title="Arrástrala al lienzo"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={p.url} alt={p.alt ?? ""} draggable={false} className="h-full w-full object-cover" />

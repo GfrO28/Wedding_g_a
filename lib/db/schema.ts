@@ -103,7 +103,7 @@ export const siteSettings = pgTable("site_settings", {
 });
 
 // Sesiones del panel de novios: cada ingreso crea una, con vencimiento. La
-// cookie guarda un código al azar y acá solo su huella (sha-256).
+// cookie guarda un código al azar y aquí solo su huella (sha-256).
 // Personas con acceso al panel (los novios). La contraseña se guarda con scrypt;
 // queda vacía hasta que la persona acepta la invitación y elige la suya.
 export const adminUsers = pgTable("admin_users", {

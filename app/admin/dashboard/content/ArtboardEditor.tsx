@@ -363,7 +363,7 @@ export function ArtboardEditor({
   );
 
   // Cada objeto es independiente: si un texto vinculado a un estilo cambia de
-  // tipografía, color o formato acá, se separa del estilo y conserva cómo se
+  // tipografía, color o formato aquí, se separa del estilo y conserva cómo se
   // veía. Los demás textos con ese estilo no cambian (para cambiarlos a todos
   // está el panel "Estilos de texto").
   function patch(id: string, changes: Partial<TextElement>) {
@@ -957,7 +957,7 @@ export function ArtboardEditor({
       return e ? { ...e, src: resolved[o].find((x) => x.id === id)?.src ?? e.src } : null;
     };
     onClipboard?.({ from: section, cut, items: ids.map((id) => ({ portrait: pick(orientation, id)!, landscape: pick(otherOf(orientation), id) })) });
-    setClipNote(`${cut ? "Cortado" : "Copiado"}: ${ids.length} ${ids.length === 1 ? "objeto" : "objetos"}${skipped ? ` (${skipped} bloque${skipped > 1 ? "s" : ""} de contenido no se mueve${skipped > 1 ? "n" : ""})` : ""}. Pegalo en cualquier sección con Ctrl+V o «Pegar».`);
+    setClipNote(`${cut ? "Cortado" : "Copiado"}: ${ids.length} ${ids.length === 1 ? "objeto" : "objetos"}${skipped ? ` (${skipped} bloque${skipped > 1 ? "s" : ""} de contenido no se mueve${skipped > 1 ? "n" : ""})` : ""}. Pégalo en cualquier sección con Ctrl+V o «Pegar».`);
     if (cut) removeMany(ids);
   }
 
@@ -1315,7 +1315,7 @@ export function ArtboardEditor({
         {variantOptions && (
           <select
             aria-label="Versión de la sección"
-            title={cfg.steps ? "Acomoda los pasos de una vez; después podés mover cada pieza" : "Cómo se muestra el contenido de esta sección (celular y PC)"}
+            title={cfg.steps ? "Acomoda los pasos de una vez; después puedes mover cada pieza" : "Cómo se muestra el contenido de esta sección (celular y PC)"}
             value={currentVariant}
             onChange={(e) => setVariant(e.target.value)}
             className="h-7 max-w-[16rem] rounded-md border border-neutral-300 px-1.5 text-xs font-medium"
@@ -1474,7 +1474,7 @@ export function ArtboardEditor({
           <p className="text-xs text-neutral-500">{cover.hint}</p>
         ) : painter ? (
           <div className="flex items-center gap-2 text-xs text-blue-800" data-painter-banner>
-            <Paintbrush size={14} /> Tocá el texto al que querés pasarle el formato
+            <Paintbrush size={14} /> Toca el texto al que quieres pasarle el formato
             <button type="button" onClick={() => setPainter(null)} className="rounded-md border border-blue-300 px-2 py-0.5 hover:bg-blue-50">Cancelar (Esc)</button>
           </div>
         ) : sel.length > 1 ? (
@@ -1508,7 +1508,7 @@ export function ArtboardEditor({
             <ToolButton label="Cortar (Ctrl+X): para pegarlos en otra sección" onClick={() => toClipboard(true)}><Scissors size={14} /></ToolButton>
             <ToolButton label="Copiar (Ctrl+C)" onClick={() => toClipboard(false)}><Copy size={14} /></ToolButton>
             <ToolButton label="Eliminar los seleccionados (Supr)" onClick={() => removeMany(sel)}><Trash2 size={14} /></ToolButton>
-            <Hint id="group" className="ml-1"><span className="text-[11px] text-neutral-400">Arrastrá cualquiera para moverlos juntos · Shift+clic suma o quita</span></Hint>
+            <Hint id="group" className="ml-1"><span className="text-[11px] text-neutral-400">Arrastra cualquiera para moverlos juntos · Shift+clic suma o quita</span></Hint>
           </>
         ) : selected ? (
           <ContextToolbar
@@ -1544,7 +1544,7 @@ export function ArtboardEditor({
           />
         ) : (
           <Hint id="canvas" className="w-full"><p className="text-xs text-neutral-500">
-            Tocá un objeto para editarlo, Shift+clic o arrastrá un recuadro para elegir varios. Doble clic en un texto para escribir sobre él.
+            Toca un objeto para editarlo, Shift+clic o arrastra un recuadro para elegir varios. Doble clic en un texto para escribir sobre él.
           </p></Hint>
         )}
       </div>
@@ -1561,7 +1561,7 @@ export function ArtboardEditor({
         onDragLeave={(e) => { if (e.currentTarget === e.target) setDropping(false); }}
         onDrop={onDrop}
         className={`relative flex min-h-0 flex-1 overflow-auto bg-[#EFE9E3] p-4 outline-none ${dropping ? "ring-4 ring-inset ring-blue-400" : ""} ${painter ? "cursor-copy" : ""}`}
-        aria-label="Lienzo: tocá un elemento para seleccionarlo, arrastralo para moverlo, flechas para ajustar"
+        aria-label="Lienzo: toca un elemento para seleccionarlo, arrástralo para moverlo, flechas para ajustar"
       >
         <div className="relative m-auto shrink-0 overflow-hidden shadow-lg" style={{ width: A.w * k, height: A.h * k, ...bgStyle }} data-canvas-bg>
           {underlay && (
@@ -1811,7 +1811,7 @@ function ContextToolbar({
     <>
       <span className="mr-1 text-xs font-medium text-neutral-800">{el.name}</span>
       {onCopyFormat && (
-        <ToolButton label="Copiar formato: después tocá otro texto para pasarle tipografía, tamaño, color y estilo" onClick={onCopyFormat}>
+        <ToolButton label="Copiar formato: después toca otro texto para pasarle tipografía, tamaño, color y estilo" onClick={onCopyFormat}>
           <Paintbrush size={14} />
         </ToolButton>
       )}
@@ -1837,7 +1837,7 @@ function ContextToolbar({
           {popover === "tokens" && (
             <div className="absolute left-0 top-full z-30 mt-1 w-72 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg">
               <p className="mb-1.5 text-[11px] text-neutral-500">
-                {editing ? "Se inserta donde está el cursor." : "Se agrega al final del texto."} Se completa solo con lo que cargás en «Contenido».
+                {editing ? "Se inserta donde está el cursor." : "Se agrega al final del texto."} Se completa solo con lo que cargas en «Contenido».
               </p>
               <div className="flex flex-wrap gap-1">
                 {tokens.map((t) => (
@@ -2361,10 +2361,10 @@ function AddMenu({
       const req = await requestDesignImageUploadAction(file.name, file.type);
       if (!req.uploadUrl || !req.publicUrl) return setError(req.error ?? "No se pudo preparar la subida.");
       const put = await fetch(req.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
-      if (!put.ok) return setError("No se pudo subir el archivo. Probá de nuevo.");
+      if (!put.ok) return setError("No se pudo subir el archivo. Prueba de nuevo.");
       await place(req.publicUrl, file.name.replace(/\.[^.]+$/, ""), URL.createObjectURL(file));
     } catch {
-      setError("No se pudo subir el archivo. Revisá tu conexión y probá de nuevo.");
+      setError("No se pudo subir el archivo. Revisa tu conexión y prueba de nuevo.");
     } finally {
       setBusy(false);
     }
@@ -2410,7 +2410,7 @@ function AddMenu({
                 <button type="button" disabled={full} onClick={() => onAdd("text", { text: "Subtítulo", fontSize: 35, font: "inter", color: "var(--color-muted)", lineHeight: 1.15, role: "subtitle" })} className={`${row} text-sm`}>
                   Subtítulo
                 </button>
-                <button type="button" disabled={full} onClick={() => onAdd("text", { text: "Escribí acá tu texto", fontSize: 28, font: "inter", color: "var(--color-muted)", lineHeight: 1.45, role: "text" })} className={`${row} text-xs text-neutral-600`}>
+                <button type="button" disabled={full} onClick={() => onAdd("text", { text: "Escribe aquí tu texto", fontSize: 28, font: "inter", color: "var(--color-muted)", lineHeight: 1.45, role: "text" })} className={`${row} text-xs text-neutral-600`}>
                   Párrafo
                 </button>
               </div>
@@ -2548,7 +2548,7 @@ function tokenChip(key: string, tokens: TokenValues) {
   chip.contentEditable = "false";
   chip.dataset.token = key;
   chip.textContent = tokens[key] || `[${TOKEN_HELP[key] ?? key}]`;
-  chip.title = `Dato automático (${TOKEN_HELP[key] ?? key}). Tocalo para convertirlo en texto y editarlo.`;
+  chip.title = `Dato automático (${TOKEN_HELP[key] ?? key}). Tócalo para convertirlo en texto y editarlo.`;
   chip.style.cssText = "background:rgba(37,99,235,.13);border-radius:.15em;box-shadow:0 0 0 .04em rgba(37,99,235,.35);cursor:pointer";
   return chip;
 }

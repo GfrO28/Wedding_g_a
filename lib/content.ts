@@ -1,4 +1,4 @@
-// Contenido editable de la boda. Reemplazá estos valores con la info real.
+// Contenido editable de la boda. Reemplaza estos valores con la info real.
 
 export const WEDDING = {
   partner1: "Antonella",
@@ -38,7 +38,7 @@ export const WEDDING = {
   },
 
   // Itinerario del día. icon: "church" | "glass" | "utensils" | "party" | "clock".
-  // Sumá o editá los pasos que falten (brindis, banquete, hora loca, fin, etc).
+  // Suma o edita los pasos que falten (brindis, banquete, hora loca, fin, etc).
   itinerary: [
     { time: "14:30", label: "Ceremonia", icon: "church" },
     { time: "17:00", label: "Recepción", icon: "glass" },
@@ -73,7 +73,7 @@ export const WEDDING = {
 
   gifts: {
     message:
-      "Tu presencia es nuestro mejor regalo. Si querés hacernos un obsequio, podés elegir una idea de la lista para que no se repita, y depositar el monto por el medio que prefieras.",
+      "Tu presencia es nuestro mejor regalo. Si quieres hacernos un obsequio, puedes elegir una idea de la lista para que no se repita, y depositar el monto por el medio que prefieras.",
     payment: {
       // TODO: completar números reales de Yape / Plin y datos bancarios.
       yape: { phone: "999 999 999", name: "Antonella / Gianfranco" },

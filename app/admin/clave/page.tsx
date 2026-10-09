@@ -25,7 +25,7 @@ export default async function SetPasswordPage({ searchParams }: PageProps<"/admi
   return (
     <AuthCard
       title={first ? `Hola, ${user.name}` : "Contraseña nueva"}
-      subtitle={first ? "Elegí tu contraseña para activar tu acceso al panel." : `Elegí una contraseña nueva para ${user.email}.`}
+      subtitle={first ? "Elige tu contraseña para activar tu acceso al panel." : `Elige una contraseña nueva para ${user.email}.`}
     >
       <form action={setPasswordAction.bind(null, token)} className="space-y-3">
         <input type="email" name="username" value={user.email} autoComplete="username" readOnly hidden />
@@ -34,8 +34,8 @@ export default async function SetPasswordPage({ searchParams }: PageProps<"/admi
           <input type="password" name="password" placeholder={`Contraseña nueva (mínimo ${MIN_PASSWORD} caracteres)`} required minLength={MIN_PASSWORD} autoComplete="new-password" className={inputClass} />
         </label>
         <label className="block">
-          <span className="sr-only">Repetila</span>
-          <input type="password" name="repeat" placeholder="Repetila" required minLength={MIN_PASSWORD} autoComplete="new-password" className={inputClass} />
+          <span className="sr-only">Repítela</span>
+          <input type="password" name="repeat" placeholder="Repítela" required minLength={MIN_PASSWORD} autoComplete="new-password" className={inputClass} />
         </label>
         {params?.error === "short" && <Notice>La contraseña tiene que tener al menos {MIN_PASSWORD} caracteres.</Notice>}
         {params?.error === "repeat" && <Notice>Las dos contraseñas no coinciden.</Notice>}

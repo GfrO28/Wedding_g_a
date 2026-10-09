@@ -8,7 +8,7 @@ import type { EnvelopePhases } from "@/app/components/envelope/engine";
 import { EnvelopeTimer } from "./EnvelopeTimer";
 
 // Mismos colores que el motor del sobre (engine.ts → ENVELOPE_CONFIG); se
-// repiten acá para no cargar GSAP solo para pintar el fondo.
+// repiten aquí para no cargar GSAP solo para pintar el fondo.
 export const ENVELOPE_BG = "#4A1520";
 const CARD = "#EFE8DD";
 const NOISE =
@@ -16,7 +16,7 @@ const NOISE =
 
 // La tarjeta que queda a la vista al abrir el sobre (detrás de los textos), y
 // dónde queda el sello con el sobre cerrado (referencia para ubicar el aviso
-// «Tocá el sello para abrir»).
+// «Toca el sello para abrir»).
 export function EnvelopeCard() {
   return (
     <>

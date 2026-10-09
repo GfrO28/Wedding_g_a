@@ -136,7 +136,7 @@ export default async function DashboardPage() {
         <Kpi label="Cierre de confirmaciones" value={fmtDate(deadline)} hint={`en ${daysTo(deadline)} días`} small />
       </section>
 
-      <Card title="Invitados vs. confirmados" sub={target ? `Personas, comparadas con la meta de ${target}` : "Personas registradas (definí una meta para comparar)"} aside={target ? <>Faltan registrar <b className="text-[#221A1C]">{unregistered}</b> para la meta</> : null}>
+      <Card title="Invitados vs. confirmados" sub={target ? `Personas, comparadas con la meta de ${target}` : "Personas registradas (define una meta para comparar)"} aside={target ? <>Faltan registrar <b className="text-[#221A1C]">{unregistered}</b> para la meta</> : null}>
         <div className="mt-4 flex h-8 overflow-hidden rounded-lg bg-[#F1ECE6]" role="img" aria-label={`Confirmados ${confirmed}, pendientes ${pending}, no asistirán ${declined}`} data-progress>
           <div style={{ width: `${(confirmed / base) * 100}%`, background: C.yes }} />
           <div style={{ width: `${(pending / base) * 100}%`, background: C.pending }} />

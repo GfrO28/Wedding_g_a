@@ -249,7 +249,7 @@ export function GuestsManager({ guests, groups, origin, deadline, target }: { gu
                 );
               })}
               {!pageRows.length && (
-                <tr><td colSpan={9} className="px-5 py-10 text-center text-sm text-[#6B6063]">{guests.length ? "Ningún invitado coincide con la búsqueda." : "Todavía no hay invitados: registrá el primero arriba o importalos desde Excel."}</td></tr>
+                <tr><td colSpan={9} className="px-5 py-10 text-center text-sm text-[#6B6063]">{guests.length ? "Ningún invitado coincide con la búsqueda." : "Todavía no hay invitados: registra el primero arriba o impórtalos desde Excel."}</td></tr>
               )}
             </tbody>
           </table>
@@ -313,7 +313,7 @@ function GuestFields({ value, onChange }: { value: GuestInput; onChange: (v: Gue
   return (
     <>
       <Field label="Nombre en la invitación"><input className={inputCls} required maxLength={120} {...f("fullName")} placeholder="Familia Rojas Díaz" /></Field>
-      <Field label="Grupo"><input className={inputCls} list="guest-groups" maxLength={60} {...f("groupName")} placeholder="Elegí o escribí uno" /></Field>
+      <Field label="Grupo"><input className={inputCls} list="guest-groups" maxLength={60} {...f("groupName")} placeholder="Elige o escribe uno" /></Field>
       <Field label="Lugares (personas)"><input className={inputCls} type="number" min={1} max={30} {...f("maxAttendees")} /></Field>
       <Field label="WhatsApp"><input className={inputCls} type="tel" maxLength={30} {...f("phone")} placeholder="987 654 321" /></Field>
       <Field label="Correo (opcional)"><input className={inputCls} type="email" maxLength={120} {...f("email")} placeholder="nombre@correo.com" /></Field>
@@ -408,7 +408,7 @@ function ImportGuests({ onDone }: { onDone: (n: number) => void }) {
   return (
     <div className="flex flex-col gap-3 text-sm">
       <p className="text-[#4A4043]">
-        Copiá las filas desde Excel y pegalas acá, o subí el archivo guardado como CSV. Columnas: <b>Nombre</b>, Grupo, Lugares, WhatsApp, Correo, Mesa, Nota (con encabezado o en ese orden).
+        Copia las filas desde Excel y pégalas aquí, o sube el archivo guardado como CSV. Columnas: <b>Nombre</b>, Grupo, Lugares, WhatsApp, Correo, Mesa, Nota (con encabezado o en ese orden).
       </p>
       <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#D9D1CA] px-3 py-2.5 hover:bg-[#FBF9F7]">
         <Upload size={16} /> Elegir archivo CSV
@@ -423,7 +423,7 @@ function ImportGuests({ onDone }: { onDone: (n: number) => void }) {
         />
       </label>
       <label className="flex flex-col gap-1.5">
-        <span className="text-[#4A4043]">O pegá desde Excel</span>
+        <span className="text-[#4A4043]">O pega desde Excel</span>
         <textarea rows={7} value={text} onChange={(e) => setText(e.target.value)} placeholder={"Nombre\tGrupo\tLugares\tWhatsApp\nFamilia Rojas\tAmigos\t4\t987654321"} className="rounded-lg border border-[#D9D1CA] p-3 font-mono text-xs" data-import-text />
       </label>
       {rows.length > 0 && (
@@ -452,7 +452,7 @@ function Remind({ guests, build }: { guests: GuestRow[]; build: (g: GuestRow) =>
   const [sent, setSent] = useState<string[]>([]);
   return (
     <div className="flex flex-col gap-2 text-sm">
-      <p className="text-[#4A4043]">Tocá «Abrir WhatsApp» en cada uno: se abre el chat con el mensaje listo para enviar.</p>
+      <p className="text-[#4A4043]">Toca «Abrir WhatsApp» en cada uno: se abre el chat con el mensaje listo para enviar.</p>
       <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto">
         {guests.map((g) => {
           const url = build(g);
@@ -464,7 +464,7 @@ function Remind({ guests, build }: { guests: GuestRow[]; build: (g: GuestRow) =>
                   {sent.includes(g.id) ? <><Check size={14} /> Abierto</> : <><MessageCircle size={14} /> Abrir WhatsApp</>}
                 </a>
               ) : (
-                <span className="text-xs text-[#6B6063]">Cargá su WhatsApp</span>
+                <span className="text-xs text-[#6B6063]">Carga su WhatsApp</span>
               )}
             </li>
           );

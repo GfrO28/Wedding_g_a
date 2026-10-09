@@ -48,12 +48,12 @@ export function VideoEnvelopeImagesPanel({
       const req = await requestVideoEnvelopeUploadAction(slot, file.name, file.type);
       if (!req.uploadUrl || !req.publicUrl) return setError(req.error ?? "No se pudo preparar la subida.");
       const put = await fetch(req.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
-      if (!put.ok) return setError("No se pudo subir la imagen. Probá de nuevo.");
+      if (!put.ok) return setError("No se pudo subir la imagen. Prueba de nuevo.");
       const res = await saveVideoEnvelopeImageAction(slot, req.publicUrl);
       if (!res.ok) return setError("No se pudo guardar la imagen.");
       onChange({ ...assets, [slot]: req.publicUrl });
     } catch {
-      setError("No se pudo subir la imagen. Revisá tu conexión y probá de nuevo.");
+      setError("No se pudo subir la imagen. Revisa tu conexión y prueba de nuevo.");
     } finally {
       setBusy(null);
     }
@@ -76,7 +76,7 @@ export function VideoEnvelopeImagesPanel({
           {opened ? "Cerrar el sobre" : "Ver cómo se abre"}
         </button>
       </div>
-      <p className="text-xs text-neutral-500">Todas son opcionales: si no subís una, esa pieza se dibuja con el color del sobre (se cambia tocando el sobre en el lienzo).</p>
+      <p className="text-xs text-neutral-500">Todas son opcionales: si no subes una, esa pieza se dibuja con el color del sobre (se cambia tocando el sobre en el lienzo).</p>
 
       {VIDEO_ENVELOPE_SLOTS.map((slot) => (
         <div key={slot} className="flex items-center gap-3 rounded-md border border-neutral-200 p-2.5" data-slot={slot}>

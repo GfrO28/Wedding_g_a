@@ -25,12 +25,12 @@ export default async function AdminLoginPage({ searchParams }: PageProps<"/admin
           <input type="password" name="password" placeholder="Contraseña" required autoComplete="current-password" disabled={locked} className={inputClass} />
         </label>
         {error === "1" && <Notice>Correo o contraseña incorrectos.</Notice>}
-        {error === "expired" && <Notice tone="warn">El código venció o se ingresó mal demasiadas veces. Volvé a entrar para recibir uno nuevo.</Notice>}
-        {error === "mail" && <Notice>No se pudo enviar el código por correo. Probá de nuevo en un rato.</Notice>}
-        {params?.ok === "password" && !locked && <Notice tone="ok">Listo, tu contraseña quedó guardada. Ya podés entrar.</Notice>}
+        {error === "expired" && <Notice tone="warn">El código venció o se ingresó mal demasiadas veces. Vuelve a entrar para recibir uno nuevo.</Notice>}
+        {error === "mail" && <Notice>No se pudo enviar el código por correo. Prueba de nuevo en un rato.</Notice>}
+        {params?.ok === "password" && !locked && <Notice tone="ok">Listo, tu contraseña quedó guardada. Ya puedes entrar.</Notice>}
         {locked && (
           <Notice tone="warn">
-            Hubo {MAX_FAILS} intentos fallidos seguidos. Por seguridad, probá de nuevo en {minutes} {minutes === 1 ? "minuto" : "minutos"}.
+            Hubo {MAX_FAILS} intentos fallidos seguidos. Por seguridad, prueba de nuevo en {minutes} {minutes === 1 ? "minuto" : "minutos"}.
           </Notice>
         )}
         <button type="submit" disabled={locked} className={buttonClass}>

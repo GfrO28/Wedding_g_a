@@ -247,7 +247,7 @@ export function customTemplate(kind: CustomKind, id: string, x = 0, y = 0): Text
       // Botón que abre el mapa (ref = lugar 1 o 2; variant "waze" = Waze).
       return el({ ...common, kind: "link", name: "Botón", text: "Google Maps", w: 280, fontSize: 24, color: "var(--color-muted)", ref: "1" });
     default:
-      return el({ ...common, kind: "text", name: "Texto", text: "Escribí acá", w: 500, color: "var(--color-fg)", lineHeight: 1.3 });
+      return el({ ...common, kind: "text", name: "Texto", text: "Escribe aquí", w: 500, color: "var(--color-fg)", lineHeight: 1.3 });
   }
 }
 
@@ -486,7 +486,7 @@ function envelopeLines(cx: number, cy: number, landscape = false): TextElement[]
     el({ ...c, id: "line2", name: "Línea 2", text: "Cordialmente", x: cx, y: cy, fontSize: 57, letterSpacing: 0.1 }),
     el({ ...c, id: "line3", name: "Línea 3", text: "Invitado", x: cx, y: cy + 62, fontSize: 26, letterSpacing: 0.38 }),
     // Se ve con el sobre cerrado (debajo del sello) y se va al abrirlo.
-    el({ id: "hint", name: "Aviso para abrir (sobre cerrado)", text: "Tocá el sello para abrir", x: cx, y: cy + (landscape ? 95 : 130), w: 600, fontSize: landscape ? 22 : 30, font: "cormorant", color: "#efe8dd", italic: true, letterSpacing: 0.04 }),
+    el({ id: "hint", name: "Aviso para abrir (sobre cerrado)", text: "Toca el sello para abrir", x: cx, y: cy + (landscape ? 95 : 130), w: 600, fontSize: landscape ? 22 : 30, font: "cormorant", color: "#efe8dd", italic: true, letterSpacing: 0.04 }),
   ];
 }
 
@@ -604,7 +604,7 @@ const customSection = (n: number): SectionConfig => ({
   extendable: true,
   defaults: layoutOf(
     T("Sección personalizada", 340, 220),
-    P("text", "Texto", "Escribí acá el contenido de esta sección.", { y: 520, fs: 32 }, { y: 330, fs: 17 }),
+    P("text", "Texto", "Escribe aquí el contenido de esta sección.", { y: 520, fs: 32 }, { y: 330, fs: 17 }),
   ),
 });
 
@@ -639,8 +639,8 @@ function envelopeVideoItems(): Pair[] {
       el({ kind: "block", id: "envelope", name: "Sobre", text: "", x: 512, y: 430, w: 440, fontSize: 16, font: "inter", color: "#d8c2a3" }),
     ),
     pair(
-      el({ id: "hint", name: "Tocá para abrir", text: "Tocá para abrir", x: 384, y: 440, w: 520, fontSize: 22, font: "cormorant", color: "#5f4c39", uppercase: true, letterSpacing: 0.25, weight: 600 }),
-      el({ id: "hint", name: "Tocá para abrir", text: "Tocá para abrir", x: 512, y: 323, w: 400, fontSize: 15, font: "cormorant", color: "#5f4c39", uppercase: true, letterSpacing: 0.25, weight: 600 }),
+      el({ id: "hint", name: "Toca para abrir", text: "Toca para abrir", x: 384, y: 440, w: 520, fontSize: 22, font: "cormorant", color: "#5f4c39", uppercase: true, letterSpacing: 0.25, weight: 600 }),
+      el({ id: "hint", name: "Toca para abrir", text: "Toca para abrir", x: 512, y: 323, w: 400, fontSize: 15, font: "cormorant", color: "#5f4c39", uppercase: true, letterSpacing: 0.25, weight: 600 }),
     ),
     pair(
       el({ id: "left", name: "Faltan", text: "Faltan", x: 384, y: 862, w: 500, fontSize: 26, font: "inter", color: white, uppercase: true, letterSpacing: 0.2, weight: 600 }),
@@ -678,14 +678,14 @@ export const SECTIONS = {
         el({ id: "eyebrow", name: "Antetítulo", text: "Nos casamos", x: 384, y: 245, w: 680, fontSize: 27, font: "inter", color: "var(--color-muted)", uppercase: true, letterSpacing: 0.2, style: "antetitulo" }),
         el({ id: "names", name: "Nombres", text: "{nombre1} & {nombre2}", x: 384, y: 440, w: 700, fontSize: 140, font: "alexbrush", color: "var(--color-accent)", lineHeight: 1.05, style: "nombres" }),
         el({ id: "date", name: "Fecha", text: "{fecha}", x: 384, y: 640, w: 680, fontSize: 35, font: "inter", color: "var(--color-muted)", style: "detalle" }),
-        el({ id: "greeting", name: "Saludo", text: "Querido/a {invitado}, ¡nos encantaría contar con vos!", x: 384, y: 730, w: 660, fontSize: 31, font: "inter", color: "var(--color-fg)", lineHeight: 1.35 }),
+        el({ id: "greeting", name: "Saludo", text: "Querido/a {invitado}, ¡nos encantaría contar contigo!", x: 384, y: 730, w: 660, fontSize: 31, font: "inter", color: "var(--color-fg)", lineHeight: 1.35 }),
         el({ kind: "block", id: "countdown", name: "Cuenta regresiva", text: "", x: 384, y: 860, w: 560, fontSize: 26, font: "inter", color: "var(--color-fg)", weight: 600 }),
       ],
       landscape: [
         el({ id: "eyebrow", name: "Antetítulo", text: "Nos casamos", x: 512, y: 190, w: 900, fontSize: 22, font: "inter", color: "var(--color-muted)", uppercase: true, letterSpacing: 0.2, style: "antetitulo" }),
         el({ id: "names", name: "Nombres", text: "{nombre1} & {nombre2}", x: 512, y: 300, w: 980, fontSize: 100, font: "alexbrush", color: "var(--color-accent)", lineHeight: 1.05, style: "nombres" }),
         el({ id: "date", name: "Fecha", text: "{fecha}", x: 512, y: 410, w: 900, fontSize: 28, font: "inter", color: "var(--color-muted)", style: "detalle" }),
-        el({ id: "greeting", name: "Saludo", text: "Querido/a {invitado}, ¡nos encantaría contar con vos!", x: 512, y: 475, w: 900, fontSize: 25, font: "inter", color: "var(--color-fg)", lineHeight: 1.35 }),
+        el({ id: "greeting", name: "Saludo", text: "Querido/a {invitado}, ¡nos encantaría contar contigo!", x: 512, y: 475, w: 900, fontSize: 25, font: "inter", color: "var(--color-fg)", lineHeight: 1.35 }),
         el({ kind: "block", id: "countdown", name: "Cuenta regresiva", text: "", x: 512, y: 590, w: 600, fontSize: 24, font: "inter", color: "var(--color-fg)", weight: 600 }),
       ],
     },
@@ -782,7 +782,7 @@ export const SECTIONS = {
   rsvp: {
     label: "Confirmación", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, extendable: true,
     defaults: layoutOf(
-      T("Confirmá tu asistencia", 160, 110),
+      T("Confirma tu asistencia", 160, 110),
       // Reemplaza al título una vez que el invitado confirmó.
       pair(
         el({ id: "thanks", name: "Título al confirmar", text: "¡Gracias por responder!", x: 384, y: 160, w: 700, fontSize: 47, font: "playfair", color: "var(--color-fg)", style: "titulos" }),
@@ -791,7 +791,7 @@ export const SECTIONS = {
       B({ y: 600, h: 760 }, { y: 440, h: 560, w: 512 }),
     ),
   },
-  messages: { label: "Mensajes", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, extendable: true, defaults: layoutOf(T("Dejanos un mensaje", 110, 70), B({ y: 580, h: 860 }, { y: 425, h: 640, w: 672 })) },
+  messages: { label: "Mensajes", mode: "artboard", boards: ARTBOARDS, tokens: COMMON_TOKENS, extendable: true, defaults: layoutOf(T("Déjanos un mensaje", 110, 70), B({ y: 580, h: 860 }, { y: 425, h: 640, w: 672 })) },
   custom1: customSection(1),
   custom2: customSection(2),
   custom3: customSection(3),

@@ -23,10 +23,10 @@ const card = "rounded-2xl border border-[#E7E1DB] bg-white";
 const MESSAGES: Record<string, [string, "ok" | "error"]> = {
   "ok=invited": ["Listo: le mandamos la invitación por correo. El enlace vence en 48 horas.", "ok"],
   "ok=password": ["Tu contraseña quedó cambiada. Se cerraron tus otras sesiones.", "ok"],
-  "error=invite": ["Revisá el nombre y el correo.", "error"],
+  "error=invite": ["Revisa el nombre y el correo.", "error"],
   "error=exists": ["Ese correo ya tiene acceso al panel.", "error"],
-  "error=mail": ["No se pudo enviar el correo. Revisá la configuración de Gmail y probá de nuevo.", "error"],
-  "error=self": ["No podés quitarte el acceso a vos.", "error"],
+  "error=mail": ["No se pudo enviar el correo. Revisa la configuración de Gmail y prueba de nuevo.", "error"],
+  "error=self": ["No puedes quitarte tu propio acceso.", "error"],
   "error=current": ["La contraseña actual no es correcta.", "error"],
   "error=short": [`La contraseña nueva tiene que tener al menos ${MIN_PASSWORD} caracteres.`, "error"],
   "error=repeat": ["Las dos contraseñas nuevas no coinciden.", "error"],
@@ -75,7 +75,7 @@ export default async function SecurityPage({ searchParams }: PageProps<"/admin/d
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold">
                     {u.name}
-                    {me && <span className="ml-2 rounded-full bg-[#E6F2EA] px-2 py-0.5 text-[11px] font-medium text-[#2F6B45]">Vos</span>}
+                    {me && <span className="ml-2 rounded-full bg-[#E6F2EA] px-2 py-0.5 text-[11px] font-medium text-[#2F6B45]">Tú</span>}
                     {!u.passwordHash && <span className="ml-2 rounded-full bg-[#F1E7D2] px-2 py-0.5 text-[11px] font-medium text-[#6E520F]">Invitación pendiente</span>}
                   </p>
                   <p className="text-xs text-[#6B6063]">
@@ -131,7 +131,7 @@ export default async function SecurityPage({ searchParams }: PageProps<"/admin/d
             <input name="password" type="password" required minLength={MIN_PASSWORD} autoComplete="new-password" className={input} />
           </label>
           <label>
-            <span className="mb-1 block text-xs font-medium text-[#6B6063]">Repetí la nueva</span>
+            <span className="mb-1 block text-xs font-medium text-[#6B6063]">Repite la nueva</span>
             <input name="repeat" type="password" required minLength={MIN_PASSWORD} autoComplete="new-password" className={input} />
           </label>
           <button type="submit" className={primary}>
@@ -144,7 +144,7 @@ export default async function SecurityPage({ searchParams }: PageProps<"/admin/d
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7E1DB] p-5">
           <div>
             <h2 className="font-semibold">Sesiones abiertas</h2>
-            <p className="text-sm text-[#6B6063]">Si no reconocés alguna, cerrala: ese dispositivo va a tener que confirmar con código otra vez.</p>
+            <p className="text-sm text-[#6B6063]">Si no reconoces alguna, ciérrala: ese dispositivo va a tener que confirmar con código otra vez.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {others > 0 && (

@@ -181,7 +181,7 @@ async function sendCode(user: AdminUser, code: string) {
     `Hola ${user.name}:`,
     `Tu código para entrar al panel de la boda es ${code}. Vence en ${CODE_MINUTES} minutos.`,
     `Lo pidió: ${deviceName(userAgent).name} · IP ${ip}`,
-    "Si no fuiste vos, no lo compartas con nadie y cambiá tu contraseña desde Seguridad.",
+    "Si no fuiste tú, no lo compartas con nadie y cambia tu contraseña desde Seguridad.",
   ]);
 }
 
@@ -232,7 +232,7 @@ export async function confirmCode(code: string): Promise<"ok" | "wrong" | "expir
     `${user.name} entró al panel de la boda desde un dispositivo nuevo.`,
     `Dispositivo: ${where}`,
     `IP: ${ip}`,
-    "Si no fue así, entrá al panel → Seguridad, cerrá esa sesión y cambiá la contraseña.",
+    "Si no fue así, entra al panel → Seguridad, cierra esa sesión y cambia la contraseña.",
   ]);
   return "ok";
 }
@@ -287,7 +287,7 @@ export async function isAdminAuthed() {
 // Para las acciones del panel: corta si no hay una sesión válida.
 export async function requireAdmin() {
   const s = await verifySession();
-  if (!s) throw new Error("No autorizado: iniciá sesión de nuevo.");
+  if (!s) throw new Error("No autorizado: inicia sesión de nuevo.");
   return s;
 }
 
@@ -382,7 +382,7 @@ export async function inviteUser(name: string, email: string, by: AdminUser) {
   await sendMail(user.email, `${by.name} te dio acceso al panel de la boda`, [
     `Hola ${user.name}:`,
     `${by.name} te dio acceso al panel de la boda de Antonella y Gianfranco.`,
-    `Para activarlo, elegí tu contraseña en este enlace (vence en 48 horas):`,
+    `Para activarlo, elige tu contraseña en este enlace (vence en 48 horas):`,
     link,
     "La primera vez que entres desde cada dispositivo te va a llegar un código a este correo.",
   ]);
@@ -403,12 +403,12 @@ export async function requestPasswordReset(email: string) {
   if (exp <= Date.now() + 3_600_000 && exp - 3_600_000 > Date.now() - 120_000) return;
   const link = await issueSetupLink(user.id, 1);
   const { ip, userAgent } = await clientInfo();
-  await sendMail(user.email, "Elegí una contraseña nueva para el panel", [
+  await sendMail(user.email, "Elige una contraseña nueva para el panel", [
     `Hola ${user.name}:`,
-    "Pediste cambiar la contraseña del panel de la boda. Elegí la nueva en este enlace (vence en 1 hora):",
+    "Pediste cambiar la contraseña del panel de la boda. Elige la nueva en este enlace (vence en 1 hora):",
     link,
     `Lo pidió: ${deviceName(userAgent).name} · IP ${ip}`,
-    "Si no fuiste vos, ignorá este correo: tu contraseña sigue igual.",
+    "Si no fuiste tú, ignora este correo: tu contraseña sigue igual.",
   ]);
   await audit("Pidió cambiar la contraseña por correo", null, user);
 }

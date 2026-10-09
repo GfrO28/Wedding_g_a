@@ -93,7 +93,7 @@ export default async function ContentEditorPage() {
     ),
     countdown: (
       <Stack>
-        <Hint id="countdown"><p className="text-sm text-neutral-500">Cuenta los días hasta la fecha de la boda (se cambia en Portada). También podés poner una cuenta regresiva en cualquier sección desde «+ Agregar».</p></Hint>
+        <Hint id="countdown"><p className="text-sm text-neutral-500">Cuenta los días hasta la fecha de la boda (se cambia en Portada). También puedes poner una cuenta regresiva en cualquier sección desde «+ Agregar».</p></Hint>
       </Stack>
     ),
     blessing: (
@@ -110,7 +110,7 @@ export default async function ContentEditorPage() {
             library={allPhotos.map((p) => ({ id: p.id, url: p.url, alt: p.alt }))}
           />
         </Group>
-        <Hint id="story"><p className="text-sm text-neutral-500">Los capítulos se agregan y se editan acá. En el lienzo movés y cambiás el tamaño de cada foto y texto.</p></Hint>
+        <Hint id="story"><p className="text-sm text-neutral-500">Los capítulos se agregan y se editan aquí. En el lienzo mueves y cambias el tamaño de cada foto y texto.</p></Hint>
       </Stack>
     ),
     event: (
@@ -145,7 +145,7 @@ export default async function ContentEditorPage() {
     ),
     gifts: (
       <Stack>
-        <Hint id="gifts-panel"><p className="text-sm text-neutral-500">Los regalos, los fondos, los medios de pago y qué se muestra en esta sección se configuran en el panel, <a href="/admin/dashboard/regalos" className="underline">Lista de regalos</a>. Acá se edita el diseño: el mensaje y los textos sobre el lienzo.</p></Hint>
+        <Hint id="gifts-panel"><p className="text-sm text-neutral-500">Los regalos, los fondos, los medios de pago y qué se muestra en esta sección se configuran en el panel, <a href="/admin/dashboard/regalos" className="underline">Lista de regalos</a>. Aquí se edita el diseño: el mensaje y los textos sobre el lienzo.</p></Hint>
         <BgHint />
       </Stack>
     ),
@@ -159,7 +159,7 @@ export default async function ContentEditorPage() {
             <SaveButton />
           </form>
         </Group>
-        <Hint id="dresscode"><p className="text-xs text-neutral-500">Los círculos son la paleta sugerida: tocá uno en el lienzo para cambiarle el color. Podés sumar más con «+ Agregar → Formas».</p></Hint>
+        <Hint id="dresscode"><p className="text-xs text-neutral-500">Los círculos son la paleta sugerida: toca uno en el lienzo para cambiarle el color. Puedes sumar más con «+ Agregar → Formas».</p></Hint>
         <BgHint />
       </Stack>
     ),
@@ -167,7 +167,7 @@ export default async function ContentEditorPage() {
       (["custom1", "custom2", "custom3"] as const).map((id) => [
         id,
         <Stack key={id}>
-          <Hint id="custom-section"><p className="text-sm text-neutral-500">Una sección en blanco para lo que quieras: agregá textos, imágenes, mapas, formas o íconos con «+ Agregar».</p></Hint>
+          <Hint id="custom-section"><p className="text-sm text-neutral-500">Una sección en blanco para lo que quieras: agrega textos, imágenes, mapas, formas o íconos con «+ Agregar».</p></Hint>
           <BgHint />
         </Stack>,
       ]),
@@ -200,7 +200,7 @@ function BgHint() {
   return (
     <Hint id="bg-image">
       <p className="text-xs text-neutral-500">
-        El fondo es una imagen: <b>+ Agregar → Imagen</b> con «Usar de fondo». El velo es una forma: <b>+ Agregar → Formas → Velo</b>, y le ajustás la transparencia. Los dos quedan bloqueados; se desbloquean en Capas.
+        El fondo es una imagen: <b>+ Agregar → Imagen</b> con «Usar de fondo». El velo es una forma: <b>+ Agregar → Formas → Velo</b>, y le ajustas la transparencia. Los dos quedan bloqueados; se desbloquean en Capas.
       </p>
     </Hint>
   );

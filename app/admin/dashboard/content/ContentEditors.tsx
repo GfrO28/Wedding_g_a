@@ -19,7 +19,7 @@ const label = "text-xs text-neutral-500";
 
 /* ---------- Selector de imagen (reutiliza las fotos ya subidas) ---------- */
 
-// Elegís una foto que ya está en la galería (no se vuelve a subir), o subís
+// Eliges una foto que ya está en la galería (no se vuelve a subir), o subes
 // una nueva: queda en la galería para poder reutilizarla en otro lado.
 export function ImagePicker({
   value,
@@ -49,7 +49,7 @@ export function ImagePicker({
       onChange(row.url);
       setOpen(false);
     } catch {
-      setError("No se pudo subir la imagen. Revisá tu conexión.");
+      setError("No se pudo subir la imagen. Revisa tu conexión.");
     } finally {
       setBusy(false);
     }

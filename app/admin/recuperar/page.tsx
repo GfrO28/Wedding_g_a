@@ -14,7 +14,7 @@ export default async function ForgotPage({ searchParams }: PageProps<"/admin/rec
             <span className="sr-only">Correo</span>
             <input type="email" name="email" placeholder="Correo" required autoComplete="username" className={inputClass} />
           </label>
-          {params?.error === "mail" && <Notice>No se pudo enviar el correo. Probá de nuevo en un rato.</Notice>}
+          {params?.error === "mail" && <Notice>No se pudo enviar el correo. Prueba de nuevo en un rato.</Notice>}
           <button type="submit" className={buttonClass}>
             Enviar enlace
           </button>
