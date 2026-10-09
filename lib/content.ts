@@ -84,6 +84,8 @@ export const WEDDING = {
         accountNumber: "0000-0000-0000",
         cci: "",
       },
+      // Cuenta en dólares: oculta hasta completarla en el panel.
+      bankUsd: { bank: "", accountHolder: "", accountNumber: "", cci: "", enabled: false },
     },
   },
 } as const;

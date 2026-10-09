@@ -4,7 +4,7 @@ import { giftContributions, giftItems } from "@/lib/db/schema";
 import { getWeddingContent } from "@/lib/weddingContent";
 import { backdropOf } from "@/lib/textLayout";
 import { getJSON } from "@/lib/kv";
-import { DEFAULT_GIFTS_DISPLAY, GIFTS_DISPLAY_KEY, sanitizeGiftsDisplay, type GiftsDisplay } from "@/lib/panel";
+import { DEFAULT_GIFTS_DISPLAY, dollars, GIFTS_DISPLAY_KEY, money, PAYMENT_LABELS, paymentShown, sanitizeGiftsDisplay, soles, type GiftsDisplay } from "@/lib/panel";
 import { FadeIn } from "./FadeIn";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
 import { CopyButton } from "./CopyButton";
@@ -99,7 +99,7 @@ export function GiftsBody({
             </div>
           </FadeIn>
         ) : (
-          empty("Todavía no hay un fondo de luna de miel. Crealo en el panel, «Lista de regalos», como «Fondo» con su monto meta.")
+          empty("Todavía no hay un fondo de luna de miel. Créalo en el panel, «Lista de regalos», como «Fondo» con su monto meta.")
         ))}
 
       {parts.includes("payment") && (
@@ -119,14 +119,17 @@ export function GiftsBody({
                 <Row label="A nombre de" value={payment.plin.name} />
               </div>
             )}
-            {payment.bank.enabled !== false && (
-              <div>
-                <p className="mb-1 font-medium text-[var(--color-fg)]">Transferencia bancaria</p>
-                <Row label="Banco" value={payment.bank.bank} />
-                <Row label="Titular" value={payment.bank.accountHolder} />
-                <Row label="Cuenta" value={payment.bank.accountNumber} copyable />
-                {payment.bank.cci && <Row label="CCI" value={payment.bank.cci} copyable />}
-              </div>
+            {(["bank", "bankUsd"] as const).map(
+              (k) =>
+                paymentShown(payment, k) && (
+                  <div key={k} data-pay={k}>
+                    <p className="mb-1 font-medium text-[var(--color-fg)]">{PAYMENT_LABELS[k]}</p>
+                    {payment[k].bank && <Row label="Banco" value={payment[k].bank} />}
+                    {payment[k].accountHolder && <Row label="Titular" value={payment[k].accountHolder} />}
+                    <Row label="Cuenta" value={payment[k].accountNumber} copyable />
+                    {payment[k].cci && <Row label="CCI" value={payment[k].cci} copyable />}
+                  </div>
+                ),
             )}
           </div>
         </FadeIn>
@@ -152,7 +155,7 @@ function ClaimGiftCard({ item, slug }: { item: GiftItem; slug: string }) {
         )}
         {item.amount && (
           <p className="text-sm text-[var(--color-muted)]">
-            Monto sugerido: S/ {item.amount}
+            Monto sugerido: {money(item.amount)}
           </p>
         )}
         {item.link && (
@@ -173,7 +176,6 @@ function ClaimGiftCard({ item, slug }: { item: GiftItem; slug: string }) {
   );
 }
 
-const soles = (n: number) => `S/ ${n.toLocaleString("es-PE")}`;
 
 // Barra de llenado (luna de miel u otro fondo) con el monto juntado a la vista.
 function FundGiftCard({
@@ -203,6 +205,12 @@ function FundGiftCard({
         <p className="mt-4 text-2xl font-medium text-[var(--color-fg)]">
           {soles(raised)}
           {target > 0 && <span className="text-base font-normal text-[var(--color-muted)]"> de {soles(target)}</span>}
+        </p>
+      )}
+      {showRaised && (
+        <p className="text-sm text-[var(--color-muted)]" data-usd>
+          {dollars(raised)}
+          {target > 0 && <> de {dollars(target)}</>}
         </p>
       )}
       <div

@@ -14,7 +14,7 @@ import {
   setGiftVisibleAction,
   type GiftInput,
 } from "../../panel-actions";
-import { soles, type GiftsDisplay } from "@/lib/panel";
+import { dollars, isBank, money, PAYMENT_LABELS, PAYMENT_METHODS, paymentShown, USD_RATE, type GiftsDisplay, type Payment } from "@/lib/panel";
 
 export type GiftRow = {
   id: string;
@@ -31,11 +31,6 @@ export type GiftRow = {
   contributions: number;
 };
 export type ContributionRow = { id: string; giftId: string; who: string; amount: number; date: string; received: boolean };
-type Payment = {
-  yape: { phone: string; name: string; enabled?: boolean };
-  plin: { phone: string; name: string; enabled?: boolean };
-  bank: { bank: string; accountHolder: string; accountNumber: string; cci: string; enabled?: boolean };
-};
 
 const when = (iso: string) => new Date(iso).toLocaleDateString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -54,7 +49,7 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
 
   // Aportes y reservas juntos, lo más nuevo primero.
   const rows = [
-    ...contributions.map((c) => ({ kind: "contrib" as const, id: c.id, giftId: c.giftId, who: c.who, amount: soles(c.amount), date: c.date, received: c.received })),
+    ...contributions.map((c) => ({ kind: "contrib" as const, id: c.id, giftId: c.giftId, who: c.who, amount: money(c.amount), date: c.date, received: c.received })),
     ...claims.filter((g) => g.claimedAt).map((g) => ({ kind: "claim" as const, id: g.id, giftId: g.id, who: g.claimedByName ?? "—", amount: "Regalo completo", date: g.claimedAt!, received: true })),
   ]
     .filter((r) => !only || r.giftId === only)
@@ -81,9 +76,9 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
       </header>
 
       <section aria-label="Resumen" className="grid gap-3.5 sm:grid-cols-3">
-        <Kpi label="Recaudado" value={soles(total)} hint={`en ${contributions.length} aportes`} />
+        <Kpi label="Recaudado" value={money(total)} hint={`en ${contributions.length} aportes`} />
         <Kpi label="Regalos reservados" value={`${claims.filter((g) => g.claimedAt).length} de ${claims.length}`} hint={`${claims.filter((g) => !g.claimedAt).length} todavía disponibles`} />
-        <Kpi label="Por verificar" value={`${toVerify.length} aportes`} hint={`${soles(toVerify.reduce((n, c) => n + c.amount, 0))} avisados, sin confirmar`} warn={toVerify.length > 0} />
+        <Kpi label="Por verificar" value={`${toVerify.length} aportes`} hint={`${money(toVerify.reduce((n, c) => n + c.amount, 0))} avisados, sin confirmar`} warn={toVerify.length > 0} />
       </section>
 
       <div className="grid gap-5 lg:grid-cols-2">
@@ -93,11 +88,12 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
           <h2 className="text-[15px] font-semibold">Medios de pago</h2>
           <p className="text-sm text-[#6B6063]">Los invitados copian los datos con un toque</p>
           <div className="mt-3 flex flex-col gap-2.5">
-            {(["yape", "plin", "bank"] as const).map((k) => {
-              const p = payment[k];
-              const on = p.enabled !== false;
-              const label = k === "bank" ? "Transferencia bancaria" : k === "yape" ? "Yape" : "Plin";
-              const detail = k === "bank" ? [payment.bank.bank, payment.bank.accountNumber && `Cta. ${payment.bank.accountNumber}`].filter(Boolean).join(" · ") : [payment[k].phone, payment[k].name].filter(Boolean).join(" · ");
+            {PAYMENT_METHODS.map((k) => {
+              const on = paymentShown(payment, k);
+              const label = PAYMENT_LABELS[k];
+              const detail = isBank(k)
+                ? [payment[k].bank, payment[k].accountNumber && `Cta. ${payment[k].accountNumber}`].filter(Boolean).join(" · ")
+                : [payment[k].phone, payment[k].name].filter(Boolean).join(" · ");
               return (
                 <div key={k} className={`flex flex-wrap items-center gap-3 rounded-xl border p-3 ${on ? "border-[#E7E1DB]" : "border-dashed border-[#D9D1CA] text-[#6B6063]"}`} data-payment={k}>
                   <div className="min-w-0 flex-1">
@@ -137,7 +133,7 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
                       <h3 className="font-semibold">{g.name}</h3>
                       <span className="whitespace-nowrap rounded-full bg-[#F6F3EF] px-2 py-0.5 text-[11px] text-[#4A4043]">{g.type === "fund" ? "Fondo" : "Reserva"}{g.visible ? "" : " · oculto"}</span>
                     </div>
-                    <p className="text-sm font-semibold">{g.type === "fund" ? `${soles(g.raised)}${g.amount ? ` de ${soles(g.amount)}` : ""}` : g.amount ? soles(g.amount) : "Sin monto"}</p>
+                    <p className="text-sm font-semibold">{g.type === "fund" ? `${money(g.raised)}${g.amount ? ` de ${money(g.amount)}` : ""}` : g.amount ? money(g.amount) : "Sin monto"}</p>
                     {g.type === "fund" && (
                       <div className="h-2 overflow-hidden rounded-full bg-[#F1ECE6]"><div className="h-full bg-[#A87D22]" style={{ width: `${pct}%` }} /></div>
                     )}
@@ -219,7 +215,7 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
         </Modal>
       )}
       {payEdit && (
-        <Modal title={payEdit === "bank" ? "Transferencia bancaria" : payEdit === "yape" ? "Yape" : "Plin"} onClose={() => setPayEdit(null)}>
+        <Modal title={PAYMENT_LABELS[payEdit]} onClose={() => setPayEdit(null)}>
           <PaymentForm method={payEdit} payment={payment} onClose={() => setPayEdit(null)} />
         </Modal>
       )}
@@ -337,6 +333,9 @@ function GiftForm({ gift, onClose }: { gift: GiftRow | null; onClose: () => void
       <Field label="Nombre"><input className={inputCls} required maxLength={120} value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} /></Field>
       <Field label={v.type === "fund" ? "Meta (S/)" : "Monto sugerido (S/, opcional)"}>
         <input className={inputCls} type="number" min={0} value={v.amount ?? ""} onChange={(e) => setV({ ...v, amount: e.target.value === "" ? null : Number(e.target.value) })} />
+        <span className="mt-1 block text-xs text-[#6B6063]" data-usd-hint>
+          {v.amount ? `Los invitados lo ven también en dólares: ${dollars(v.amount)} (a ${USD_RATE} por dólar)` : `En la invitación se muestra también en dólares (a ${USD_RATE} por dólar)`}
+        </span>
       </Field>
       <Field label="Descripción (opcional)" wide><input className={inputCls} maxLength={400} value={v.description ?? ""} onChange={(e) => setV({ ...v, description: e.target.value })} /></Field>
       <Field label="Enlace a la tienda (opcional)" wide><input className={inputCls} type="url" placeholder="https://…" value={v.link ?? ""} onChange={(e) => setV({ ...v, link: e.target.value })} /></Field>
@@ -365,9 +364,9 @@ function GiftForm({ gift, onClose }: { gift: GiftRow | null; onClose: () => void
 }
 
 function PaymentForm({ method, payment, onClose }: { method: keyof Payment; payment: Payment; onClose: () => void }) {
-  const [v, setV] = useState<Record<string, string>>(method === "bank" ? { ...payment.bank } as unknown as Record<string, string> : { ...payment[method] } as unknown as Record<string, string>);
+  const [v, setV] = useState<Record<string, string>>({ ...payment[method] } as unknown as Record<string, string>);
   const [pending, start] = useTransition();
-  const fields: [string, string][] = method === "bank" ? [["bank", "Banco"], ["accountHolder", "Titular"], ["accountNumber", "Número de cuenta"], ["cci", "CCI"]] : [["phone", "Número"], ["name", "A nombre de"]];
+  const fields: [string, string][] = isBank(method) ? [["bank", "Banco"], ["accountHolder", "Titular"], ["accountNumber", "Número de cuenta"], ["cci", "CCI"]] : [["phone", "Número"], ["name", "A nombre de"]];
   return (
     <form className="grid gap-3.5 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault(); start(async () => { await savePaymentMethodAction(method, v); onClose(); }); }}>
       {fields.map(([k, label]) => (

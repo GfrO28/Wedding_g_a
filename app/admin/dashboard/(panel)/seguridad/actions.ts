@@ -8,11 +8,13 @@ import {
   deviceName,
   destroyAdminSession,
   inviteUser,
+  isOwner,
   listSessions,
   listUsers,
   MIN_PASSWORD,
   removeUser,
   requireAdmin,
+  requireOwner,
   revokeAllSessions,
   revokeOtherSessions,
   revokeSession,
@@ -21,6 +23,8 @@ import {
 
 const PAGE = "/admin/dashboard/seguridad";
 const back = (q: string) => redirect(`${PAGE}?${q}`);
+// El principal maneja las sesiones de todos; los demás, solo las suyas.
+const scope = (me: Awaited<ReturnType<typeof requireAdmin>>) => (isOwner(me.user) ? undefined : me.user.id);
 
 export async function revokeSessionAction(id: string) {
   const me = await requireAdmin();
@@ -30,7 +34,8 @@ export async function revokeSessionAction(id: string) {
     await destroyAdminSession();
     redirect("/admin");
   }
-  const target = (await listSessions()).find((s) => s.session.id === id);
+  const target = (await listSessions(scope(me))).find((s) => s.session.id === id);
+  if (!target) back("error=session");
   await revokeSession(id);
   if (target) await audit("Cerró una sesión", `${target.userName} · ${deviceName(target.session.userAgent).name}`);
   revalidatePath(PAGE);
@@ -38,21 +43,22 @@ export async function revokeSessionAction(id: string) {
 
 export async function revokeOtherSessionsAction() {
   const me = await requireAdmin();
-  await revokeOtherSessions(me);
-  await audit("Cerró las demás sesiones");
+  await revokeOtherSessions(me, scope(me));
+  await audit(isOwner(me.user) ? "Cerró las demás sesiones" : "Cerró sus otras sesiones");
   revalidatePath(PAGE);
 }
 
-// Cierra la sesión en todos los dispositivos (de los dos), incluido este.
+// Cierra la sesión en todos los dispositivos, incluido este (el principal: los
+// de todos; los demás: los suyos).
 export async function revokeAllSessionsAction() {
-  await requireAdmin();
-  await audit("Cerró la sesión en todos los dispositivos");
-  await revokeAllSessions();
+  const me = await requireAdmin();
+  await audit(isOwner(me.user) ? "Cerró la sesión de todos en todos los dispositivos" : "Cerró su sesión en todos sus dispositivos");
+  await revokeAllSessions(scope(me));
   redirect("/admin");
 }
 
 export async function inviteUserAction(formData: FormData) {
-  const me = await requireAdmin();
+  const me = await requireOwner();
   const name = String(formData.get("name") ?? "").trim().slice(0, 60);
   const email = String(formData.get("email") ?? "").trim().toLowerCase().slice(0, 120);
   if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) back("error=invite");
@@ -71,7 +77,7 @@ export async function inviteUserAction(formData: FormData) {
 
 // Reenvía la invitación a alguien que todavía no eligió su contraseña.
 export async function resendInviteAction(id: string) {
-  const me = await requireAdmin();
+  const me = await requireOwner();
   const user = (await listUsers()).find((u) => u.id === id && !u.passwordHash);
   if (!user) back("error=invite");
   await removeUser(user!.id);
@@ -86,7 +92,7 @@ export async function resendInviteAction(id: string) {
 }
 
 export async function removeUserAction(id: string) {
-  const me = await requireAdmin();
+  const me = await requireOwner();
   if (id === me.user.id) back("error=self");
   const user = await removeUser(id);
   if (user) await audit("Quitó el acceso al panel", `${user.name} · ${user.email}`);

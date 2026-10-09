@@ -9,7 +9,18 @@ import { getJSON, setJSON, setSetting } from "@/lib/kv";
 import { makeSlug } from "@/lib/slug";
 import { audit, destroyAdminSession, requireAdmin } from "@/lib/auth";
 import { getUploadUrl, publicUrlFor } from "@/lib/storage/r2";
-import { GIFTS_DISPLAY_KEY, GUEST_TARGET_KEY, sanitizeGiftsDisplay } from "@/lib/panel";
+import {
+  GIFTS_DISPLAY_KEY,
+  GUEST_TARGET_KEY,
+  isBank,
+  PAYMENT_LABELS,
+  PAYMENT_METHODS,
+  paymentShown,
+  sanitizeGiftsDisplay,
+  withPaymentDefaults,
+  type Payment,
+  type PaymentMethod,
+} from "@/lib/panel";
 import { WEDDING as DEFAULTS } from "@/lib/content";
 
 // Todas las acciones del panel exigen la sesión de los novios.
@@ -208,21 +219,17 @@ export async function saveGiftsDisplayAction(display: unknown, message?: string)
   revalidate();
 }
 
-type Payment = {
-  yape: { phone: string; name: string; enabled?: boolean };
-  plin: { phone: string; name: string; enabled?: boolean };
-  bank: { bank: string; accountHolder: string; accountNumber: string; cci: string; enabled?: boolean };
-};
-
-export async function savePaymentMethodAction(method: "yape" | "plin" | "bank", data: Record<string, unknown>) {
+export async function savePaymentMethodAction(method: PaymentMethod, data: Record<string, unknown>) {
   await guard();
-  const current = await getJSON<Payment>("contentGiftsPayment", DEFAULTS.gifts.payment as unknown as Payment);
-  const enabled = typeof data.enabled === "boolean" ? data.enabled : current[method].enabled !== false;
+  if (!PAYMENT_METHODS.includes(method)) throw new Error("Medio de pago desconocido");
+  const current = withPaymentDefaults(await getJSON<Payment>("contentGiftsPayment", DEFAULTS.gifts.payment as unknown as Payment));
+  const enabled = typeof data.enabled === "boolean" ? data.enabled : paymentShown(current, method);
   const next: Payment = { ...current };
-  if (method === "bank")
-    next.bank = { bank: clip(data.bank ?? current.bank.bank, 60), accountHolder: clip(data.accountHolder ?? current.bank.accountHolder, 80), accountNumber: clip(data.accountNumber ?? current.bank.accountNumber, 40), cci: clip(data.cci ?? current.bank.cci, 40), enabled };
-  else next[method] = { phone: clip(data.phone ?? current[method].phone, 30), name: clip(data.name ?? current[method].name, 80), enabled };
+  if (isBank(method)) {
+    const c = current[method];
+    next[method] = { bank: clip(data.bank ?? c.bank, 60), accountHolder: clip(data.accountHolder ?? c.accountHolder, 80), accountNumber: clip(data.accountNumber ?? c.accountNumber, 40), cci: clip(data.cci ?? c.cci, 40), enabled };
+  } else next[method] = { phone: clip(data.phone ?? current[method].phone, 30), name: clip(data.name ?? current[method].name, 80), enabled };
   await setJSON("contentGiftsPayment", next);
-  await audit("Cambió los datos de pago", { yape: "Yape", plin: "Plin", bank: "Cuenta bancaria" }[method]);
+  await audit("Cambió los datos de pago", PAYMENT_LABELS[method]);
   revalidate();
 }

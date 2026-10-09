@@ -111,6 +111,8 @@ export const adminUsers = pgTable("admin_users", {
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash"),
+  // "owner": acceso total (personas, registro, avisos) · "editor": todo el panel menos eso.
+  role: text("role").notNull().default("editor"),
   // Enlace para elegir contraseña (invitación u «olvidé mi contraseña»).
   setupTokenHash: text("setup_token_hash"),
   setupExpiresAt: timestamp("setup_expires_at", { withTimezone: true }),

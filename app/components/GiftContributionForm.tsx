@@ -11,6 +11,7 @@ export function GiftContributionForm({
   slug: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [currency, setCurrency] = useState<"PEN" | "USD">("PEN");
 
   if (!open) {
     return (
@@ -35,10 +36,21 @@ export function GiftContributionForm({
         autoFocus
         className="w-28 rounded-md border border-[var(--color-border)] px-2 py-1.5 text-sm"
       />
+      <select
+        name="currency"
+        aria-label="Moneda"
+        value={currency}
+        onChange={(e) => setCurrency(e.target.value as "PEN" | "USD")}
+        className="rounded-md border border-[var(--color-border)] bg-transparent px-1.5 py-1.5 text-sm"
+      >
+        <option value="PEN">S/</option>
+        <option value="USD">US$</option>
+      </select>
       <input
         type="number"
         name="amount"
-        placeholder="S/"
+        aria-label={currency === "USD" ? "Monto en dólares" : "Monto en soles"}
+        placeholder={currency === "USD" ? "US$" : "S/"}
         min={1}
         required
         className="w-20 rounded-md border border-[var(--color-border)] px-2 py-1.5 text-sm"

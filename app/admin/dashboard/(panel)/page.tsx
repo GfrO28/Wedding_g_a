@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { giftContributions, giftItems, guestMessages, guests, rsvps } from "@/lib/db/schema";
 import { getWeddingContent } from "@/lib/weddingContent";
 import { getSettingsMap } from "@/lib/settings";
-import { GUEST_TARGET_KEY, soles } from "@/lib/panel";
+import { GUEST_TARGET_KEY, money } from "@/lib/panel";
 import { approveMessageAction, deleteMessageAction } from "../actions";
 import { TargetEditor } from "./TargetEditor";
 
@@ -229,7 +229,7 @@ export default async function DashboardPage() {
             <>
               <p className="mt-3 text-sm text-[#6B6063]">{funds.length === 1 ? funds[0].name : "Fondos"}</p>
               <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-[#F1ECE6]"><div className="h-full bg-[#A87D22]" style={{ width: `${pct(raised, fundTarget)}%` }} /></div>
-              <p className="mt-1.5 text-sm"><b>{soles(raised)}</b>{fundTarget ? ` de ${soles(fundTarget)}` : ""} · {contributions.filter((c) => fundIds.has(c.giftItemId)).length} aportes</p>
+              <p className="mt-1.5 text-sm"><b>{money(raised)}</b>{fundTarget ? ` de ${money(fundTarget)}` : ""} · {contributions.filter((c) => fundIds.has(c.giftItemId)).length} aportes</p>
             </>
           )}
           <p className="mt-3 text-sm text-[#6B6063]">{claims.filter((c) => c.claimedAt).length} de {claims.length} regalos reservados</p>

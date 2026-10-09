@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { giftContributions, giftItems } from "@/lib/db/schema";
+import { toSoles } from "@/lib/panel";
 
 export async function claimGiftItemAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
@@ -23,10 +24,12 @@ export async function claimGiftItemAction(formData: FormData) {
 export async function contributeToGiftAction(formData: FormData) {
   const giftItemId = String(formData.get("id") ?? "");
   const contributorName = String(formData.get("contributorName") ?? "").trim();
-  const amount = Number(formData.get("amount") ?? 0);
+  // Se puede aportar en soles o en dólares; se guarda en soles.
+  const currency = formData.get("currency") === "USD" ? "USD" : "PEN";
+  const amount = toSoles(Number(formData.get("amount") ?? 0), currency);
   const slug = String(formData.get("slug") ?? "");
 
-  if (!giftItemId || !contributorName || !amount || amount <= 0) return;
+  if (!giftItemId || !contributorName || !Number.isFinite(amount) || amount <= 0) return;
 
   await db.insert(giftContributions).values({ giftItemId, contributorName, amount });
 

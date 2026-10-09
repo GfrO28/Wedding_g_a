@@ -117,11 +117,11 @@ export async function recordAttempt(ip: string, success: boolean) {
   if (wait > 0) {
     const { userAgent } = await clientInfo();
     await audit("Dispositivo bloqueado por intentos fallidos", `${deviceName(userAgent).name} · ${ip}`, null);
-    await notifyAdmins("Se bloqueó un dispositivo en el panel", [
+    await notifyOwners("Se bloqueó un dispositivo en el panel", [
       `Hubo ${MAX_FAILS} intentos fallidos seguidos para entrar al panel, así que ese dispositivo quedó bloqueado ${LOCK_MINUTES} minutos.`,
       `Dispositivo: ${deviceName(userAgent).name}`,
       `IP: ${ip}`,
-      "Si no fueron ustedes, conviene cambiar la contraseña desde Seguridad.",
+      "Si no reconoces estos intentos, conviene cambiar las contraseñas desde Seguridad.",
     ]);
   }
   return wait;
@@ -228,7 +228,7 @@ export async function confirmCode(code: string): Promise<"ok" | "wrong" | "expir
   await createAdminSession(user, device.id);
   const where = deviceName(userAgent).name;
   await audit("Inició sesión en un dispositivo nuevo", null, user);
-  await notifyAdmins(`${user.name} entró al panel desde un dispositivo nuevo`, [
+  await notifyOwners(`${user.name} entró al panel desde un dispositivo nuevo`, [
     `${user.name} entró al panel de la boda desde un dispositivo nuevo.`,
     `Dispositivo: ${where}`,
     `IP: ${ip}`,
@@ -291,18 +291,30 @@ export async function requireAdmin() {
   return s;
 }
 
+// Principal: maneja quién tiene acceso, ve el registro y recibe los avisos.
+export const isOwner = (user: Pick<AdminUser, "role">) => user.role === "owner";
+
+// Para lo que solo puede hacer el administrador principal.
+export async function requireOwner() {
+  const s = await requireAdmin();
+  if (!isOwner(s.user)) throw new Error("Solo el administrador principal puede hacer esto.");
+  return s;
+}
+
 export async function destroyAdminSession() {
   const s = await verifySession();
   if (s) await db.delete(adminSessions).where(eq(adminSessions.id, s.id));
   (await cookies()).delete(COOKIE_NAME);
 }
 
-export async function listSessions() {
+// Las sesiones abiertas: de todos, o solo las de una persona.
+export async function listSessions(userId?: string) {
+  const open = gt(adminSessions.expiresAt, new Date());
   return db
     .select({ session: adminSessions, userName: adminUsers.name })
     .from(adminSessions)
     .innerJoin(adminUsers, eq(adminUsers.id, adminSessions.userId))
-    .where(gt(adminSessions.expiresAt, new Date()))
+    .where(userId ? and(open, eq(adminSessions.userId, userId)) : open)
     .orderBy(desc(adminSessions.lastSeenAt));
 }
 
@@ -313,18 +325,27 @@ export async function revokeSession(id: string) {
   return s ?? null;
 }
 
-// Cierra todas las sesiones y olvida todos los dispositivos (de los dos).
-export async function revokeAllSessions() {
-  await db.delete(adminSessions);
-  await db.delete(adminDevices);
+// Cierra todas las sesiones y olvida los dispositivos: de todos, o solo los de una persona.
+export async function revokeAllSessions(userId?: string) {
+  if (userId) {
+    await db.delete(adminSessions).where(eq(adminSessions.userId, userId));
+    await db.delete(adminDevices).where(eq(adminDevices.userId, userId));
+  } else {
+    await db.delete(adminSessions);
+    await db.delete(adminDevices);
+  }
   const store = await cookies();
   store.delete(COOKIE_NAME);
   store.delete(DEVICE_COOKIE);
 }
 
-// Cierra las demás sesiones de todos y olvida sus dispositivos; la actual sigue.
-export async function revokeOtherSessions(current: { id: string; deviceId: string | null }) {
-  const others = await db.select({ id: adminSessions.id, deviceId: adminSessions.deviceId }).from(adminSessions);
+// Cierra las demás sesiones (de todos, o solo las de una persona) y olvida sus
+// dispositivos; la actual sigue.
+export async function revokeOtherSessions(current: { id: string; deviceId: string | null }, userId?: string) {
+  const others = await db
+    .select({ id: adminSessions.id, deviceId: adminSessions.deviceId })
+    .from(adminSessions)
+    .where(userId ? eq(adminSessions.userId, userId) : undefined);
   const ids = others.filter((s) => s.id !== current.id).map((s) => s.id);
   const devices = others.filter((s) => s.id !== current.id && s.deviceId && s.deviceId !== current.deviceId).map((s) => s.deviceId!);
   if (ids.length) await db.delete(adminSessions).where(inArray(adminSessions.id, ids));
@@ -348,9 +369,12 @@ export async function listAudit(limit = 50) {
   return db.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(limit);
 }
 
-// Correo a todas las personas con acceso (que ya activaron su cuenta).
-export async function notifyAdmins(subject: string, lines: string[]) {
-  const users = await db.select({ email: adminUsers.email }).from(adminUsers).where(isNotNull(adminUsers.passwordHash));
+// Avisos de seguridad: solo al administrador principal.
+export async function notifyOwners(subject: string, lines: string[]) {
+  const users = await db
+    .select({ email: adminUsers.email })
+    .from(adminUsers)
+    .where(and(eq(adminUsers.role, "owner"), isNotNull(adminUsers.passwordHash)));
   if (!users.length) return;
   try {
     await sendMail(users.map((u) => u.email), subject, lines);
@@ -389,8 +413,9 @@ export async function inviteUser(name: string, email: string, by: AdminUser) {
   return user;
 }
 
+// Quita el acceso (nunca al principal).
 export async function removeUser(id: string) {
-  const [u] = await db.delete(adminUsers).where(eq(adminUsers.id, id)).returning();
+  const [u] = await db.delete(adminUsers).where(and(eq(adminUsers.id, id), ne(adminUsers.role, "owner"))).returning();
   return u ?? null;
 }
 

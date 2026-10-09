@@ -1,6 +1,7 @@
 import { getSettingsMap } from "@/lib/settings";
 import { getJSON } from "@/lib/kv";
 import { WEDDING as DEFAULTS } from "@/lib/content";
+import { withPaymentDefaults, type BankAccount } from "@/lib/panel";
 
 export type Place = {
   name: string;
@@ -133,7 +134,8 @@ export type WeddingContent = {
       // enabled: false = no se muestra a los invitados (si falta, se muestra).
       yape: { phone: string; name: string; enabled?: boolean };
       plin: { phone: string; name: string; enabled?: boolean };
-      bank: { bank: string; accountHolder: string; accountNumber: string; cci: string; enabled?: boolean };
+      bank: BankAccount;
+      bankUsd: BankAccount;
     };
   };
   zoneImages: Record<ZoneImageKey, string | null>;
@@ -195,9 +197,8 @@ export async function getWeddingContent(): Promise<WeddingContent> {
     transportation: map.contentTransportation ?? DEFAULTS.transportation,
     gifts: {
       message: map.contentGiftsMessage ?? DEFAULTS.gifts.message,
-      payment: parseJSON(
-        map.contentGiftsPayment,
-        DEFAULTS.gifts.payment as unknown as WeddingContent["gifts"]["payment"],
+      payment: withPaymentDefaults(
+        parseJSON(map.contentGiftsPayment, DEFAULTS.gifts.payment as unknown as WeddingContent["gifts"]["payment"]),
       ),
     },
     zoneImages: Object.fromEntries(
