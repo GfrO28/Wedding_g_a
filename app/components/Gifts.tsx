@@ -5,10 +5,9 @@ import { getWeddingContent } from "@/lib/weddingContent";
 import { backdropOf } from "@/lib/textLayout";
 import { getJSON } from "@/lib/kv";
 import { myContributions, type MyContribution } from "@/lib/gifts";
-import { asGiftCurrency, DEFAULT_GIFTS_DISPLAY, fmtTotals, GIFTS_DISPLAY_KEY, PAYMENT_LABELS, paymentShown, raisedByGift, sanitizeGiftsDisplay, type GiftsDisplay, type Payment } from "@/lib/panel";
+import { asGiftCurrency, DEFAULT_GIFTS_DISPLAY, fmtTotals, GIFTS_DISPLAY_KEY, paymentShown, raisedByGift, sanitizeGiftsDisplay, type GiftsDisplay, type Payment } from "@/lib/panel";
 import { FadeIn } from "./FadeIn";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
-import { CopyButton } from "./CopyButton";
 import { GiftList, type GiftView, type PayView } from "./GiftList";
 import { Slide } from "./Slide";
 import { TextArtboard } from "./TextArtboard";
@@ -46,13 +45,14 @@ export async function getGiftsData(guestId?: string | null): Promise<GiftView[]>
   });
 }
 
-// Solo los medios de pago que se muestran a los invitados.
+// Solo los medios de pago que se muestran a los invitados y tienen sus datos cargados.
 export function payView(p: Payment): PayView {
+  const ok = (m: "yape" | "plin" | "bank" | "bankUsd") => paymentShown(p, m) && (m === "yape" || m === "plin" ? !!p[m].phone.trim() : !!p[m].accountNumber.trim());
   return {
-    yape: paymentShown(p, "yape") ? p.yape : undefined,
-    plin: paymentShown(p, "plin") ? p.plin : undefined,
-    bank: paymentShown(p, "bank") ? p.bank : undefined,
-    bankUsd: paymentShown(p, "bankUsd") ? p.bankUsd : undefined,
+    yape: ok("yape") ? p.yape : undefined,
+    plin: ok("plin") ? p.plin : undefined,
+    bank: ok("bank") ? p.bank : undefined,
+    bankUsd: ok("bankUsd") ? p.bankUsd : undefined,
   };
 }
 
@@ -77,7 +77,7 @@ export async function Gifts({ slug }: { slug: string }) {
   );
 }
 
-// display: qué partes se ven (regalos, datos de pago) y si se muestran los montos juntados.
+// display: si se ven los regalos y si se muestran los montos juntados.
 // preview: en el editor, las partes vacías muestran un aviso en vez de nada.
 export function GiftsBody({
   display = DEFAULT_GIFTS_DISPLAY,
@@ -96,7 +96,6 @@ export function GiftsBody({
   mine?: MyContribution[];
   preview?: boolean;
 }) {
-  const showPayment = display.payment && (["yape", "plin", "bank", "bankUsd"] as const).some((k) => paymentShown(payment, k));
   return (
     <div className="space-y-8 px-1 py-2">
       {display.gifts &&
@@ -109,47 +108,6 @@ export function GiftsBody({
             Todavía no hay regalos. Se cargan en el panel, «Lista de regalos».
           </p>
         ) : null)}
-
-      {showPayment && (
-        <FadeIn delay={0.2}>
-          <div className="mx-auto max-w-sm space-y-4 rounded-lg border border-[var(--color-border)] p-6 text-left text-sm">
-            {(["yape", "plin"] as const).map(
-              (k) =>
-                paymentShown(payment, k) && (
-                  <div key={k} data-pay={k}>
-                    <p className="mb-1 font-medium text-[var(--color-fg)]">{PAYMENT_LABELS[k]}</p>
-                    <Row label="Número" value={payment[k].phone} copyable />
-                    <Row label="A nombre de" value={payment[k].name} />
-                  </div>
-                ),
-            )}
-            {(["bank", "bankUsd"] as const).map(
-              (k) =>
-                paymentShown(payment, k) && (
-                  <div key={k} data-pay={k}>
-                    <p className="mb-1 font-medium text-[var(--color-fg)]">{PAYMENT_LABELS[k]}</p>
-                    {payment[k].bank && <Row label="Banco" value={payment[k].bank} />}
-                    {payment[k].accountHolder && <Row label="Titular" value={payment[k].accountHolder} />}
-                    <Row label="Cuenta" value={payment[k].accountNumber} copyable />
-                    {payment[k].cci && <Row label="CCI" value={payment[k].cci} copyable />}
-                  </div>
-                ),
-            )}
-          </div>
-        </FadeIn>
-      )}
-    </div>
-  );
-}
-
-function Row({ label, value, copyable }: { label: string; value: string; copyable?: boolean }) {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-[var(--color-muted)]">{label}</span>
-      <span className="flex items-center gap-2 font-medium text-[var(--color-fg)]">
-        {value}
-        {copyable && <CopyButton value={value} />}
-      </span>
     </div>
   );
 }

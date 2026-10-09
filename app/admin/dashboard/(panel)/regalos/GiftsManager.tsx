@@ -100,9 +100,9 @@ export function GiftsManager({ gifts, contributions, display, message, payment }
         <section className="rounded-2xl border border-[#E7E1DB] bg-white p-5" aria-label="Medios de pago">
           <h2 className="text-[15px] font-semibold">Medios de pago</h2>
           <p className="text-sm text-[#6B6063]">Los invitados copian los datos con un toque</p>
-          {gifts.some((g) => g.currency !== "PEN" && g.visible) && !paymentShown(payment, "bankUsd") && (
+          {gifts.some((g) => g.currency !== "PEN" && g.visible) && !(paymentShown(payment, "bankUsd") && payment.bankUsd.accountNumber.trim()) && (
             <p className="mt-2 rounded-lg bg-[#FBF5E8] p-2.5 text-sm text-[#6E520F]" role="alert" data-usd-warning>
-              Tienes regalos en dólares, pero la «Transferencia en dólares» está oculta: complétala y muéstrala para que puedan abonar.
+              Tienes regalos en dólares, pero la «Transferencia en dólares» {paymentShown(payment, "bankUsd") ? "no tiene el número de cuenta" : "está oculta"}: complétala y muéstrala para que puedan abonar.
             </p>
           )}
           <div className="mt-3 flex flex-col gap-2.5">
@@ -289,7 +289,6 @@ function DisplayCard({ display, message }: { display: GiftsDisplay; message: str
       <h2 className="text-[15px] font-semibold">Qué se muestra en la invitación</h2>
       <div className="mt-2 flex flex-col">
         {row("gifts", "Regalos, con su barra de avance")}
-        {row("payment", "Datos para transferir (al final de la sección)")}
         {row("showRaised", "Mostrar el monto recaudado a los invitados")}
       </div>
       <form

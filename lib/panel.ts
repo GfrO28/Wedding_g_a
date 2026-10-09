@@ -5,14 +5,15 @@ export const GUEST_TARGET_KEY = "guestTarget";
 
 // Qué muestra la sección Regalos de la invitación.
 export const GIFTS_DISPLAY_KEY = "giftsDisplay";
-export type GiftsDisplay = { gifts: boolean; payment: boolean; showRaised: boolean };
-export const DEFAULT_GIFTS_DISPLAY: GiftsDisplay = { gifts: true, payment: true, showRaised: true };
+// (Los datos de pago ya no se muestran sueltos: aparecen en el paso 2 del aviso.)
+export type GiftsDisplay = { gifts: boolean; showRaised: boolean };
+export const DEFAULT_GIFTS_DISPLAY: GiftsDisplay = { gifts: true, showRaised: true };
 export function sanitizeGiftsDisplay(v: unknown): GiftsDisplay {
   const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
   const b = (k: string, d: boolean) => (typeof o[k] === "boolean" ? (o[k] as boolean) : d);
   // Antes había «lista para reservar» y «fondos» por separado: se ve si estaba alguna de las dos.
   const legacy = typeof o.registry === "boolean" || typeof o.fund === "boolean" ? o.registry !== false || o.fund !== false : true;
-  return { gifts: b("gifts", legacy), payment: b("payment", true), showRaised: b("showRaised", true) };
+  return { gifts: b("gifts", legacy), showRaised: b("showRaised", true) };
 }
 
 // Grupos sugeridos (se puede escribir cualquier otro).
