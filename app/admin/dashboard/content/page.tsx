@@ -210,7 +210,7 @@ export default async function ContentEditorPage() {
       drafts={drafts}
       styles={styles}
       tokens={tokens}
-      envelope={{ assets: envelope.assets, custom: envelope.custom, design: envelope.design, video: envelope.video, paper: envelope.paper }}
+      envelope={{ assets: envelope.assets, custom: envelope.custom, design: envelope.design, video: envelope.video, paper: envelope.paper, anim: envelope.anim }}
       galleryPhotos={allPhotos.map((p) => ({ id: p.id, url: p.url, alt: p.alt }))}
       desktopBackground={await getDesktopBackground()}
     />

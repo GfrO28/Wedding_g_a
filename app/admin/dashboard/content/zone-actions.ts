@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { setSetting } from "@/lib/kv";
 import { getUploadUrl, publicUrlFor, r2PublicBase } from "@/lib/storage/r2";
 import { sanitizeSectionOrder, SECTION_ORDER_KEY, ZONE_IMAGE_KEYS, ZONE_TOGGLE_KEYS, type ZoneImageKey, type ZoneToggleKey } from "@/lib/weddingContent";
-import { ENVELOPE_PAPER_KEY, isPaperColor, ENVELOPE_DESIGN_KEY, envelopeAssetUrl, envelopeSettingKey, isEnvelopeDesign, isEnvelopeSlot, isVideoEnvelopeSlot } from "@/lib/envelopeAssets";
+import { ENVELOPE_ANIM_KEY, sanitizeEnvelopeAnim, ENVELOPE_PAPER_KEY, isPaperColor, ENVELOPE_DESIGN_KEY, envelopeAssetUrl, envelopeSettingKey, isEnvelopeDesign, isEnvelopeSlot, isVideoEnvelopeSlot } from "@/lib/envelopeAssets";
 import { DESKTOP_BG_KEY, sanitizeDesktopBackground } from "@/lib/desktopBackground";
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -160,6 +160,14 @@ export async function resetVideoEnvelopeImageAction(slot: string) {
   if (!isVideoEnvelopeSlot(slot)) return;
   await setSetting(envelopeSettingKey(slot), "");
   revalidate();
+}
+
+// Velocidad y tiempos de la animación del sobre (se publican al cambiarlos).
+export async function setEnvelopeAnimAction(input: unknown) {
+  const clean = sanitizeEnvelopeAnim(input);
+  await setSetting(ENVELOPE_ANIM_KEY, JSON.stringify(clean));
+  revalidate();
+  return clean;
 }
 
 // Color del papel del sobre clásico (se publica al elegirlo).

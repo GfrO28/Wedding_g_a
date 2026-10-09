@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { EnvelopeAssets } from "./envelope/engine";
 import { ENVELOPE_VIDEO_BG, type TextLayout, type TokenValues } from "@/lib/textLayout";
-import { DEFAULT_ENVELOPE_PAPER, envelopeColors, type EnvelopeDesign, type VideoEnvelopeAssets } from "@/lib/envelopeAssets";
+import { DEFAULT_ENVELOPE_ANIM, type EnvelopeAnim, DEFAULT_ENVELOPE_PAPER, envelopeColors, type EnvelopeDesign, type VideoEnvelopeAssets } from "@/lib/envelopeAssets";
 import { TextArtboard } from "./TextArtboard";
 import { FramedEnvelope, type FramedEnvelopeImages } from "./FramedEnvelope";
 import { markIntroDone } from "./introGate";
@@ -25,9 +25,10 @@ export function EnvelopeIntro({
   videoLayout?: TextLayout;
   videoAssets?: VideoEnvelopeAssets;
   paper?: string;
+  anim?: EnvelopeAnim;
 }) {
   if (design === "video" && videoLayout)
-    return <VideoIntro layout={videoLayout} tokens={props.tokens} seal={props.assets.seal} images={videoAssets ? { front: videoAssets.vFront, flap: videoAssets.vFlap, card: videoAssets.vCard, seal: videoAssets.vSeal } : undefined} />;
+    return <VideoIntro heroDelay={(props.anim ?? DEFAULT_ENVELOPE_ANIM).heroDelay} layout={videoLayout} tokens={props.tokens} seal={props.assets.seal} images={videoAssets ? { front: videoAssets.vFront, flap: videoAssets.vFlap, card: videoAssets.vCard, seal: videoAssets.vSeal } : undefined} />;
   return <ClassicIntro {...props} />;
 }
 
@@ -35,7 +36,7 @@ export function EnvelopeIntro({
 const OPEN_MS = 1900;
 const FADE_MS = 800;
 
-function VideoIntro({ layout, tokens, seal, images }: { layout: TextLayout; tokens: TokenValues; seal: string; images?: FramedEnvelopeImages }) {
+function VideoIntro({ layout, tokens, seal, images, heroDelay }: { layout: TextLayout; tokens: TokenValues; seal: string; images?: FramedEnvelopeImages; heroDelay: number }) {
   const [stage, setStage] = useState<"closed" | "opening" | "leaving" | "done">("closed");
   // ?skipIntro=1 saltea la intro (en el servidor no se sabe: se muestra).
   const skip = useSyncExternalStore(
@@ -64,7 +65,8 @@ function VideoIntro({ layout, tokens, seal, images }: { layout: TextLayout; toke
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     setTimeout(() => {
       setStage("leaving");
-      markIntroDone();
+      // La portada espera un poco más, para que sus animaciones se vean.
+      setTimeout(markIntroDone, heroDelay * 1000);
     }, reduced ? 300 : OPEN_MS);
     setTimeout(() => setStage("done"), (reduced ? 300 : OPEN_MS) + FADE_MS);
   }
@@ -99,7 +101,9 @@ function ClassicIntro({
   textLayout,
   tokens,
   paper = DEFAULT_ENVELOPE_PAPER,
+  anim = DEFAULT_ENVELOPE_ANIM,
 }: {
+  anim?: EnvelopeAnim;
   assets: EnvelopeAssets;
   textLayout: TextLayout;
   tokens: TokenValues;
@@ -144,13 +148,15 @@ function ClassicIntro({
           textLayout,
           tokens,
           reducedMotion,
+          anim,
           colors: envelopeColors(paper),
           debug,
           onOpen: () => window.dispatchEvent(new Event(PLAY_MUSIC_EVENT)),
-          onReveal: markIntroDone,
+          // La portada arranca heroDelay segundos después de que empieza a desvanecerse el sobre.
+          onReveal: () => setTimeout(markIntroDone, anim.heroDelay * 1000),
           onComplete: () => {
             finished = true;
-            markIntroDone();
+            setTimeout(markIntroDone, Math.max(0, anim.heroDelay - 0.8) * 1000);
             document.body.style.overflow = prevOverflow;
             setDone(true);
           },
@@ -176,7 +182,7 @@ function ClassicIntro({
       mounted?.destroy();
       document.body.style.overflow = prevOverflow;
     };
-  }, [assets, textLayout, tokens, paper]);
+  }, [assets, textLayout, tokens, paper, anim]);
 
   if (done) return null;
 

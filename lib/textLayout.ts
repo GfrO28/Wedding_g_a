@@ -170,8 +170,15 @@ export const ENTRANCES = {
   flip: "Voltear",
   bounce: "Rebote",
   pop: "Aparecer con salto",
+  "letters-left": "Letra por letra desde la izquierda",
+  "letters-right": "Letra por letra desde la derecha",
+  "letters-up": "Letra por letra subiendo",
+  "letters-down": "Letra por letra bajando",
+  "letters-fade": "Letra por letra (aparecer)",
 } as const;
 export type EnterKey = keyof typeof ENTRANCES;
+// Efectos que animan cada letra por separado (solo en textos y botones).
+export const isLetterEnter = (k: EnterKey) => k.startsWith("letters-");
 
 // Orden de aparición: primero el fondo y el velo (lo que tapa toda la
 // diapositiva), después los títulos, después los subtítulos y el resto en el
@@ -462,12 +469,14 @@ const base = {
 type Spec = Partial<TextElement> & Pick<TextElement, "id" | "name" | "text" | "fontSize" | "font" | "color">;
 const el = (s: Spec & { x?: number; y?: number; w?: number; h?: number }): TextElement => ({ ...base, x: 0, y: 0, w: 600, h: 0, ...s });
 
-function envelopeLines(cx: number, cy: number): TextElement[] {
+function envelopeLines(cx: number, cy: number, landscape = false): TextElement[] {
   const c = { font: "cormorant" as FontKey, color: "#8A3A47", weight: 300, uppercase: true, w: 720 };
   return [
     el({ ...c, id: "line1", name: "Línea 1", text: "Estás", x: cx, y: cy - 62, fontSize: 26, letterSpacing: 0.38 }),
     el({ ...c, id: "line2", name: "Línea 2", text: "Cordialmente", x: cx, y: cy, fontSize: 57, letterSpacing: 0.1 }),
     el({ ...c, id: "line3", name: "Línea 3", text: "Invitado", x: cx, y: cy + 62, fontSize: 26, letterSpacing: 0.38 }),
+    // Se ve con el sobre cerrado (debajo del sello) y se va al abrirlo.
+    el({ id: "hint", name: "Aviso para abrir (sobre cerrado)", text: "Tocá el sello para abrir", x: cx, y: cy + (landscape ? 95 : 130), w: 600, fontSize: landscape ? 22 : 30, font: "cormorant", color: "#efe8dd", italic: true, letterSpacing: 0.04 }),
   ];
 }
 
@@ -640,7 +649,7 @@ export const SECTIONS = {
     mode: "artboard",
     boards: ARTBOARDS,
     tokens: [...COMMON_TOKENS, "invitado"],
-    defaults: { portrait: envelopeLines(384, 512), landscape: envelopeLines(512, 384) },
+    defaults: { portrait: envelopeLines(384, 512), landscape: envelopeLines(512, 384, true) },
   },
   envelopeVideo: {
     label: "Sobre con video",

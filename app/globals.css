@@ -101,3 +101,18 @@
 @media (prefers-reduced-motion: reduce) {
   [data-ae] { animation: enter-fade 0.4s ease-out both !important; }
 }
+
+/* Letra por letra: cada letra lleva su propio retraso (lo pone el lienzo). */
+@keyframes ael-left { from { opacity: 0; transform: translateX(-0.9em); } to { opacity: 1; transform: none; } }
+@keyframes ael-right { from { opacity: 0; transform: translateX(0.9em); } to { opacity: 1; transform: none; } }
+@keyframes ael-up { from { opacity: 0; transform: translateY(0.7em); } to { opacity: 1; transform: none; } }
+@keyframes ael-down { from { opacity: 0; transform: translateY(-0.7em); } to { opacity: 1; transform: none; } }
+.ael { display: inline-block; animation-duration: 0.55s; animation-timing-function: cubic-bezier(.2,.7,.2,1); animation-fill-mode: both; }
+.ael-left { animation-name: ael-left; }
+.ael-right { animation-name: ael-right; }
+.ael-up { animation-name: ael-up; }
+.ael-down { animation-name: ael-down; }
+.ael-fade { animation-name: enter-fade; }
+@media (prefers-reduced-motion: reduce) {
+  .ael { animation: enter-fade 0.4s ease-out both !important; }
+}

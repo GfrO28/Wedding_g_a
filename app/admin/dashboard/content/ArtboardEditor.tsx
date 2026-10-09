@@ -57,7 +57,7 @@ import {
   Unlink,
   X,
 } from "lucide-react";
-import { ElementContent, entranceClass, entranceDelay, isSized, TextArtboard, type Blocks } from "@/app/components/TextArtboard";
+import { ElementContent, entranceClass, entranceDelay, isSized, lettersFx, TextArtboard, type Blocks } from "@/app/components/TextArtboard";
 import { Ornament, ORNAMENT_LABELS } from "@/app/components/ornaments";
 import { requestDesignImageUploadAction } from "./zone-actions";
 import { setItineraryStepIconAction } from "./content-actions";
@@ -1658,7 +1658,12 @@ export function ArtboardEditor({
                         ...(play && !play.ids ? { animationDelay: `${entranceDelay(enterSteps.get(el.id) ?? 0)}s` } : null),
                       }}
                     >
-                      <ElementContent el={el} tokens={tokens} blocks={blocks} />
+                      <ElementContent
+                        el={el}
+                        tokens={tokens}
+                        blocks={blocks}
+                        letters={play && (!play.ids || play.ids.includes(el.id)) && lettersFx(el) ? (play.ids ? 0 : entranceDelay(enterSteps.get(el.id) ?? 0)) : undefined}
+                      />
                     </div>
                   )}
                   {isSel && sel.length === 1 && !isEditing && !el.locked &&

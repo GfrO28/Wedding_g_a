@@ -1,5 +1,27 @@
 import { gsap } from "gsap";
 import { artboardFit, elementStyle, fillTokens, type TextLayout, type TokenValues } from "@/lib/textLayout";
+import { DEFAULT_ENVELOPE_ANIM, type EnvelopeAnim } from "@/lib/envelopeAssets";
+
+// Tiempos de la apertura según los parámetros editables (velocidad, cuándo
+// arrancan la superior e inferior, duración del mensaje y acercamiento).
+function timingFor(a: EnvelopeAnim) {
+  const base = ENVELOPE_CONFIG.timing, k = 1 / a.speed;
+  const right: [number, number] = [0.4 * k, 1.2 * k], left: [number, number] = [0.5 * k, 1.2 * k];
+  const tbStart = left[0] + a.overlap * left[1];
+  return {
+    ...base,
+    prep: [0, 0.4 * k] as const,
+    right, left,
+    topBottom: [tbStart, 1.2 * k] as const,
+    zoom: [tbStart, 1.4 * k] as const,
+    zoomScale: 1 + a.zoom,
+    text: tbStart + 0.25 * k,
+    letter: 0.6 * k,
+    stagger: 0.04 * k,
+    cleanup: tbStart + 1.4 * k,
+    hold: a.hold,
+  };
+}
 
 export type EnvelopeAssets = {
   flapLeft: string;
@@ -373,6 +395,7 @@ export type MountOptions = {
   colors?: { background?: string; hint?: string }; // interior del sobre y texto «Toca el sello»
   onOpen?: () => void;
   onReveal?: () => void; // terminó el mensaje de la tarjeta: la intro empieza a desvanecerse
+  anim?: EnvelopeAnim; // velocidad y tiempos (por defecto los del panel)
   onComplete?: () => void;
 };
 
@@ -409,7 +432,8 @@ export function mountEnvelope(container: HTMLElement, G: Geometry, opts: MountOp
     transform: `scale(${fit.k})`, transformOrigin: "0 0", pointerEvents: "none",
   });
   for (const el of opts.textLayout[fit.orientation]) {
-    if (el.hidden || el.removed || el.kind !== "text") continue;
+    // El aviso para abrir no va en la tarjeta: se dibuja sobre el sobre cerrado.
+    if (el.hidden || el.removed || el.kind !== "text" || el.id === "hint") continue;
     const box = document.createElement("div");
     Object.assign(box.style, elementStyle(el));
     // Las letras se agrupan por palabra para que el texto solo se corte en
@@ -476,16 +500,20 @@ export function mountEnvelope(container: HTMLElement, G: Geometry, opts: MountOp
   flapLayer.append(top, bottom, right, left);
   scene.appendChild(flapLayer);
 
+  // Aviso «Tocá el sello para abrir»: es un texto del lienzo del sobre (se
+  // edita su texto, posición y formato, en celular y PC por separado).
   const hint = document.createElement("div");
-  hint.textContent = C.hint;
   Object.assign(hint.style, {
-    position: "absolute", left: W / 2 + "px", top: H / 2 + D / 2 + Math.max(10, vmin * 2) + "px", transform: "translateX(-50%)",
-    fontSize: Math.max(14, vmin * 3) + "px", fontStyle: "italic", color: "#fff8ee", whiteSpace: "nowrap", pointerEvents: "none",
-    letterSpacing: ".04em", fontFamily: `var(--font-envelope), "Cormorant Garamond", serif`,
-    // Pastilla oscura translúcida: se lee sobre papel claro u oscuro.
-    background: "rgba(25, 14, 10, .42)", padding: ".3em 1em .35em", borderRadius: "999px",
-    backdropFilter: "blur(3px)", textShadow: "0 1px 2px rgba(0,0,0,.35)", boxShadow: "0 2px 10px rgba(0,0,0,.18)",
+    position: "absolute", width: fit.A.w + "px", height: fit.A.h + "px", left: fit.left + "px", top: fit.top + "px",
+    transform: `scale(${fit.k})`, transformOrigin: "0 0", pointerEvents: "none",
   });
+  const hintEl = opts.textLayout[fit.orientation].find((e) => e.id === "hint" && !e.hidden && !e.removed);
+  if (hintEl) {
+    const box = document.createElement("div");
+    Object.assign(box.style, elementStyle(hintEl));
+    box.textContent = fillTokens(hintEl.text, opts.tokens);
+    hint.appendChild(box);
+  }
   scene.appendChild(hint);
 
   if (opts.debug) {
@@ -515,7 +543,7 @@ export function mountEnvelope(container: HTMLElement, G: Geometry, opts: MountOp
     seal.disabled = true;
     tweens.forEach((t) => t.kill());
     opts.onOpen?.();
-    const t = C.timing, ang = C.angles;
+    const t = timingFor(opts.anim ?? DEFAULT_ENVELOPE_ANIM), ang = C.angles;
     const textEnd = t.text + (letters.length - 1) * t.stagger + t.letter;
     flaps.forEach((fl) => (fl.style.willChange = "transform"));
     tl = gsap.timeline({ paused: true, onComplete: () => opts.onComplete?.() });
@@ -538,7 +566,7 @@ export function mountEnvelope(container: HTMLElement, G: Geometry, opts: MountOp
         .to(fronts[3], { filter: "brightness(1.25)", duration: t.left[1], ease: "power2.inOut" }, t.left[0])
         .to(top, { rotationX: ang.topBottom, duration: t.topBottom[1], ease: "power2.inOut" }, t.topBottom[0])
         .to(bottom, { rotationX: -ang.topBottom, duration: t.topBottom[1], ease: "power2.inOut" }, t.topBottom[0])
-        .to(scene, { scale: 1.06, duration: t.zoom[1], ease: "power1.inOut" }, t.zoom[0])
+        .to(scene, { scale: t.zoomScale, duration: t.zoom[1], ease: "power1.inOut" }, t.zoom[0])
         .to(letters, { opacity: 1, filter: "blur(0px)", y: 0, duration: t.letter, ease: "power2.out", stagger: { each: t.stagger, from: "random" } }, t.text)
         .set(flaps, { display: "none" }, t.cleanup)
         .to(words, { opacity: 0, filter: "blur(6px)", duration: t.textOut, ease: "power1.in" }, textEnd + t.hold)

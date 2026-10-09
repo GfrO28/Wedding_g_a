@@ -20,6 +20,7 @@ import {
   fillTokens,
   FONTS,
   frameStyle,
+  isLetterEnter,
   mapEmbedUrl,
   mapSourceOf,
   orientationFor,
@@ -35,11 +36,39 @@ import {
 // Contenido de los bloques: algo fijo o una función del objeto (p. ej. el sobre usa su color).
 export type Blocks = Record<string, ReactNode | ((el: TextElement) => ReactNode)>;
 
-// Clase de la animación de aparición de un objeto (null: aparece sin animación).
+// Los efectos letra por letra animan cada letra (en textos y botones).
+export const lettersFx = (el: TextElement) => isLetterEnter(el.enter) && (el.kind === "text" || el.kind === "link");
+
+// Clase de la animación de aparición de un objeto (null: aparece sin animación
+// o la animan sus letras).
 export function entranceClass(el: TextElement, full: boolean): string | null {
   if (el.enter === "none") return null;
   if (full) return "ae-bg";
+  if (isLetterEnter(el.enter)) return lettersFx(el) ? null : "ae-fade-up";
   return `ae-${el.enter}`;
+}
+
+// Texto partido en letras con su retraso (las palabras no se cortan al medio).
+function Letters({ text, fx, delay }: { text: string; fx: string; delay: number }) {
+  let i = 0;
+  const dir = fx.replace("letters-", "");
+  return (
+    <>
+      {text.split(/(\s+)/).map((part, w) =>
+        /^\s+$/.test(part) || !part ? (
+          part
+        ) : (
+          <span key={w} style={{ display: "inline-block", whiteSpace: "nowrap" }}>
+            {[...part].map((ch) => (
+              <span key={i} className={`ael ael-${dir}`} style={{ animationDelay: `${(delay + i++ * 0.045).toFixed(3)}s` }}>
+                {ch}
+              </span>
+            ))}
+          </span>
+        ),
+      )}
+    </>
+  );
 }
 // Segundos de espera según el turno: el fondo enseguida, después de a uno.
 export const entranceDelay = (step: number) => (step === 0 ? 0 : 0.3 + Math.min(step - 1, 24) * 0.14);
@@ -55,11 +84,13 @@ export function ElementContent({
   tokens,
   blocks,
   onOpenPhoto,
+  letters,
 }: {
   el: TextElement;
   tokens: TokenValues;
   blocks?: Blocks;
   onOpenPhoto?: (id: string) => void; // fotos de la galería: ampliar al tocarlas
+  letters?: number; // efecto letra por letra en marcha: segundos de espera antes de la primera letra
 }) {
   const block = (key: string) => {
     const b = blocks?.[key];
@@ -144,10 +175,11 @@ export function ElementContent({
           whiteSpace: "nowrap",
         }}
       >
-        {fillTokens(el.text, tokens)}
+        {letters !== undefined ? <Letters text={fillTokens(el.text, tokens)} fx={el.enter} delay={letters} /> : fillTokens(el.text, tokens)}
       </a>
     );
   }
+  if (letters !== undefined && el.kind === "text") return <Letters text={fillTokens(el.text, tokens)} fx={el.enter} delay={letters} />;
   return <>{fillTokens(el.text, tokens)}</>;
 }
 
@@ -325,6 +357,8 @@ export function TextArtboard({
           .map((el) => {
             const full = coversBoard(el, A);
             const cls = animate ? entranceClass(el, full) : null;
+            const byLetter = animate && el.enter !== "none" && lettersFx(el);
+            const delay = entranceDelay(order?.get(el.id) ?? 0);
             return (
             <div key={el.id} data-el={full ? "fill" : ""} style={{ ...elementStyle(el), ...(full ? cover : null), ...(dim?.includes(el.id) ? { opacity: 0, transition: "opacity .35s" } : null) } as CSSProperties}>
               <div
@@ -332,10 +366,11 @@ export function TextArtboard({
                 data-ae={cls && playing ? "" : undefined}
                 style={{
                   ...(isSized(el) ? { height: "100%" } : null),
-                  ...(cls ? (playing ? { animationDelay: `${entranceDelay(order?.get(el.id) ?? 0)}s` } : { opacity: 0 }) : null),
+                  ...(cls ? (playing ? { animationDelay: `${delay}s` } : { opacity: 0 }) : null),
+                  ...(byLetter && !playing ? { opacity: 0 } : null),
                 }}
               >
-                <ElementContent el={el} tokens={tokens} blocks={blocks} onOpenPhoto={setLightbox} />
+                <ElementContent el={el} tokens={tokens} blocks={blocks} onOpenPhoto={setLightbox} letters={byLetter && playing ? delay : undefined} />
               </div>
             </div>
             );

@@ -49,3 +49,25 @@ export function envelopeAssetUrl(slot: EnvelopeSlot, storedUrl: string | undefin
   const v = storedUrl.split("/").pop()?.slice(0, 48) ?? "1";
   return `/api/envelope/${slot}?v=${encodeURIComponent(v)}`;
 }
+
+// Animación del sobre (se edita en el panel del sobre clásico).
+// speed: velocidad de las solapas (1 = normal) · overlap: en qué momento de la
+// apertura lateral arrancan la superior y la inferior (0 = juntas, 1 = al
+// terminar) · hold: segundos que se lee el mensaje · zoom: acercamiento al
+// abrir · heroDelay: segundos de espera, después del sobre, antes de animar la portada.
+export type EnvelopeAnim = { speed: number; overlap: number; hold: number; zoom: number; heroDelay: number };
+export const DEFAULT_ENVELOPE_ANIM: EnvelopeAnim = { speed: 1, overlap: 0.5, hold: 2.5, zoom: 0.06, heroDelay: 0.6 };
+export const ENVELOPE_ANIM_KEY = "envelopeAnim";
+const clampN = (v: unknown, lo: number, hi: number, d: number) =>
+  typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d;
+export function sanitizeEnvelopeAnim(v: unknown): EnvelopeAnim {
+  const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  const d = DEFAULT_ENVELOPE_ANIM;
+  return {
+    speed: clampN(o.speed, 0.4, 2.5, d.speed),
+    overlap: clampN(o.overlap, 0, 1, d.overlap),
+    hold: clampN(o.hold, 0.5, 8, d.hold),
+    zoom: clampN(o.zoom, 0, 0.2, d.zoom),
+    heroDelay: clampN(o.heroDelay, 0, 4, d.heroDelay),
+  };
+}

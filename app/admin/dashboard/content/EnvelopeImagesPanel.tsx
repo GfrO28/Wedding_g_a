@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Download, Loader2, Play, X } from "lucide-react";
-import { DEFAULT_ENVELOPE_ASSETS, ENVELOPE_SLOTS, envelopeColors, type EnvelopeSlot } from "@/lib/envelopeAssets";
+import { DEFAULT_ENVELOPE_ASSETS, ENVELOPE_SLOTS, envelopeColors, type EnvelopeAnim, type EnvelopeSlot } from "@/lib/envelopeAssets";
 import { PAPERS, paintFlapBlob } from "@/app/components/envelope/paper";
 import type { TextLayout, TokenValues } from "@/lib/textLayout";
 import type { PieceNeed } from "@/app/components/envelope/engine";
@@ -53,7 +53,9 @@ export function EnvelopeImagesPanel({
   onAssetsChange,
   paper,
   onPaperChange,
+  anim,
 }: {
+  anim?: EnvelopeAnim;
   paper: string;
   onPaperChange: (color: string) => void;
   initialAssets: Record<EnvelopeSlot, string>;
@@ -260,7 +262,7 @@ export function EnvelopeImagesPanel({
             <button type="button" onClick={() => setPreview(false)} aria-label="Cerrar" className="absolute right-3 top-3 rounded-full p-1 text-neutral-500 hover:bg-neutral-100">
               <X size={18} />
             </button>
-            <EnvelopePreview assets={assets} textLayout={textLayout} tokens={tokens} colors={envelopeColors(paper)} />
+            <EnvelopePreview assets={assets} textLayout={textLayout} tokens={tokens} colors={envelopeColors(paper)} anim={anim} />
           </div>
         </div>
       )}
