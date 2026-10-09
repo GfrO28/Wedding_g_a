@@ -63,6 +63,7 @@ import { requestDesignImageUploadAction } from "./zone-actions";
 import { setItineraryStepIconAction } from "./content-actions";
 import { GALLERY_DRAG_TYPE } from "./GalleryPhotosPanel";
 import { LayersPanel } from "./LayersPanel";
+import { usePersistentFlag } from "@/lib/usePersistentFlag";
 import { Hint } from "./Hint";
 import { isVideo } from "@/app/components/BgMedia";
 import {
@@ -257,7 +258,8 @@ export function ArtboardEditor({
   const [overflow, setOverflow] = useState<Set<string>>(new Set());
   const [popover, setPopover] = useState<Popover>(null);
   const [realSize, setRealSize] = useState(false);
-  const [layersOpen, setLayersOpen] = useState(true);
+  // El panel de capas recuerda si quedó abierto (en este navegador).
+  const [layersOpen, setLayersOpen] = usePersistentFlag("editor.layers", true);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [closed, setClosed] = useState(!!cover);
   const [replay, setReplay] = useState(0);
@@ -1291,7 +1293,7 @@ export function ArtboardEditor({
     // Los atajos (Supr, flechas, Ctrl+Z…) funcionan con el foco en cualquier parte del editor.
     <div className="flex h-full min-h-0 flex-col" onKeyDown={onKey}>
       {/* Barra superior del lienzo */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-neutral-200 bg-white px-3 py-2">
+      <div className="flex min-h-[52px] flex-wrap items-center gap-2 border-b border-[#E7E1DB] bg-white px-3.5 py-2">
         {!single && <div className="flex rounded-md bg-neutral-100 p-0.5" role="tablist" aria-label="Formato">
           {(Object.keys(BOARDS) as Orientation[]).map((o) => (
             <button
@@ -1311,7 +1313,7 @@ export function ArtboardEditor({
           onClick={() => setLayersOpen((o) => !o)}
           aria-pressed={layersOpen}
           title="Mostrar u ocultar el panel de capas"
-          className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium ${layersOpen ? "bg-neutral-900 text-white" : "border border-neutral-300 hover:bg-neutral-50"}`}
+          className={`flex min-h-8 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium ${layersOpen ? "border-[#E9C9D1] bg-[#F3E6E9] text-[#7A2337]" : "border-[#E7E1DB] bg-white text-[#4A4043] hover:bg-[#FBF9F7]"}`}
         >
           <Layers size={14} /> Capas
         </button>
@@ -1496,7 +1498,7 @@ export function ArtboardEditor({
           apoya sobre el lienzo en vez de empujarlo (así un doble clic no cae
           en otro lugar). */}
       <div className="relative z-20 h-[46px] shrink-0">
-      <div className="absolute inset-x-0 top-0 flex min-h-[46px] flex-wrap items-center gap-1.5 border-b border-neutral-200 bg-white px-3 py-1.5 shadow-[0_1px_0_rgba(0,0,0,0.02)]">
+      <div className="absolute inset-x-0 top-0 flex min-h-[46px] flex-wrap items-center gap-1.5 border-b border-[#EFE9E3] bg-[#FBF9F7] px-3 py-1.5">
         {cover && closed ? (
           <p className="text-xs text-neutral-500">{cover.hint}</p>
         ) : painter ? (
@@ -1592,7 +1594,7 @@ export function ArtboardEditor({
         onDragOver={(e) => { if (acceptsDrop(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setDropping(true); } }}
         onDragLeave={(e) => { if (e.currentTarget === e.target) setDropping(false); }}
         onDrop={onDrop}
-        className={`relative flex min-h-0 flex-1 overflow-auto bg-neutral-200/70 p-4 outline-none ${dropping ? "ring-4 ring-inset ring-blue-400" : ""} ${painter ? "cursor-copy" : ""}`}
+        className={`relative flex min-h-0 flex-1 overflow-auto bg-[#EFE9E3] p-4 outline-none ${dropping ? "ring-4 ring-inset ring-blue-400" : ""} ${painter ? "cursor-copy" : ""}`}
         aria-label="Lienzo: tocá un elemento para seleccionarlo, arrastralo para moverlo, flechas para ajustar"
       >
         <div className="relative m-auto shrink-0 overflow-hidden shadow-lg" style={{ width: A.w * k, height: A.h * k, ...bgStyle }} data-canvas-bg>
@@ -2466,7 +2468,7 @@ function AddMenu({
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-700"
+        className="flex min-h-8 items-center gap-1 rounded-lg bg-[#7A2337] px-3 text-xs font-semibold text-white hover:bg-[#5A1828]"
       >
         {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Agregar
       </button>
@@ -2480,7 +2482,7 @@ function AddMenu({
                 role="tab"
                 aria-selected={tab === t.key}
                 onClick={() => setTab(t.key)}
-                className={`flex-1 border-b-2 px-1 pb-1.5 pt-1 text-xs font-medium ${tab === t.key ? "border-blue-600 text-blue-700" : "border-transparent text-neutral-500 hover:text-neutral-800"}`}
+                className={`flex-1 border-b-2 px-1 pb-1.5 pt-1 text-xs font-medium ${tab === t.key ? "border-[#7A2337] text-[#7A2337]" : "border-transparent text-neutral-500 hover:text-neutral-800"}`}
               >
                 {t.label}
               </button>
@@ -2511,7 +2513,7 @@ function AddMenu({
                   </button>
                 )}
                 <label className="flex items-center gap-2 text-xs text-neutral-700" title="Ocupa toda la diapositiva, va atrás de todo y queda bloqueada">
-                  <input type="checkbox" checked={asBackground} onChange={(e) => setAsBackground(e.target.checked)} className="h-3.5 w-3.5 accent-blue-600" />
+                  <input type="checkbox" checked={asBackground} onChange={(e) => setAsBackground(e.target.checked)} className="h-3.5 w-3.5 accent-[#7A2337]" />
                   Usar de fondo (ocupa toda la diapositiva)
                 </label>
                 <ul className="grid grid-cols-5 gap-1" aria-label="Fotos ya subidas">

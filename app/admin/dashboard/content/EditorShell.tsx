@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, Check, ChevronDown, ChevronUp, ExternalLink, Loader2, MapPin, PanelRightClose, PanelRightOpen, Trash2 } from "lucide-react";
+import { Check, ChevronDown, ChevronsLeft, ChevronsRight, ChevronUp, ExternalLink, Loader2, MapPin, PanelLeft, PanelRight, Trash2 } from "lucide-react";
+import { PanelRail } from "../PanelRail";
+import { usePersistentFlag } from "@/lib/usePersistentFlag";
 import { ENVELOPE_DESIGNS, envelopeColors, type EnvelopeAnim, type EnvelopeDesign, type EnvelopeSlot, type VideoEnvelopeAssets } from "@/lib/envelopeAssets";
 import { VideoEnvelopeImagesPanel, videoEnvelopeImages } from "./VideoEnvelopeImagesPanel";
 import { EnvelopeAnimPanel } from "./EnvelopeAnimPanel";
@@ -65,7 +67,9 @@ export function EditorShell({
     Object.fromEntries(sections.filter((s) => s.zone).map((s) => [s.id, s.enabled ?? true])),
   );
   // El sobre abre con sus imágenes a la vista: es lo primero que se busca ahí.
-  const [contentOpen, setContentOpen] = useState(sections[0].id === "intro");
+  // Qué paneles quedan abiertos se recuerda en este navegador (por defecto, todo abierto).
+  const [contentOpen, setContentOpen] = usePersistentFlag("editor.content", true);
+  const [sectionsOpen, setSectionsOpen] = usePersistentFlag("editor.sections", true);
   const [envelopeAssets, setEnvelopeAssets] = useState(envelope.assets);
   // Versión del sobre: cada una tiene su propio lienzo.
   const [envDesign, setEnvDesign] = useState<EnvelopeDesign>(envelope.design);
@@ -80,6 +84,7 @@ export function EditorShell({
   );
   const paperColors = useMemo(() => envelopeColors(paper), [paper]);
   const monogram = `${tokens.inicial1 ?? ""}${tokens.inicial2 ?? ""}`;
+  const monogramInitials = `${tokens.inicial1 ?? ""}&${tokens.inicial2 ?? ""}`;
   const designOf = (s: EditorSection): LayoutSection | undefined => (s.id === "intro" && envDesign === "video" ? "envelopeVideo" : s.design);
   const [galleryPhotos, setGalleryPhotos] = useState(initialGalleryPhotos);
   // Mapa recién agregado: se abre «Contenido» con su campo listo para escribir.
@@ -272,9 +277,10 @@ export function EditorShell({
       type="button"
       onClick={() => setContentOpen((o) => !o)}
       aria-pressed={contentOpen}
-      className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium ${contentOpen ? "bg-neutral-900 text-white" : "border border-neutral-300 hover:bg-neutral-50"}`}
+      title="Mostrar u ocultar el panel de contenido"
+      className={`flex min-h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium ${contentOpen ? "border-[#E9C9D1] bg-[#F3E6E9] text-[#7A2337]" : "border-[#E7E1DB] bg-white text-[#4A4043] hover:bg-[#FBF9F7]"}`}
     >
-      {contentOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />} {current.id === "intro" ? "Sobre" : "Contenido"}
+      <PanelRight size={14} /> {current.id === "intro" ? "Sobre" : "Contenido"}
     </button>
   );
 
@@ -394,27 +400,59 @@ export function EditorShell({
       panels[current.id]
     );
 
+  // Secciones que se pueden elegir (las que están en la invitación y las generales).
+  const pickable = navSections.filter((s) => s.group === "general" || !s.zone || enabled[s.id]);
+  const goTo = (id: string) => {
+    setCurrentId(id);
+    // El sobre y la galería abren con sus imágenes a la vista.
+    if (id === "intro" || id === "gallery") setContentOpen(true);
+  };
+
   return (
-    <div className="flex h-dvh flex-col bg-neutral-100 text-neutral-900">
+    <div className="flex h-dvh bg-[#F6F3EF] text-[#221A1C]">
+      <PanelRail initials={monogramInitials} />
+      <div className="flex min-w-0 flex-1 flex-col">
       {/* Encabezado */}
-      <header className="flex flex-wrap items-center gap-3 border-b border-neutral-200 bg-white px-4 py-2.5">
-        <a href="/admin/dashboard" className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-900">
-          <ArrowLeft size={15} /> Panel
-        </a>
-        <h1 className="font-serif text-lg text-neutral-800">Editor de la invitación</h1>
+      <header className="flex min-h-[60px] flex-wrap items-center gap-3 border-b border-[#E7E1DB] bg-white px-4 py-2">
+        <button
+          type="button"
+          onClick={() => setSectionsOpen((o) => !o)}
+          aria-pressed={sectionsOpen}
+          title="Mostrar u ocultar el menú de secciones"
+          className={`flex min-h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium ${sectionsOpen ? "border-[#E9C9D1] bg-[#F3E6E9] text-[#7A2337]" : "border-[#E7E1DB] bg-white text-[#4A4043] hover:bg-[#FBF9F7]"}`}
+          data-toggle-sections
+        >
+          <PanelLeft size={16} /> Secciones
+        </button>
+        <h1 className="whitespace-nowrap font-serif text-[22px]">Editor de la invitación</h1>
+        {!sectionsOpen && (
+          <label className="flex items-center gap-1.5 text-[13px] text-[#6B6063]">
+            Sección
+            <select
+              value={currentId}
+              onChange={(e) => goTo(e.target.value)}
+              className="min-h-9 rounded-lg border border-[#E9C9D1] bg-[#F3E6E9] px-2 text-[13px] font-semibold text-[#7A2337]"
+              data-section-select
+            >
+              {pickable.map((s) => (
+                <option key={s.id} value={s.id}>{s.label}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <SaveIndicator state={saveState} anyUnpublished={anyUnpublished} />
         <div className="ml-auto flex items-center gap-2">
-          {notice && <span className="hidden text-xs text-neutral-500 md:inline">{notice}</span>}
+          {notice && <span className="hidden text-xs text-[#6B6063] xl:inline">{notice}</span>}
           <a
             href="/admin/dashboard/preview"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs text-neutral-600 hover:bg-neutral-100"
+            className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[13px] text-[#4A4043] hover:bg-[#F6F3EF]"
           >
             Ver invitación publicada <ExternalLink size={12} />
           </a>
           {anyUnpublished && (
-            <button type="button" onClick={discard} className="rounded-md px-2.5 py-1.5 text-xs text-neutral-600 hover:bg-neutral-100">
+            <button type="button" onClick={discard} className="rounded-lg px-2.5 py-1.5 text-[13px] text-[#4A4043] hover:bg-[#F6F3EF]">
               Descartar cambios
             </button>
           )}
@@ -422,7 +460,7 @@ export function EditorShell({
             type="button"
             onClick={publish}
             disabled={!anyUnpublished || publishing}
-            className="flex items-center gap-1.5 rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-40"
+            className="flex min-h-[38px] items-center gap-1.5 rounded-[10px] bg-[#7A2337] px-[18px] text-sm font-semibold text-white hover:bg-[#5A1828] disabled:opacity-40"
           >
             {publishing && <Loader2 size={14} className="animate-spin" />} Publicar
           </button>
@@ -431,12 +469,18 @@ export function EditorShell({
 
       <div className="flex min-h-0 flex-1">
         {/* Secciones */}
-        <nav className="w-56 shrink-0 overflow-y-auto border-r border-neutral-200 bg-white p-2" aria-label="Secciones">
+        {sectionsOpen && (
+        <nav className="w-[216px] shrink-0 overflow-y-auto border-r border-[#E7E1DB] bg-white px-2.5 py-3" aria-label="Secciones">
           {(["sections", "general"] as const).map((group) => (
             <div key={group} className="mb-3">
-              <p className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
-                {group === "sections" ? "Secciones" : "General"}
-              </p>
+              <div className="flex items-center justify-between px-1.5 pb-1.5 pt-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#8A7F7B]">{group === "sections" ? "Secciones" : "General"}</p>
+                {group === "sections" && (
+                  <button type="button" onClick={() => setSectionsOpen(false)} aria-label="Ocultar el menú de secciones" title="Ocultar" className="rounded-md p-1 text-[#8A7F7B] hover:bg-[#F6F3EF] hover:text-[#221A1C]">
+                    <ChevronsLeft size={16} />
+                  </button>
+                )}
+              </div>
               {navSections
                 .filter((s) => s.group === group && (group === "general" || !s.zone || enabled[s.id]))
                 .map((s, i, list) => {
@@ -448,29 +492,25 @@ export function EditorShell({
                   return (
                     <div
                       key={s.id}
-                      className={`group/row flex items-center gap-1 rounded-md pr-1.5 ${active ? "bg-neutral-900 text-white" : "hover:bg-neutral-100"}`}
+                      className={`group/row flex items-center gap-1 rounded-lg pr-1.5 ${active ? "bg-[#F3E6E9] font-semibold text-[#7A2337]" : "text-[#4A4043] hover:bg-[#F6F3EF]"}`}
                     >
                       <button
                         type="button"
-                        onClick={() => {
-                          setCurrentId(s.id);
-                          // El sobre y la galería abren con sus imágenes a la vista.
-                          if (s.id === "intro" || s.id === "gallery") setContentOpen(true);
-                        }}
+                        onClick={() => goTo(s.id)}
                         aria-current={active ? "page" : undefined}
-                        className={`flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left text-sm ${!isOn && !active ? "text-neutral-400" : ""}`}
+                        className={`flex min-h-9 min-w-0 flex-1 items-center gap-1.5 px-2 text-left text-sm ${!isOn && !active ? "text-[#A79D99]" : ""}`}
                       >
                         <span className="truncate">{s.label}</span>
                         {((designOf(s) && unpublished(designOf(s)!))) && (
-                          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? "bg-amber-300" : "bg-amber-500"}`} title="Cambios sin publicar" />
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#C8961E]" title="Cambios sin publicar" />
                         )}
                       </button>
                       {movable && (
                         <span className={`flex flex-col group-hover/row:opacity-100 group-focus-within/row:opacity-100 ${active ? "opacity-100" : "opacity-0"}`} data-move={s.id}>
-                          <button type="button" disabled={!canUp} onClick={() => moveSection(s.id, -1)} aria-label={`Subir la sección ${s.label}`} title="Subir" className={`rounded leading-none disabled:invisible ${active ? "text-white/70 hover:text-white" : "text-neutral-400 hover:text-neutral-900"}`}>
+                          <button type="button" disabled={!canUp} onClick={() => moveSection(s.id, -1)} aria-label={`Subir la sección ${s.label}`} title="Subir" className={`rounded leading-none disabled:invisible ${active ? "text-[#7A2337]/70 hover:text-[#7A2337]" : "text-[#A79D99] hover:text-[#221A1C]"}`}>
                             <ChevronUp size={12} />
                           </button>
-                          <button type="button" disabled={!canDown} onClick={() => moveSection(s.id, 1)} aria-label={`Bajar la sección ${s.label}`} title="Bajar" className={`rounded leading-none disabled:invisible ${active ? "text-white/70 hover:text-white" : "text-neutral-400 hover:text-neutral-900"}`}>
+                          <button type="button" disabled={!canDown} onClick={() => moveSection(s.id, 1)} aria-label={`Bajar la sección ${s.label}`} title="Bajar" className={`rounded leading-none disabled:invisible ${active ? "text-[#7A2337]/70 hover:text-[#7A2337]" : "text-[#A79D99] hover:text-[#221A1C]"}`}>
                             <ChevronDown size={12} />
                           </button>
                         </span>
@@ -481,7 +521,7 @@ export function EditorShell({
                           aria-label={`Eliminar la sección ${s.label}`}
                           title="Eliminar la sección (se puede volver a agregar)"
                           onClick={() => removeSection(s)}
-                          className={`rounded p-1 ${active ? "text-white/70 hover:text-white" : "text-neutral-300 hover:text-red-600"}`}
+                          className={`rounded p-1 ${active ? "text-[#7A2337]/60 hover:text-[#7A2337]" : "text-[#D9D1CA] hover:text-red-600"}`}
                         >
                           <Trash2 size={13} />
                         </button>
@@ -494,10 +534,10 @@ export function EditorShell({
                           aria-label={`Mostrar u ocultar ${s.label}`}
                           title={isOn ? "Visible para los invitados" : "Oculta"}
                           onClick={() => toggleZone(s)}
-                          className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${isOn ? (active ? "bg-white/90" : "bg-neutral-900") : active ? "bg-white/30" : "bg-neutral-300"}`}
+                          className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${isOn ? "bg-[#7A2337]" : "bg-[#D9D1CA]"}`}
                         >
                           <span
-                            className={`absolute left-0.5 top-0.5 h-3 w-3 rounded-full shadow transition-transform ${isOn ? "translate-x-3" : "translate-x-0"} ${active && isOn ? "bg-neutral-900" : "bg-white"}`}
+                            className={`absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform ${isOn ? "translate-x-3" : "translate-x-0"}`}
                           />
                         </button>
                       )}
@@ -507,11 +547,12 @@ export function EditorShell({
               {group === "sections" && <AddSectionMenu sections={sections.filter((s) => s.group === "sections" && s.zone && !enabled[s.id])} onAdd={addSection} />}
             </div>
           ))}
-          <Hint id="drafts" className="px-2"><p className="text-[11px] leading-snug text-neutral-400">
+          <Hint id="drafts" className="px-2"><p className="text-[11px] leading-snug text-[#A79D99]">
             El diseño se guarda solo como borrador. Los invitados lo ven al tocar Publicar. Los datos de «Contenido»
             (textos, fotos, lugares) se publican al guardarlos.
           </p></Hint>
         </nav>
+        )}
 
         {/* Lienzo o contenido */}
         <main className="min-w-0 flex-1">
@@ -551,8 +592,8 @@ export function EditorShell({
             />
           ) : (
             <div className="h-full overflow-y-auto p-6">
-              <div className="mx-auto max-w-2xl rounded-lg border border-neutral-200 bg-white p-5">
-                <h2 className="mb-4 font-serif text-xl text-neutral-800">{current.label}</h2>
+              <div className="mx-auto max-w-2xl rounded-2xl border border-[#E7E1DB] bg-white p-5">
+                <h2 className="mb-4 font-serif text-xl">{current.label}</h2>
                 {panel}
               </div>
             </div>
@@ -561,11 +602,11 @@ export function EditorShell({
 
         {/* Contenido de la sección */}
         {design && contentOpen && (
-          <aside className="w-96 shrink-0 overflow-y-auto border-l border-neutral-200 bg-white p-4" aria-label={`Contenido de ${current.label}`}>
+          <aside className="w-96 shrink-0 overflow-y-auto border-l border-[#E7E1DB] bg-white p-4" aria-label={`Contenido de ${current.label}`}>
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="font-serif text-lg text-neutral-800">{isEnvelope ? "Sobre de apertura" : `Contenido · ${current.label}`}</h2>
-              <button type="button" onClick={() => setContentOpen(false)} aria-label="Cerrar contenido" className="rounded p-1 text-neutral-500 hover:bg-neutral-100">
-                <PanelRightClose size={16} />
+              <h2 className="font-serif text-lg">{isEnvelope ? "Sobre de apertura" : `Contenido · ${current.label}`}</h2>
+              <button type="button" onClick={() => setContentOpen(false)} aria-label="Cerrar contenido" title="Ocultar" className="rounded-md p-1 text-[#8A7F7B] hover:bg-[#F6F3EF] hover:text-[#221A1C]">
+                <ChevronsRight size={16} />
               </button>
             </div>
             {designPicker}
@@ -582,6 +623,7 @@ export function EditorShell({
             {panel}
           </aside>
         )}
+      </div>
       </div>
     </div>
   );
@@ -767,21 +809,22 @@ function MapField({ el, index, focus, onFocused, onSave }: { el: TextElement; in
 }
 
 function SaveIndicator({ state, anyUnpublished }: { state: SaveState; anyUnpublished: boolean }) {
+  const pill = "flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs";
   if (state === "saving")
     return (
-      <span className="flex items-center gap-1 text-xs text-neutral-500">
+      <span className={`${pill} bg-[#F6F3EF] text-[#6B6063]`}>
         <Loader2 size={12} className="animate-spin" /> Guardando…
       </span>
     );
-  if (state === "error") return <span className="text-xs text-red-600">No se pudo guardar el borrador</span>;
+  if (state === "error") return <span className={`${pill} bg-red-50 text-red-700`}>No se pudo guardar el borrador</span>;
   if (anyUnpublished)
     return (
-      <span className="flex items-center gap-1 text-xs text-amber-700">
-        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Borrador guardado · sin publicar
+      <span className={`${pill} bg-[#FBF5E8] text-[#6E520F]`}>
+        <span className="h-1.5 w-1.5 rounded-full bg-[#C8961E]" /> Borrador guardado · sin publicar
       </span>
     );
   return (
-    <span className="flex items-center gap-1 text-xs text-emerald-700">
+    <span className={`${pill} bg-[#EEF6F1] text-[#2F6B4F]`}>
       <Check size={12} /> Todo publicado
     </span>
   );
