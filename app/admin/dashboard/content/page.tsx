@@ -72,7 +72,7 @@ export default async function ContentEditorPage() {
     accommodation: { body: <AccommodationBody hotels={w.accommodation} /> },
     gifts: { body: <GiftsBody display={giftsDisplay} gifts={gifts} payment={w.gifts.payment} slug="preview" preview flow={flow.gifts} /> },
     rsvp: { body: <RSVPPreviewBody copy={flow.rsvp.copy} look={flow.rsvp.look} /> },
-    messages: { body: <MessagesBody messages={approvedMessages} slug="preview" /> },
+    messages: { body: <MessagesBody messages={approvedMessages} slug="preview" signer={null} /> },
   };
 
   const panels: Record<string, ReactNode> = {

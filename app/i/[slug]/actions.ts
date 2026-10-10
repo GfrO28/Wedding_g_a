@@ -14,7 +14,6 @@ export type RsvpInput = {
   attending: string[]; // ids de las personas de la invitación que asisten
   companionNames?: Record<string, string>; // nombre de cada acompañante que asiste
   dietaryRestrictions?: string;
-  notes?: string;
 };
 
 // El invitado marca quiénes de su invitación asisten: nunca puede sumar personas.
@@ -47,7 +46,6 @@ export async function submitRsvpAction(
     attending: numAttendees > 0,
     numAttendees,
     dietaryRestrictions: String(input.dietaryRestrictions ?? "").trim().slice(0, 300) || null,
-    notes: String(input.notes ?? "").trim().slice(0, 600) || null,
   };
   await db
     .insert(rsvps)
@@ -66,22 +64,22 @@ export async function submitRsvpAction(
   return { ok: true, members: await membersFor(guest.id, guest.fullName), pass };
 }
 
+// Mensaje para el muro: lo firma la invitación (el invitado no escribe su nombre).
 export async function submitMessageAction(formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
-  const name = String(formData.get("name") ?? "").trim();
-  const message = String(formData.get("message") ?? "").trim();
-
-  if (!name || !message) return;
+  const message = String(formData.get("message") ?? "").trim().slice(0, 600);
+  if (!message) return;
 
   const [guest] = await db
-    .select({ id: guests.id })
+    .select({ id: guests.id, name: guests.fullName })
     .from(guests)
     .where(eq(guests.slug, slug))
     .limit(1);
+  if (!guest) return;
 
   await db.insert(guestMessages).values({
-    guestId: guest?.id ?? null,
-    name,
+    guestId: guest.id,
+    name: guest.name,
     message,
   });
 

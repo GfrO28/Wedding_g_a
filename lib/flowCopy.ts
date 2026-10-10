@@ -1,7 +1,9 @@
 // Textos y estilo de las ventanas de Regalos y Confirmación. Se editan en el
 // editor de la invitación (subsección «Ventanas»), sin tocar el código.
 // Los textos pueden llevar datos entre llaves, por ejemplo {monto} o {nombre}.
+// Cada texto puede tener su propio formato (tipografía, tamaño, color…).
 
+import type { CSSProperties } from "react";
 import { FONTS, type FontKey } from "@/lib/textLayout";
 
 export const GIFTS_COPY = {
@@ -46,7 +48,6 @@ export const GIFTS_COPY = {
   photoLabel: "Foto de la constancia",
   photoButton: "Subir captura o foto",
   photoHelp: "JPG, PNG o WEBP, hasta 5 MB",
-  messageLabel: "Mensaje para los novios",
   send: "Enviar aviso",
   // Gracias y mis aportes
   thanks: "¡Gracias, {nombre}!",
@@ -73,7 +74,6 @@ export const RSVP_COPY = {
   companion: "Voy con acompañante",
   companionName: "Nombre de tu acompañante",
   diet: "Alergias o restricciones",
-  message: "Mensaje para los novios",
   count: "Confirmas {n} de {total} lugares",
   confirm: "Confirmar asistencia",
   sendSolo: "Enviar respuesta",
@@ -96,6 +96,18 @@ export const RSVP_COPY = {
 };
 export type RsvpCopy = typeof RSVP_COPY;
 
+// Formato propio de un texto (lo que no se elige queda como en el diseño).
+export type TextFmt = {
+  font?: FontKey;
+  size?: number; // % del tamaño del diseño (100 = igual)
+  color?: string;
+  bold?: boolean;
+  italic?: boolean;
+  upper?: boolean;
+  align?: "left" | "center" | "right";
+};
+export const SIZE_MIN = 60, SIZE_MAX = 250;
+
 // Estilo de las ventanas (vacío: el de la paleta de la invitación).
 export type FlowLook = {
   surface: string; // fondo de las ventanas
@@ -106,8 +118,9 @@ export type FlowLook = {
   border: string;
   radius: number; // px de las esquinas
   titleFont: FontKey | "";
+  fmt: Record<string, TextFmt>; // formato de cada texto
 };
-export const LOOK_DEFAULT: FlowLook = { surface: "", text: "", muted: "", accent: "", accentText: "", border: "", radius: 10, titleFont: "" };
+export const LOOK_DEFAULT: FlowLook = { surface: "", text: "", muted: "", accent: "", accentText: "", border: "", radius: 10, titleFont: "", fmt: {} };
 export const LOOK_COLORS: { key: keyof FlowLook; label: string }[] = [
   { key: "surface", label: "Fondo" },
   { key: "text", label: "Texto" },
@@ -127,12 +140,12 @@ export const FLOW_WINDOWS: Record<FlowModule, { id: string; label: string; keys:
     { id: "card", label: "Tarjeta de regalo", keys: ["give", "giveAgain", "goalDone", "left", "mine", "store", "mineLink"] },
     { id: "amount", label: "Paso 1 · Monto", keys: ["kicker", "introPen", "introUsd", "introAny", "leftGoal", "question", "other", "overGoal", "asWho", "next"] },
     { id: "pay", label: "Paso 2 · Datos de pago", keys: ["titlePen", "subPen", "titleUsd", "subUsd", "amountPay", "amountTransfer", "walletHelp", "noUsd", "noPay", "paid", "transferred", "later"] },
-    { id: "notify", label: "Paso 3 · Aviso", keys: ["notifyTitle", "notifySub", "change", "opLabel", "opHelp", "photoLabel", "photoButton", "photoHelp", "messageLabel", "send"] },
+    { id: "notify", label: "Paso 3 · Aviso", keys: ["notifyTitle", "notifySub", "change", "opLabel", "opHelp", "photoLabel", "photoButton", "photoHelp", "send"] },
     { id: "done", label: "Gracias", keys: ["thanks", "thanksSub", "mineTitle", "pending", "received", "mistake", "back"] },
     { id: "mine", label: "Mis aportes", keys: ["mineTitle", "mineSub", "mineEmpty", "mistake", "back"] },
   ],
   rsvp: [
-    { id: "group", label: "Formulario · familia", keys: ["introGroup", "attends", "notAttends", "companion", "companionName", "diet", "message", "count", "confirm", "noneGroup", "deadline"] },
+    { id: "group", label: "Formulario · familia", keys: ["introGroup", "attends", "notAttends", "companion", "companionName", "diet", "count", "confirm", "noneGroup", "deadline"] },
     { id: "single", label: "Formulario · individual", keys: ["introSingle", "introPlusOne", "yes", "no", "sendSolo", "noneSolo", "deadline"] },
     { id: "done", label: "Confirmado · pase", keys: ["doneTitle", "doneSummary", "doneSolo", "passTitle", "passHelp", "passSave", "changeNote", "changeButton"] },
     { id: "declined", label: "No asiste", keys: ["declinedTitle", "declinedSub", "changeNote", "changeButton"] },
@@ -140,7 +153,11 @@ export const FLOW_WINDOWS: Record<FlowModule, { id: string; label: string; keys:
   ],
 };
 
-// Qué datos acepta cada texto (se muestran como ayuda en el editor).
+// Datos que sirven en cualquier texto del módulo.
+export const BASE_VARS: Record<FlowModule, string[]> = { gifts: ["nombre"], rsvp: ["nombre", "fecha"] };
+// Datos que se suman en las ventanas de un regalo (no en la tarjeta ni en «Mis aportes»).
+export const GIFT_WINDOW_VARS = ["regalo"];
+// Datos propios de cada texto (además de los de arriba).
 export const COPY_VARS: Record<string, string> = {
   left: "{faltan}",
   mine: "{monto}",
@@ -182,8 +199,45 @@ export function sanitizeFlow<C extends Record<string, string>>(defaults: C, raw:
     border: color("border"),
     radius: typeof l.radius === "number" && l.radius >= 0 && l.radius <= 28 ? Math.round(l.radius) : LOOK_DEFAULT.radius,
     titleFont: typeof l.titleFont === "string" && l.titleFont in FONTS ? (l.titleFont as FontKey) : "",
+    fmt: sanitizeFmt(l.fmt, Object.keys(defaults)),
   };
   return { copy, look };
+}
+
+function sanitizeFmt(raw: unknown, keys: string[]): Record<string, TextFmt> {
+  const src = (raw && typeof raw === "object" ? raw : {}) as Record<string, Record<string, unknown>>;
+  const out: Record<string, TextFmt> = {};
+  for (const k of keys) {
+    const f = src[k];
+    if (!f || typeof f !== "object") continue;
+    const t: TextFmt = {};
+    if (typeof f.font === "string" && f.font in FONTS) t.font = f.font as FontKey;
+    if (typeof f.size === "number" && f.size >= SIZE_MIN && f.size <= SIZE_MAX) t.size = Math.round(f.size);
+    if (typeof f.color === "string" && HEX.test(f.color)) t.color = f.color;
+    if (typeof f.bold === "boolean") t.bold = f.bold;
+    if (typeof f.italic === "boolean") t.italic = f.italic;
+    if (typeof f.upper === "boolean") t.upper = f.upper;
+    if (f.align === "left" || f.align === "center" || f.align === "right") t.align = f.align;
+    if (Object.keys(t).length) out[k] = t;
+  }
+  return out;
+}
+
+// Estilo de un texto con formato propio.
+export function fmtStyle(f?: TextFmt): CSSProperties | undefined {
+  if (!f) return undefined;
+  const s: CSSProperties = {};
+  if (f.font) s.fontFamily = FONTS[f.font].css;
+  if (f.size) s.fontSize = `${f.size}%`;
+  if (f.color) s.color = f.color;
+  if (f.bold !== undefined) s.fontWeight = f.bold ? 700 : 400;
+  if (f.italic !== undefined) s.fontStyle = f.italic ? "italic" : "normal";
+  if (f.upper !== undefined) s.textTransform = f.upper ? "uppercase" : "none";
+  if (f.align) {
+    s.display = "block";
+    s.textAlign = f.align;
+  }
+  return s;
 }
 
 // Variables CSS que aplican el estilo a las ventanas (las vacías quedan con la paleta).
@@ -244,7 +298,6 @@ export const COPY_LABELS: Record<string, string> = {
   photoLabel: "Campo de la foto",
   photoButton: "Botón para subir la foto",
   photoHelp: "Ayuda de la foto",
-  messageLabel: "Campo del mensaje",
   send: "Botón para enviar",
   thanks: "Título de agradecimiento",
   thanksSub: "Mensaje de agradecimiento",
@@ -265,7 +318,6 @@ export const COPY_LABELS: Record<string, string> = {
   companion: "Casilla del acompañante",
   companionName: "Campo del nombre del acompañante",
   diet: "Campo de alergias o restricciones",
-  message: "Campo del mensaje",
   count: "Contador de lugares",
   confirm: "Botón para confirmar",
   sendSolo: "Botón para enviar (individual)",

@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { guestMessages } from "@/lib/db/schema";
+import { guestMessages, guests } from "@/lib/db/schema";
 import { desc, eq } from "drizzle-orm";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
 import { backdropOf } from "@/lib/textLayout";
@@ -18,46 +18,57 @@ export async function getApprovedMessages() {
 }
 
 export async function GuestMessages({ slug }: { slug: string }) {
-  const [messages, layout, tokens] = await Promise.all([getApprovedMessages(), getTextLayout("messages"), getTokenValues("")]);
+  const [messages, layout, tokens, guest] = await Promise.all([
+    getApprovedMessages(),
+    getTextLayout("messages"),
+    getTokenValues(""),
+    db.select({ name: guests.fullName }).from(guests).where(eq(guests.slug, slug)).limit(1),
+  ]);
 
   return (
     <Slide bgImage={backdropOf(layout)} fullBleed>
-      <TextArtboard page layout={layout} tokens={tokens} animate blocks={{ body: <MessagesBody messages={messages} slug={slug} /> }} />
+      <TextArtboard page layout={layout} tokens={tokens} animate blocks={{ body: <MessagesBody messages={messages} slug={slug} signer={guest[0]?.name ?? null} /> }} />
     </Slide>
   );
 }
 
+// signer: la invitación que firma el mensaje (null: vista previa, no se envía).
 export function MessagesBody({
   messages,
   slug,
+  signer,
 }: {
   messages: { id: string; name: string; message: string }[];
   slug: string;
+  signer: string | null;
 }) {
   return (
     <div className="px-1 py-2">
       <FadeIn delay={0.1}>
         <form action={submitMessageAction} className="mb-10 space-y-3">
           <input type="hidden" name="slug" value={slug} />
-          <input
-            name="name"
-            placeholder="Tu nombre"
-            required
-            className="w-full rounded-md border border-[var(--color-border)] px-3 py-2 text-sm"
-          />
-          <textarea
-            name="message"
-            placeholder="Tu mensaje para los novios"
-            required
-            rows={3}
-            className="w-full rounded-md border border-[var(--color-border)] px-3 py-2 text-sm"
-          />
-          <button
-            type="submit"
-            className="rounded-md border border-[var(--color-border)] px-4 py-2 text-sm hover:bg-[var(--color-border)]"
-          >
-            Enviar mensaje
-          </button>
+          <label className="block">
+            <span className="sr-only">Tu mensaje para los novios</span>
+            <textarea
+              name="message"
+              placeholder="Tu mensaje para los novios"
+              required
+              maxLength={600}
+              rows={3}
+              className="w-full rounded-md border border-[var(--color-border)] px-3 py-2 text-sm"
+              data-message-text
+            />
+          </label>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs text-[var(--color-muted)]">{signer ? `Lo firmas como ${signer}` : "Vista previa: el mensaje no se envía."}</span>
+            <button
+              type="submit"
+              disabled={!signer}
+              className="rounded-md border border-[var(--color-border)] px-4 py-2 text-sm hover:bg-[var(--color-border)] disabled:opacity-50"
+            >
+              Enviar mensaje
+            </button>
+          </div>
         </form>
       </FadeIn>
 

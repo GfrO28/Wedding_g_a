@@ -7,7 +7,8 @@ import { TextArtboard } from "./TextArtboard";
 import { backdropOf, type TextLayout, type TokenValues } from "@/lib/textLayout";
 import { submitRsvpAction } from "@/app/i/[slug]/actions";
 import { memberName, type MemberView, type PassType } from "@/lib/panel";
-import { fill, LOOK_DEFAULT, lookVars, RSVP_COPY, type FlowLook, type RsvpCopy } from "@/lib/flowCopy";
+import { LOOK_DEFAULT, lookVars, RSVP_COPY, type FlowLook, type RsvpCopy } from "@/lib/flowCopy";
+import { flowText } from "./flowText";
 
 type Existing = { attending: boolean; dietaryRestrictions: string | null; notes: string | null } | null;
 export type PassInfo = { svg: string; tableName: string | null } | null;
@@ -103,9 +104,9 @@ export function RSVPBody({ slug, guestName, passType, members: initial, existing
   const [going, setGoing] = useState<Set<string>>(() => new Set(initial.filter((m) => m.attending ?? !existing).map((m) => m.id)));
   const [names, setNames] = useState<Record<string, string>>(() => Object.fromEntries(initial.filter((m) => m.companion).map((m) => [m.id, m.name ?? ""])));
   const [diet, setDiet] = useState(existing?.dietaryRestrictions ?? "");
-  const [notes, setNotes] = useState(existing?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const tx = flowText(c, look.fmt, { nombre: guestName, fecha: deadlineLabel });
 
   const holder = members.find((m) => !m.companion);
   const companions = members.filter((m) => m.companion);
@@ -116,7 +117,7 @@ export function RSVPBody({ slug, guestName, passType, members: initial, existing
     if (preview) return;
     setError(null);
     start(async () => {
-      const res = await submitRsvpAction({ slug, attending: ids, companionNames: names, dietaryRestrictions: diet, notes });
+      const res = await submitRsvpAction({ slug, attending: ids, companionNames: names, dietaryRestrictions: diet });
       if (!res.ok) return setError(res.error);
       setMembers(res.members);
       setPass(res.pass);
@@ -140,14 +141,14 @@ export function RSVPBody({ slug, guestName, passType, members: initial, existing
           {n > 0 ? (
             <>
               <div>
-                <p className="flow-title text-2xl">{c.doneTitle}</p>
+                <p className="flow-title text-2xl">{tx.T("doneTitle")}</p>
                 <p className="mt-1 text-sm text-[var(--color-muted)]" data-rsvp-summary>
-                  {total > 1 ? fill(c.doneSummary, { n, total, nombres: attendingMembers.map(memberName).join(", ") }) : c.doneSolo}
+                  {total > 1 ? tx.T("doneSummary", { n, total, nombres: attendingMembers.map(memberName).join(", ") }) : tx.T("doneSolo")}
                 </p>
               </div>
               {pass && (
-                <section aria-label={c.passTitle} className="mx-auto max-w-xs space-y-2.5 rounded-[calc(var(--flow-r,8px)+4px)] border border-[var(--color-border)] bg-white p-4" data-pass>
-                  <p className="text-xs uppercase tracking-[0.16em] text-[var(--color-muted)]">{c.passTitle}</p>
+                <section aria-label={tx.txt("passTitle")} className="mx-auto max-w-xs space-y-2.5 rounded-[calc(var(--flow-r,8px)+4px)] border border-[var(--color-border)] bg-white p-4" data-pass>
+                  <p className="text-xs uppercase tracking-[0.16em] text-[var(--color-muted)]">{tx.T("passTitle")}</p>
                   <div role="img" aria-label="Código QR del pase" className="mx-auto w-44 [&_svg]:h-auto [&_svg]:w-full" dangerouslySetInnerHTML={{ __html: pass.svg }} />
                   <div>
                     <p className="flow-title text-lg">{guestName}</p>
@@ -156,24 +157,24 @@ export function RSVPBody({ slug, guestName, passType, members: initial, existing
                       {pass.tableName ? ` · Mesa ${pass.tableName}` : ""}
                     </p>
                   </div>
-                  <p className="text-xs text-[var(--color-muted)]">{c.passHelp}</p>
+                  <p className="text-xs text-[var(--color-muted)]">{tx.T("passHelp")}</p>
                   <button type="button" onClick={() => savePass(pass.svg, guestName)} className="min-h-11 w-full rounded-[var(--flow-r,8px)] border border-[var(--color-accent)] text-sm font-medium text-[var(--color-accent)]">
-                    {c.passSave}
+                    {tx.T("passSave")}
                   </button>
                 </section>
               )}
             </>
           ) : (
             <div>
-              <p className="flow-title text-2xl">{c.declinedTitle}</p>
-              <p className="mt-1 text-sm text-[var(--color-muted)]">{c.declinedSub}</p>
+              <p className="flow-title text-2xl">{tx.T("declinedTitle")}</p>
+              <p className="mt-1 text-sm text-[var(--color-muted)]">{tx.T("declinedSub")}</p>
             </div>
           )}
           {!closed && (
             <>
-              {deadlineLabel && <p className="text-xs text-[var(--color-muted)]">{fill(c.changeNote, { fecha: deadlineLabel })}</p>}
+              {deadlineLabel && <p className="text-xs text-[var(--color-muted)]">{tx.T("changeNote")}</p>}
               <button type="button" onClick={() => onDone(false)} className="min-h-11 w-full rounded-[var(--flow-r,8px)] border border-[var(--color-accent)] text-sm font-medium text-[var(--color-accent)]">
-                {c.changeButton}
+                {tx.T("changeButton")}
               </button>
             </>
           )}
@@ -186,7 +187,7 @@ export function RSVPBody({ slug, guestName, passType, members: initial, existing
   if (closed) {
     return (
       <div className={`${paper} text-center text-sm`} style={lookVars(look) as React.CSSProperties} data-rsvp-closed>
-        {c.closed}
+        {tx.T("closed")}
       </div>
     );
   }
@@ -195,7 +196,7 @@ export function RSVPBody({ slug, guestName, passType, members: initial, existing
   const count = members.filter((m) => going.has(m.id)).length;
   const row = "flex min-h-[52px] cursor-pointer items-center gap-3 px-3.5 text-[15px]";
   const check = "h-5 w-5 shrink-0 accent-[var(--color-accent)]";
-  const state = (on: boolean) => <span className={`text-xs ${on ? "text-[#2f6b45]" : "text-[var(--color-muted)]"}`}>{on ? c.attends : c.notAttends}</span>;
+  const state = (on: boolean) => <span className={`text-xs ${on ? "text-[#2f6b45]" : "text-[var(--color-muted)]"}`}>{tx.T(on ? "attends" : "notAttends")}</span>;
 
   return (
     <FadeIn className="px-1 py-2">
@@ -209,9 +210,9 @@ export function RSVPBody({ slug, guestName, passType, members: initial, existing
         data-rsvp-form
       >
         <p className="text-center text-sm text-[var(--color-muted)]" data-rsvp-intro>
-          {passType === "single" && c.introSingle}
-          {passType === "plusone" && c.introPlusOne}
-          {passType === "group" && fill(c.introGroup, { lugares: `${total} ${total === 1 ? "lugar" : "lugares"}` })}
+          {passType === "single" && tx.T("introSingle")}
+          {passType === "plusone" && tx.T("introPlusOne")}
+          {passType === "group" && tx.T("introGroup", { lugares: `${total} ${total === 1 ? "lugar" : "lugares"}` })}
         </p>
 
         {passType === "single" && holder ? (
@@ -225,7 +226,7 @@ export function RSVPBody({ slug, guestName, passType, members: initial, existing
                 onClick={() => toggle(holder.id, yes)}
                 className={`min-h-14 rounded-[calc(var(--flow-r,8px)+2px)] border text-[15px] ${going.has(holder.id) === yes ? "border-2 border-[var(--color-accent)] font-semibold text-[var(--color-accent)]" : "border-[var(--color-border)]"}`}
               >
-                {yes ? c.yes : c.no}
+                {tx.T(yes ? "yes" : "no")}
               </button>
             ))}
           </div>
@@ -245,11 +246,11 @@ export function RSVPBody({ slug, guestName, passType, members: initial, existing
               <div key={cm.id} className="space-y-2 border-t border-[var(--color-border)] px-3.5 py-3 first:border-t-0">
                 <label className="flex cursor-pointer items-center gap-3 text-[15px]">
                   <input type="checkbox" checked={going.has(cm.id)} onChange={(e) => toggle(cm.id, e.target.checked)} className={check} data-companion-toggle />
-                  <span className="flex-1">{companions.length === 1 ? c.companion : `Acompañante ${i + 1}`}</span>
+                  <span className="flex-1">{companions.length === 1 ? tx.T("companion") : `Acompañante ${i + 1}`}</span>
                 </label>
                 {going.has(cm.id) && (
                   <label className="block pl-8 text-[13px] text-[var(--color-muted)]">
-                    {companions.length === 1 ? c.companionName : "Nombre"}
+                    {companions.length === 1 ? tx.T("companionName") : "Nombre"}
                     <input
                       value={names[cm.id] ?? ""}
                       onChange={(e) => setNames({ ...names, [cm.id]: e.target.value })}
@@ -266,30 +267,26 @@ export function RSVPBody({ slug, guestName, passType, members: initial, existing
 
         {count > 0 && (
           <label className="block text-sm font-medium">
-            {c.diet} <span className="text-xs font-normal text-[var(--color-muted)]">· opcional</span>
+            {tx.T("diet")} <span className="text-xs font-normal text-[var(--color-muted)]">· opcional</span>
             <input value={diet} onChange={(e) => setDiet(e.target.value)} maxLength={300} className="mt-1.5 min-h-11 w-full rounded-[var(--flow-r,8px)] border border-[var(--color-border)] bg-white px-3 text-[15px] font-normal" />
           </label>
         )}
-        <label className="block text-sm font-medium">
-          {c.message} <span className="text-xs font-normal text-[var(--color-muted)]">· opcional</span>
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} maxLength={600} className="mt-1.5 w-full rounded-[var(--flow-r,8px)] border border-[var(--color-border)] bg-white px-3 py-2.5 text-[15px] font-normal" />
-        </label>
 
         {passType !== "single" && (
           <p className="text-center text-sm" data-rsvp-count>
-            {fill(c.count, { n: count, total })}
+            {tx.T("count", { n: count, total })}
           </p>
         )}
         {error && <p role="alert" className="rounded-[var(--flow-r,8px)] bg-red-50 p-3 text-sm text-red-800">{error}</p>}
         <button type="submit" disabled={pending || preview} className={primary}>
-          {pending ? "Enviando…" : passType === "single" ? c.sendSolo : count === 0 ? c.noneGroup : c.confirm}
+          {pending ? "Enviando…" : tx.T(passType === "single" ? "sendSolo" : count === 0 ? "noneGroup" : "confirm")}
         </button>
         {passType !== "single" && count > 0 && (
           <button type="button" disabled={pending || preview} onClick={() => send([])} className={link}>
-            {passType === "plusone" ? c.noneSolo : c.noneGroup}
+            {tx.T(passType === "plusone" ? "noneSolo" : "noneGroup")}
           </button>
         )}
-        {deadlineLabel && <p className="text-center text-xs text-[var(--color-muted)]">{fill(c.deadline, { fecha: deadlineLabel })}</p>}
+        {deadlineLabel && <p className="text-center text-xs text-[var(--color-muted)]">{tx.T("deadline")}</p>}
         {preview && <p className="text-center text-xs text-[var(--color-muted)]">Vista previa: no se guarda.</p>}
       </form>
     </FadeIn>

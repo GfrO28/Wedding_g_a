@@ -6,7 +6,8 @@ import { Camera, Check, ChevronLeft, X } from "lucide-react";
 import { contributeAction, requestReceiptUploadAction } from "@/app/i/[slug]/gift-actions";
 import { fmtMoney, PAYMENT_LABELS, QUICK_AMOUNTS, remainingFor, type BankAccount, type Currency, type GiftCurrency } from "@/lib/panel";
 import type { MyContribution } from "@/lib/gifts";
-import { fill, GIFTS_COPY, LOOK_DEFAULT, lookVars, type FlowLook, type GiftsCopy } from "@/lib/flowCopy";
+import { GIFTS_COPY, LOOK_DEFAULT, lookVars, type FlowLook, type GiftsCopy } from "@/lib/flowCopy";
+import { flowText, type FlowTx } from "./flowText";
 import { CopyButton } from "./CopyButton";
 
 export type GiftView = {
@@ -55,18 +56,19 @@ export function GiftList({
 }) {
   const [mine, setMine] = useState(initialMine);
   const [open, setOpen] = useState<{ gift: GiftView | null; step: Step } | null>(null);
+  const tx = flowText(c, look.fmt, { nombre: guestName ?? "" });
 
   return (
     <>
       <div className="space-y-4" style={lookVars(look) as React.CSSProperties} data-gift-list>
         {gifts.map((g) => (
-          <GiftCard key={g.id} gift={g} showRaised={showRaised} c={c} onGive={() => setOpen({ gift: g, step: "amount" })} />
+          <GiftCard key={g.id} gift={g} showRaised={showRaised} tx={tx} onGive={() => setOpen({ gift: g, step: "amount" })} />
         ))}
         {/* Siempre a la vista en la invitación de cada invitado (vacío: lo indica). */}
         {guestName && (
           <p className="text-center">
             <button type="button" onClick={() => setOpen({ gift: null, step: "mine" })} className="min-h-11 rounded-full bg-[var(--color-bg)] px-5 text-sm text-[var(--color-accent)] underline underline-offset-2 shadow-sm">
-              {c.mineLink}
+              {tx.T("mineLink")}
             </button>
           </p>
         )}
@@ -90,7 +92,7 @@ export function GiftList({
   );
 }
 
-function GiftCard({ gift: g, showRaised, onGive, c }: { gift: GiftView; showRaised: boolean; onGive: () => void; c: GiftsCopy }) {
+function GiftCard({ gift: g, showRaised, onGive, tx }: { gift: GiftView; showRaised: boolean; onGive: () => void; tx: FlowTx }) {
   const done = g.goal !== null && g.raised >= g.goal;
   const pct = g.goal ? Math.min(100, Math.round((g.raised / g.goal) * 100)) : 0;
   const left = remainingFor(g.goal, g.raised);
@@ -110,7 +112,7 @@ function GiftCard({ gift: g, showRaised, onGive, c }: { gift: GiftView; showRais
           {g.description && <p className="text-sm text-[var(--color-muted)]">{g.description}</p>}
           {g.link && (
             <a href={g.link} target="_blank" rel="noopener noreferrer" className="text-sm text-[var(--color-accent)] underline underline-offset-2">
-              {c.store}
+              {tx.T("store")}
             </a>
           )}
         </div>
@@ -130,19 +132,23 @@ function GiftCard({ gift: g, showRaised, onGive, c }: { gift: GiftView; showRais
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs text-[var(--color-muted)]" data-gift-status>
           {done ? (
-            <span className="text-sm font-medium text-[var(--color-accent)]">{c.goalDone}</span>
+            <span className="text-sm font-medium text-[var(--color-accent)]">{tx.T("goalDone")}</span>
           ) : (
-            [showRaised && left !== null ? fill(c.left, { faltan: fmtMoney(left, gc) }) : null, g.mine ? fill(c.mine, { monto: g.mine }) : null].filter(Boolean).join(" · ")
+            <>
+              {showRaised && left !== null && tx.T("left", { faltan: fmtMoney(left, gc) })}
+              {showRaised && left !== null && g.mine && " · "}
+              {g.mine && tx.T("mine", { monto: g.mine })}
+            </>
           )}
         </span>
         {!g.closed &&
           (done ? (
             <button type="button" onClick={onGive} className={`${btn} border border-[var(--color-accent)] text-[var(--color-accent)]`}>
-              {c.giveAgain}
+              {tx.T("giveAgain")}
             </button>
           ) : (
             <button type="button" onClick={onGive} className={`${btn} bg-[var(--color-accent)] text-[var(--color-accent-fg)] hover:opacity-90`}>
-              {c.give}
+              {tx.T("give")}
             </button>
           ))}
       </div>
@@ -187,12 +193,12 @@ function Flow({
   };
   const [method, setMethod] = useState<PenMethod | null>((["yape", "plin", "bank"] as const).find((m) => payment[m]) ?? null);
   const [op, setOp] = useState("");
-  const [msg, setMsg] = useState("");
   const [receipt, setReceipt] = useState<{ key: string; name: string } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const titleRef = useRef<HTMLHeadingElement>(null);
+  const tx = flowText(c, look.fmt, { nombre: guestName ?? "", regalo: gift?.name ?? "" });
 
   // Escape cierra; el fondo no se desplaza mientras está abierto.
   useEffect(() => {
@@ -235,7 +241,7 @@ function Flow({
     if (!gift) return;
     setError(null);
     start(async () => {
-      const res = await contributeAction({ slug, giftId: gift.id, amount, currency: cur, operationNumber: op, receiptKey: receipt?.key ?? null, message: msg });
+      const res = await contributeAction({ slug, giftId: gift.id, amount, currency: cur, operationNumber: op, receiptKey: receipt?.key ?? null });
       if (!res.ok) return setError(res.error);
       onSaved(res.mine);
       setStep("done");
@@ -250,9 +256,9 @@ function Flow({
       const over = left !== null && amount > left;
       return (
         <>
-          <Heading refEl={titleRef} kicker={c.kicker} title={gift.name}>
-            {choose ? c.introAny : cur === "USD" ? c.introUsd : c.introPen}
-            {left !== null && left > 0 && ` ${fill(c.leftGoal, { faltan: money(left) })}`}
+          <Heading refEl={titleRef} kicker={tx.T("kicker")} title={gift.name}>
+            {tx.T(choose ? "introAny" : cur === "USD" ? "introUsd" : "introPen")}
+            {left !== null && left > 0 && <> {tx.T("leftGoal", { faltan: money(left) })}</>}
           </Heading>
           {choose && (
             <div role="radiogroup" aria-label="Moneda del aporte" className="grid grid-cols-2 gap-1.5 rounded-[calc(var(--flow-r,8px)+2px)] bg-[var(--color-border)] p-1" data-currency-choice>
@@ -264,7 +270,7 @@ function Flow({
             </div>
           )}
           <fieldset className="space-y-2.5">
-            <legend className="mb-2.5 text-sm font-medium text-[var(--color-fg)]">{c.question}</legend>
+            <legend className="mb-2.5 text-sm font-medium text-[var(--color-fg)]">{tx.T("question")}</legend>
             <div className="grid grid-cols-2 gap-2">
               {QUICK_AMOUNTS[cur].map((n) => (
                 <button
@@ -279,7 +285,7 @@ function Flow({
               ))}
             </div>
             <label className="block text-[13px] text-[var(--color-muted)]">
-              {c.other}
+              {tx.T("other")}
               <span className="mt-1.5 flex min-h-12 items-center gap-2 rounded-[var(--flow-r,8px)] border border-[var(--color-border)] bg-white/70 px-3">
                 <span className="text-[15px] text-[var(--color-fg)]">{cur === "USD" ? "US$" : "S/"}</span>
                 <input
@@ -295,7 +301,7 @@ function Flow({
             </label>
             {over && (
               <p role="status" className="rounded-[var(--flow-r,8px)] bg-[var(--color-border)] px-3 py-2.5 text-[13px] text-[var(--color-fg)]" data-over-goal>
-                {fill(c.overGoal, { monto: money(amount) })}
+                {tx.T("overGoal", { monto: money(amount) })}
               </p>
             )}
           </fieldset>
@@ -303,14 +309,14 @@ function Flow({
             <div className="flex items-center gap-3 rounded-[calc(var(--flow-r,8px)+2px)] border border-[var(--color-border)] px-3.5 py-3">
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-accent)] flow-title text-[var(--color-accent-fg)]">{guestName.trim()[0]}</span>
               <span className="text-[15px] font-medium">
-                <span className="block text-xs font-normal text-[var(--color-muted)]">{c.asWho}</span>
+                <span className="block text-xs font-normal text-[var(--color-muted)]">{tx.T("asWho")}</span>
                 {guestName}
               </span>
             </div>
           )}
           <span className="flex-1" />
           <button type="button" disabled={amount < 1} onClick={() => setStep("pay")} className={primary}>
-            {fill(c.next, { monto: money(amount) })}
+            {tx.T("next", { monto: money(amount) })}
           </button>
         </>
       );
@@ -321,18 +327,18 @@ function Flow({
       const methods = (["yape", "plin", "bank"] as const).filter((m) => payment[m]);
       return (
         <>
-          <Heading refEl={titleRef} title={usd ? c.titleUsd : c.titlePen}>
-            {usd ? c.subUsd : fill(c.subPen, { regalo: gift.name })}
+          <Heading refEl={titleRef} title={tx.T(usd ? "titleUsd" : "titlePen")}>
+            {tx.T(usd ? "subUsd" : "subPen")}
           </Heading>
           <div className="rounded-[calc(var(--flow-r,8px)+2px)] bg-[var(--color-accent)] px-4 py-3.5 text-center text-[var(--color-accent-fg)]">
-            <span className="block text-xs uppercase tracking-[0.14em]">{usd ? c.amountTransfer : c.amountPay}</span>
+            <span className="block text-xs uppercase tracking-[0.14em]">{tx.T(usd ? "amountTransfer" : "amountPay")}</span>
             <span className="flow-title text-3xl" data-pay-amount>{money(amount)}</span>
           </div>
           {usd ? (
             payment.bankUsd ? (
               <Account title={PAYMENT_LABELS.bankUsd} acc={payment.bankUsd} />
             ) : (
-              <p className="rounded-[var(--flow-r,8px)] border border-[var(--color-border)] p-3 text-sm">{c.noUsd}</p>
+              <p className="rounded-[var(--flow-r,8px)] border border-[var(--color-border)] p-3 text-sm">{tx.T("noUsd")}</p>
             )
           ) : methods.length ? (
             <>
@@ -355,19 +361,19 @@ function Flow({
               ) : null}
               {method && method !== "bank" && (
                 <p className="text-[13px] text-[var(--color-muted)]">
-                  {fill(c.walletHelp, { medio: PAYMENT_LABELS[method], monto: money(amount) })}
+                  {tx.T("walletHelp", { medio: PAYMENT_LABELS[method], monto: money(amount) })}
                 </p>
               )}
             </>
           ) : (
-            <p className="rounded-[var(--flow-r,8px)] border border-[var(--color-border)] p-3 text-sm">{c.noPay}</p>
+            <p className="rounded-[var(--flow-r,8px)] border border-[var(--color-border)] p-3 text-sm">{tx.T("noPay")}</p>
           )}
           <span className="flex-1" />
           <button type="button" onClick={() => setStep("notify")} className={primary}>
-            {usd || method === "bank" ? c.transferred : c.paid}
+            {tx.T(usd || method === "bank" ? "transferred" : "paid")}
           </button>
           <button type="button" onClick={onClose} className="min-h-11 text-sm text-[var(--color-accent)] underline underline-offset-2">
-            {c.later}
+            {tx.T("later")}
           </button>
         </>
       );
@@ -376,21 +382,21 @@ function Flow({
     if (step === "notify" && gift) {
       return (
         <>
-          <Heading refEl={titleRef} title={c.notifyTitle}>{c.notifySub}</Heading>
+          <Heading refEl={titleRef} title={tx.T("notifyTitle")}>{tx.T("notifySub")}</Heading>
           <div className="flex items-center justify-between rounded-[calc(var(--flow-r,8px)+2px)] border border-[var(--color-border)] px-3.5 py-2.5">
             <span>
               <span className="block text-xs text-[var(--color-muted)]">{gift.name}{guestName ? ` · ${guestName}` : ""}</span>
               <span className="text-[17px] font-semibold">{money(amount)}</span>
             </span>
-            <button type="button" onClick={() => setStep("amount")} className="min-h-11 text-sm text-[var(--color-accent)] underline underline-offset-2">{c.change}</button>
+            <button type="button" onClick={() => setStep("amount")} className="min-h-11 text-sm text-[var(--color-accent)] underline underline-offset-2">{tx.T("change")}</button>
           </div>
           <label className="block text-sm font-medium">
-            {c.opLabel}
-            <span className="block text-xs font-normal text-[var(--color-muted)]">{c.opHelp}</span>
+            {tx.T("opLabel")}
+            <span className="block text-xs font-normal text-[var(--color-muted)]">{tx.T("opHelp")}</span>
             <input value={op} onChange={(e) => setOp(e.target.value)} required inputMode="numeric" autoComplete="off" placeholder="Ej.: 04529871" maxLength={30} className={`${field} mt-1.5`} />
           </label>
           <div className="text-sm font-medium">
-            {c.photoLabel} <span className="text-xs font-normal text-[var(--color-muted)]">· opcional</span>
+            {tx.T("photoLabel")} <span className="text-xs font-normal text-[var(--color-muted)]">· opcional</span>
             {receipt ? (
               <div className="mt-1.5 flex items-center justify-between gap-2 rounded-[var(--flow-r,8px)] border border-[var(--color-border)] px-3 py-2 font-normal">
                 <span className="flex min-w-0 items-center gap-2 truncate"><Check size={16} aria-hidden="true" /> <span className="truncate">{receipt.name}</span></span>
@@ -399,20 +405,16 @@ function Flow({
             ) : (
               <label className="mt-1.5 flex min-h-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--flow-r,8px)] border-[1.5px] border-dashed border-[var(--color-border)] p-3 text-center font-normal text-[var(--color-accent)]">
                 <Camera size={22} aria-hidden="true" />
-                {uploading ? "Subiendo…" : c.photoButton}
-                <span className="text-xs text-[var(--color-muted)]">{c.photoHelp}</span>
+                {uploading ? "Subiendo…" : tx.T("photoButton")}
+                <span className="text-xs text-[var(--color-muted)]">{tx.T("photoHelp")}</span>
                 <input type="file" accept="image/jpeg,image/png,image/webp,image/heic" className="sr-only" disabled={uploading || !guestName} onChange={(e) => e.target.files?.[0] && pickReceipt(e.target.files[0])} />
               </label>
             )}
           </div>
-          <label className="block text-sm font-medium">
-            {c.messageLabel} <span className="text-xs font-normal text-[var(--color-muted)]">· opcional</span>
-            <textarea value={msg} onChange={(e) => setMsg(e.target.value)} rows={2} maxLength={300} className="mt-1.5 w-full rounded-[var(--flow-r,8px)] border border-[var(--color-border)] bg-white/70 px-3 py-2.5 text-base text-[var(--color-fg)]" />
-          </label>
           {!guestName && <p className="rounded-[var(--flow-r,8px)] bg-[var(--color-border)] p-3 text-sm">Vista previa: el aviso no se guarda.</p>}
           <span className="flex-1" />
           <button type="button" disabled={!guestName || pending || uploading || op.trim().length < 4} onClick={submit} className={primary}>
-            {pending ? "Enviando…" : c.send}
+            {pending ? "Enviando…" : tx.T("send")}
           </button>
         </>
       );
@@ -424,17 +426,17 @@ function Flow({
         {step === "done" ? (
           <div className="flex flex-col items-center gap-2.5 pt-4 text-center">
             <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--color-accent)] text-[var(--color-accent-fg)]"><Check size={30} aria-hidden="true" /></span>
-            <h2 ref={titleRef} tabIndex={-1} className="flow-title text-3xl outline-none">{fill(c.thanks, { nombre: guestName ?? "" }).replace(/,\s*!/, "!")}</h2>
-            <p className="text-sm text-[var(--color-muted)]">{c.thanksSub}</p>
+            <h2 ref={titleRef} tabIndex={-1} className="flow-title text-3xl outline-none">{tx.T("thanks", undefined, (t) => t.replace(/,\s*!/, "!"))}</h2>
+            <p className="text-sm text-[var(--color-muted)]">{tx.T("thanksSub")}</p>
           </div>
         ) : (
-          <Heading refEl={titleRef} title={c.mineTitle}>{c.mineSub}</Heading>
+          <Heading refEl={titleRef} title={tx.T("mineTitle")}>{tx.T("mineSub")}</Heading>
         )}
-        <section aria-label={c.mineTitle} className="space-y-2.5" data-mine>
-          {step === "done" && <h3 className="text-[15px] font-semibold">{c.mineTitle}</h3>}
+        <section aria-label={tx.txt("mineTitle")} className="space-y-2.5" data-mine>
+          {step === "done" && <h3 className="text-[15px] font-semibold">{tx.T("mineTitle")}</h3>}
           {mine.length === 0 && (
             <p className="rounded-[calc(var(--flow-r,8px)+2px)] border border-dashed border-[var(--color-border)] px-3.5 py-4 text-center text-sm text-[var(--color-muted)]" data-mine-empty>
-              {c.mineEmpty}
+              {tx.T("mineEmpty")}
             </p>
           )}
           {mine.map((m) => (
@@ -447,15 +449,15 @@ function Flow({
                 </span>
               </span>
               <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${m.received ? "bg-[#e3efe6] text-[#2f6b45]" : "bg-[#f6ecd3] text-[#6e520f]"}`}>
-                {m.received ? c.received : c.pending}
+                {tx.T(m.received ? "received" : "pending")}
               </span>
             </div>
           ))}
-          {mine.length > 0 && <p className="text-xs text-[var(--color-muted)]">{c.mistake}</p>}
+          {mine.length > 0 && <p className="text-xs text-[var(--color-muted)]">{tx.T("mistake")}</p>}
         </section>
         <span className="flex-1" />
         <button type="button" onClick={onClose} className="flex min-h-12 w-full items-center justify-center rounded-[var(--flow-r,8px)] border border-[var(--color-accent)] text-[15px] font-medium text-[var(--color-accent)]">
-          {c.back}
+          {tx.T("back")}
         </button>
       </>
     );
@@ -465,7 +467,7 @@ function Flow({
       <div
         role="dialog"
         aria-modal={!inline}
-        aria-label={gift ? `Aportar a ${gift.name}` : c.mineTitle}
+        aria-label={gift ? `Aportar a ${gift.name}` : tx.txt("mineTitle")}
         style={lookVars(look) as React.CSSProperties}
         className={`flex w-full max-w-md flex-col overflow-y-auto bg-[var(--color-bg)] font-sans text-[var(--color-fg)] [--paper-fg:var(--color-fg)] ${inline ? "min-h-[640px] rounded-2xl shadow-xl" : "sm:max-h-[92dvh] sm:rounded-2xl"}`}
         data-gift-flow
@@ -510,11 +512,12 @@ const WINDOW_STEP: Record<string, Step> = { amount: "amount", pay: "pay", notify
 
 export function GiftWindowPreview({ window: w, copy, look, payment, gift }: { window: string; copy: GiftsCopy; look: FlowLook; payment: PayView; gift?: GiftView }) {
   const g = gift ?? SAMPLE_GIFT;
+  const tx = flowText(copy, look.fmt, { nombre: "Familia Rojas" });
   if (w === "card")
     return (
       <div className="w-full max-w-md space-y-4" style={lookVars(look) as React.CSSProperties}>
-        <GiftCard gift={g} showRaised c={copy} onGive={() => {}} />
-        <GiftCard gift={{ ...g, id: "completo", name: "Cafetera", raised: g.goal ?? 0, mine: null }} showRaised c={copy} onGive={() => {}} />
+        <GiftCard gift={g} showRaised tx={tx} onGive={() => {}} />
+        <GiftCard gift={{ ...g, id: "completo", name: "Cafetera", raised: g.goal ?? 0, mine: null }} showRaised tx={tx} onGive={() => {}} />
       </div>
     );
   return (
@@ -535,7 +538,7 @@ export function GiftWindowPreview({ window: w, copy, look, payment, gift }: { wi
   );
 }
 
-function Heading({ refEl, kicker, title, children }: { refEl: React.RefObject<HTMLHeadingElement | null>; kicker?: string; title: string; children?: ReactNode }) {
+function Heading({ refEl, kicker, title, children }: { refEl: React.RefObject<HTMLHeadingElement | null>; kicker?: ReactNode; title: ReactNode; children?: ReactNode }) {
   return (
     <div className="space-y-1.5">
       {kicker && <p className="text-xs uppercase tracking-[0.16em] text-[var(--color-muted)]">{kicker}</p>}

@@ -37,7 +37,6 @@ export type ContributeInput = {
   currency?: string; // solo cuenta en un aporte libre «el invitado elige»
   operationNumber: string;
   receiptKey?: string | null;
-  message?: string;
 };
 
 const MAX_PER_HOUR = 10;
@@ -56,7 +55,6 @@ export async function contributeAction(input: ContributeInput): Promise<{ ok: tr
   if (!/^[A-Za-z0-9-]{4,30}$/.test(operationNumber)) return { ok: false, error: "Escribe el número de operación que figura en tu constancia." };
 
   const receiptKey = input.receiptKey && RECEIPT_KEY.test(input.receiptKey) ? input.receiptKey : null;
-  const message = String(input.message ?? "").trim().slice(0, 300) || null;
 
   // Regalo cerrado al llegar a la meta.
   if (gift.closeOnGoal && gift.amount) {
@@ -79,7 +77,6 @@ export async function contributeAction(input: ContributeInput): Promise<{ ok: tr
     currency: gift.currency === "ANY" ? asCurrency(input.currency) : asCurrency(gift.currency),
     operationNumber,
     receiptKey,
-    message,
   });
   revalidatePath(`/i/${input.slug}`);
   return { ok: true, mine: await myContributions(guest.id) };
