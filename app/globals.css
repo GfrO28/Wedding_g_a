@@ -12,6 +12,11 @@
   font-family: var(--font-script), cursive;
 }
 
+/* Títulos de las ventanas de Regalos y Confirmación (tipografía elegible en el editor). */
+.flow-title {
+  font-family: var(--flow-title, var(--font-serif)), serif;
+}
+
 /* El pie es una franja con la proporción de su mesa (768×360 o 1024×130). */
 @keyframes artboard-in {
   from { opacity: 0; transform: translateY(14px); }

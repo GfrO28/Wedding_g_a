@@ -15,7 +15,8 @@ import { MusicUploader } from "./MusicUploader";
 import { EditorShell, type EditorSection } from "./EditorShell";
 import { Divider } from "@/app/components/Divider";
 import { AccommodationBody } from "@/app/components/Accommodation";
-import { GiftsBody, getGiftsData, getGiftsDisplay } from "@/app/components/Gifts";
+import { GiftsBody, getGiftsData, getGiftsDisplay, payView } from "@/app/components/Gifts";
+import { getFlowSettings } from "@/lib/flowCopyServer";
 import { RSVPPreviewBody } from "@/app/components/RSVPForm";
 import { ItineraryStepsEditor } from "./ItineraryStepsEditor";
 import { Hint } from "./Hint";
@@ -25,7 +26,7 @@ import { MessagesBody, getApprovedMessages } from "@/app/components/GuestMessage
 export const dynamic = "force-dynamic";
 
 export default async function ContentEditorPage() {
-  const [w, envelope, { published, drafts, styles }, tokens, allPhotos, gifts, giftsDisplay, approvedMessages] = await Promise.all([
+  const [w, envelope, { published, drafts, styles }, tokens, allPhotos, gifts, giftsDisplay, approvedMessages, flow] = await Promise.all([
     getWeddingContent(),
     getEnvelopeSettings(),
     getEditorLayouts(),
@@ -34,6 +35,7 @@ export default async function ContentEditorPage() {
     getGiftsData(),
     getGiftsDisplay(),
     getApprovedMessages(),
+    getFlowSettings(),
   ]);
 
   // El fondo de cada sección es un objeto del diseño (ver withBackdrop).
@@ -68,8 +70,8 @@ export default async function ContentEditorPage() {
   const blocks: Record<string, Record<string, ReactNode>> = {
     blessing: { divider: <Divider scaled /> },
     accommodation: { body: <AccommodationBody hotels={w.accommodation} /> },
-    gifts: { body: <GiftsBody display={giftsDisplay} gifts={gifts} payment={w.gifts.payment} slug="preview" preview /> },
-    rsvp: { body: <RSVPPreviewBody /> },
+    gifts: { body: <GiftsBody display={giftsDisplay} gifts={gifts} payment={w.gifts.payment} slug="preview" preview flow={flow.gifts} /> },
+    rsvp: { body: <RSVPPreviewBody copy={flow.rsvp.copy} look={flow.rsvp.look} /> },
     messages: { body: <MessagesBody messages={approvedMessages} slug="preview" /> },
   };
 
@@ -190,6 +192,7 @@ export default async function ContentEditorPage() {
       envelope={{ assets: envelope.assets, custom: envelope.custom, design: envelope.design, video: envelope.video, paper: envelope.paper, anim: envelope.anim }}
       galleryPhotos={allPhotos.map((p) => ({ id: p.id, url: p.url, alt: p.alt }))}
       desktopBackground={await getDesktopBackground()}
+      windows={{ flow, payment: payView(w.gifts.payment), gift: gifts[0] ?? null }}
     />
   );
 }

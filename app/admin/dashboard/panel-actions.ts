@@ -79,7 +79,8 @@ function cleanGuest(g: GuestInput) {
     groupName: orNull(g.groupName, 60),
     phone: orNull(g.phone, 30),
     email: orNull(g.email, 120),
-    tableName: orNull(g.tableName, 40),
+    // La mesa se asigna en la distribución de mesas (solo se toma al importar).
+    ...(g.tableName !== undefined ? { tableName: orNull(g.tableName, 40) } : {}),
     notes: orNull(g.notes, 300),
   };
 }
@@ -107,12 +108,11 @@ export async function deleteGuestsAction(ids: string[]) {
 }
 
 // Cambiar el grupo o la mesa de varios invitados a la vez.
-export async function bulkUpdateGuestsAction(ids: string[], changes: { groupName?: string; tableName?: string }) {
+export async function bulkUpdateGuestsAction(ids: string[], changes: { groupName?: string }) {
   await guard();
   if (!ids.length) return;
-  const set: { groupName?: string | null; tableName?: string | null } = {};
+  const set: { groupName?: string | null } = {};
   if (changes.groupName !== undefined) set.groupName = orNull(changes.groupName, 60);
-  if (changes.tableName !== undefined) set.tableName = orNull(changes.tableName, 40);
   if (!Object.keys(set).length) return;
   await db.update(guests).set(set).where(inArray(guests.id, ids.slice(0, 500)));
   revalidate();

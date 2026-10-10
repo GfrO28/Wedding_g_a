@@ -41,6 +41,8 @@ export const guestMembers = pgTable("guest_members", {
   companion: boolean("companion").notNull().default(false),
   attending: boolean("attending"),
   sortOrder: integer("sort_order").notNull().default(0),
+  // Mesa del plano del salón (id del objeto en la distribución de mesas).
+  tableId: text("table_id"),
 });
 
 export const rsvps = pgTable("rsvps", {

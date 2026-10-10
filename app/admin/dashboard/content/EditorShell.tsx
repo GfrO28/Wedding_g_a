@@ -18,6 +18,10 @@ import { EnvelopeImagesPanel } from "./EnvelopeImagesPanel";
 import { discardDraftsAction, publishAction, saveDraftAction, saveStylesDraftAction } from "./layout-actions";
 import { Hint } from "./Hint";
 import { saveSectionOrderAction, setEnvelopeDesignAction, toggleZoneEnabledAction } from "./zone-actions";
+import { WindowsEditor, type WindowsData } from "./WindowsEditor";
+
+// Secciones con ventanas propias (subsección «Ventanas»).
+const WINDOWS_OF: Record<string, "gifts" | "rsvp"> = { gifts: "gifts", rsvp: "rsvp" };
 
 export type EditorSection = {
   id: string;
@@ -43,6 +47,7 @@ export function EditorShell({
   envelope,
   galleryPhotos: initialGalleryPhotos,
   desktopBackground,
+  windows,
 }: {
   sections: EditorSection[];
   panels: Record<string, ReactNode>;
@@ -54,10 +59,13 @@ export function EditorShell({
   envelope: { assets: Record<EnvelopeSlot, string>; custom: Record<EnvelopeSlot, boolean>; design: EnvelopeDesign; video: VideoEnvelopeAssets; paper: string; anim: EnvelopeAnim };
   galleryPhotos: LibraryPhoto[];
   desktopBackground: DesktopBackground;
+  windows: WindowsData;
 }) {
   // Orden de las secciones del cuerpo (el sobre va primero y el pie al final, fijos).
   const [order, setOrder] = useState(() => sections.filter((s) => s.group === "sections" && s.id !== "intro" && s.id !== "footer").map((s) => s.id));
   const [currentId, setCurrentId] = useState((sections.find((s) => !s.zone || s.enabled !== false) ?? sections[0]).id);
+  // En Regalos y Confirmación: se ve el lienzo de la sección o sus ventanas.
+  const [windowsView, setWindowsView] = useState(false);
   const [layouts, setLayouts] = useState(drafts);
   const [publishedState, setPublishedState] = useState(published);
   const [styles, setStyles] = useState(initialStyles.draft);
@@ -394,6 +402,10 @@ export function EditorShell({
   // Secciones que se pueden elegir (las que están en la invitación y las generales).
   const pickable = navSections.filter((s) => s.group === "general" || !s.zone || enabled[s.id]);
   const goTo = (id: string) => {
+    // "gifts:windows" abre la subsección de ventanas de esa sección.
+    const [base, sub] = id.split(":");
+    setWindowsView(sub === "windows");
+    id = base;
     setCurrentId(id);
     // El sobre y la galería abren con sus imágenes a la vista.
     if (id === "intro" || id === "gallery") setContentOpen(true);
@@ -420,14 +432,15 @@ export function EditorShell({
           <label className="flex items-center gap-1.5 text-[13px] text-[#6B6063]">
             Sección
             <select
-              value={currentId}
+              value={windowsView ? `${currentId}:windows` : currentId}
               onChange={(e) => goTo(e.target.value)}
               className="min-h-9 rounded-lg border border-[#E9C9D1] bg-[#F3E6E9] px-2 text-[13px] font-semibold text-[#7A2337]"
               data-section-select
             >
-              {pickable.map((s) => (
-                <option key={s.id} value={s.id}>{s.label}</option>
-              ))}
+              {pickable.flatMap((s) => [
+                <option key={s.id} value={s.id}>{s.label}</option>,
+                ...(WINDOWS_OF[s.id] ? [<option key={`${s.id}:windows`} value={`${s.id}:windows`}>{s.label} · Ventanas</option>] : []),
+              ])}
             </select>
           </label>
         )}
@@ -478,9 +491,21 @@ export function EditorShell({
                   const movable = order.includes(s.id);
                   const canUp = movable && i > 0 && order.includes(list[i - 1].id);
                   const canDown = movable && i < list.length - 1 && order.includes(list[i + 1].id);
-                  const active = s.id === currentId;
+                  const active = s.id === currentId && !windowsView;
                   const isOn = s.zone ? enabled[s.id] : true;
-                  return (
+                  const sub = WINDOWS_OF[s.id] && (
+                    <button
+                      key={`${s.id}-windows`}
+                      type="button"
+                      onClick={() => goTo(`${s.id}:windows`)}
+                      aria-current={s.id === currentId && windowsView ? "page" : undefined}
+                      className={`mb-0.5 ml-4 flex min-h-8 w-[calc(100%-1rem)] items-center gap-1.5 rounded-lg px-2 text-left text-[13px] ${s.id === currentId && windowsView ? "bg-[#F3E6E9] font-semibold text-[#7A2337]" : "text-[#6B6063] hover:bg-[#F6F3EF]"}`}
+                      data-windows-nav={s.id}
+                    >
+                      <span aria-hidden="true">↳</span> Ventanas
+                    </button>
+                  );
+                  return [
                     <div
                       key={s.id}
                       className={`group/row flex items-center gap-1 rounded-lg pr-1.5 ${active ? "bg-[#F3E6E9] font-semibold text-[#7A2337]" : "text-[#4A4043] hover:bg-[#F6F3EF]"}`}
@@ -532,8 +557,9 @@ export function EditorShell({
                           />
                         </button>
                       )}
-                    </div>
-                  );
+                    </div>,
+                    sub,
+                  ];
                 })}
               {group === "sections" && <AddSectionMenu sections={sections.filter((s) => s.group === "sections" && s.zone && !enabled[s.id])} onAdd={addSection} />}
             </div>
@@ -547,7 +573,9 @@ export function EditorShell({
 
         {/* Lienzo o contenido */}
         <main className="min-w-0 flex-1">
-          {design ? (
+          {windowsView && WINDOWS_OF[current.id] ? (
+            <WindowsEditor key={current.id} module={WINDOWS_OF[current.id]} data={windows} />
+          ) : design ? (
             <ArtboardEditor
               key={`${design}-${version}`}
               section={design}
@@ -591,7 +619,7 @@ export function EditorShell({
         </main>
 
         {/* Contenido de la sección */}
-        {design && contentOpen && (
+        {design && contentOpen && !(windowsView && WINDOWS_OF[current.id]) && (
           <aside className="w-96 shrink-0 overflow-y-auto border-l border-[#E7E1DB] bg-white p-4" aria-label={`Contenido de ${current.label}`}>
             <div className="mb-3 flex items-center justify-between">
               <h2 className="font-serif text-lg">{isEnvelope ? "Sobre de apertura" : `Contenido · ${current.label}`}</h2>

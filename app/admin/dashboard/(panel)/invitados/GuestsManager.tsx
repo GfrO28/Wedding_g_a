@@ -44,7 +44,7 @@ function ago(iso: string | null) {
   return d === 1 ? "ayer" : d < 7 ? `hace ${d} días` : new Date(iso).toLocaleDateString("es-PE", { day: "numeric", month: "short" });
 }
 
-const EMPTY: GuestInput = { fullName: "", groupName: "", passType: "single", members: [], phone: "", email: "", tableName: "", notes: "" };
+const EMPTY: GuestInput = { fullName: "", groupName: "", passType: "single", members: [], phone: "", email: "", notes: "" };
 
 // Registro, lista y acciones de los invitados.
 export function GuestsManager({ guests, groups, origin, deadline, target }: { guests: GuestRow[]; groups: string[]; origin: string; deadline: string; target: number }) {
@@ -55,7 +55,7 @@ export function GuestsManager({ guests, groups, origin, deadline, target }: { gu
   const [page, setPage] = useState(0);
   const [sel, setSel] = useState<string[]>([]);
   const [editing, setEditing] = useState<GuestRow | null>(null);
-  const [modal, setModal] = useState<null | "import" | "remind" | "group" | "table">(null);
+  const [modal, setModal] = useState<null | "import" | "remind" | "group">(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -180,7 +180,6 @@ export function GuestsManager({ guests, groups, origin, deadline, target }: { gu
             <b>{sel.length} seleccionados</b>
             <Chip onClick={() => setModal("remind")}>Enviar recordatorio por WhatsApp</Chip>
             <Chip onClick={() => setModal("group")}>Cambiar grupo</Chip>
-            <Chip onClick={() => setModal("table")}>Asignar mesa</Chip>
             <Chip
               danger
               onClick={() => {
@@ -302,15 +301,15 @@ export function GuestsManager({ guests, groups, origin, deadline, target }: { gu
           <Remind guests={selected} build={(g) => whatsappLink(g.phone, g.attending === null ? reminderMessage(g.fullName, link(g), deadline) : inviteMessage(g.fullName, link(g)))} />
         </Modal>
       )}
-      {(modal === "group" || modal === "table") && (
-        <Modal title={modal === "group" ? "Cambiar grupo" : "Asignar mesa"} onClose={() => setModal(null)}>
+      {modal === "group" && (
+        <Modal title="Cambiar grupo" onClose={() => setModal(null)}>
           <BulkField
-            label={modal === "group" ? "Grupo" : "Mesa"}
-            list={modal === "group" ? "guest-groups" : undefined}
+            label="Grupo"
+            list="guest-groups"
             count={sel.length}
             onApply={(v) =>
               start(async () => {
-                await bulkUpdateGuestsAction(sel, modal === "group" ? { groupName: v } : { tableName: v });
+                await bulkUpdateGuestsAction(sel, { groupName: v });
                 setModal(null);
               })
             }
@@ -334,7 +333,6 @@ function GuestFields({ value, onChange }: { value: GuestInput; onChange: (v: Gue
       <Field label="Grupo"><input className={inputCls} list="guest-groups" maxLength={60} {...f("groupName")} placeholder="Elige o escribe uno" /></Field>
       <Field label="WhatsApp"><input className={inputCls} type="tel" maxLength={30} {...f("phone")} placeholder="987 654 321" /></Field>
       <Field label="Correo (opcional)"><input className={inputCls} type="email" maxLength={120} {...f("email")} placeholder="nombre@correo.com" /></Field>
-      <Field label="Mesa"><input className={inputCls} maxLength={40} {...f("tableName")} placeholder="Sin asignar" /></Field>
       <Field label="Nota interna"><input className={inputCls} maxLength={300} {...f("notes")} placeholder="Ej.: llevan un bebé" /></Field>
     </>
   );
@@ -405,7 +403,6 @@ function EditGuest({ guest, link, onClose }: { guest: GuestRow; link: string; on
     members: guest.members.map((m) => ({ id: m.id, name: m.companion ? "" : m.name ?? "", companion: m.companion })),
     phone: guest.phone ?? "",
     email: guest.email ?? "",
-    tableName: guest.tableName ?? "",
     notes: guest.notes ?? "",
   });
   const [error, setError] = useState<string | null>(null);
@@ -425,6 +422,7 @@ function EditGuest({ guest, link, onClose }: { guest: GuestRow; link: string; on
       <GuestFields value={v} onChange={setV} />
       <div className="text-sm text-[#6B6063] sm:col-span-2">
         <p>Enlace personal: <a href={link} target="_blank" rel="noopener noreferrer" className="break-all text-[#7A2337] underline">{link}</a></p>
+        <p className="mt-1">Mesa: <b>{guest.tableName || "sin asignar"}</b> · se asigna en <a href="/admin/dashboard/mesas" className="text-[#7A2337] underline">Distribución de mesas</a></p>
         {guest.rsvpNotes && <p className="mt-1">Nota del invitado: “{guest.rsvpNotes}”</p>}
       </div>
       {error && <p className="text-sm text-[#7A2337] sm:col-span-2" role="alert">{error}</p>}

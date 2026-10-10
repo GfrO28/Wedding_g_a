@@ -5,6 +5,8 @@ import { getWeddingContent } from "@/lib/weddingContent";
 import { backdropOf } from "@/lib/textLayout";
 import { getJSON } from "@/lib/kv";
 import { myContributions, type MyContribution } from "@/lib/gifts";
+import { getFlowSettings } from "@/lib/flowCopyServer";
+import type { FlowSettings, GiftsCopy } from "@/lib/flowCopy";
 import { asGiftCurrency, DEFAULT_GIFTS_DISPLAY, fmtTotals, GIFTS_DISPLAY_KEY, paymentShown, raisedByGift, sanitizeGiftsDisplay, type GiftsDisplay, type Payment } from "@/lib/panel";
 import { FadeIn } from "./FadeIn";
 import { getTextLayout, getTokenValues } from "@/lib/textLayoutServer";
@@ -58,16 +60,17 @@ export function payView(p: Payment): PayView {
 
 export async function Gifts({ slug }: { slug: string }) {
   const [guest] = slug === "preview" ? [] : await db.select({ id: guests.id, fullName: guests.fullName }).from(guests).where(eq(guests.slug, slug)).limit(1);
-  const [gifts, WEDDING, layout, tokens, display, mine] = await Promise.all([
+  const [gifts, WEDDING, layout, tokens, display, mine, flow] = await Promise.all([
     getGiftsData(guest?.id),
     getWeddingContent(),
     getTextLayout("gifts"),
     getTokenValues(""),
     getGiftsDisplay(),
     guest ? myContributions(guest.id) : Promise.resolve([] as MyContribution[]),
+    getFlowSettings(),
   ]);
   const blocks = {
-    body: <GiftsBody display={display} gifts={gifts} payment={WEDDING.gifts.payment} slug={slug} guestName={guest?.fullName ?? null} mine={mine} />,
+    body: <GiftsBody display={display} gifts={gifts} payment={WEDDING.gifts.payment} slug={slug} guestName={guest?.fullName ?? null} mine={mine} flow={flow.gifts} />,
   };
 
   return (
@@ -87,6 +90,7 @@ export function GiftsBody({
   guestName = null,
   mine = [],
   preview = false,
+  flow,
 }: {
   display?: GiftsDisplay;
   gifts: GiftView[];
@@ -95,13 +99,14 @@ export function GiftsBody({
   guestName?: string | null;
   mine?: MyContribution[];
   preview?: boolean;
+  flow?: FlowSettings<GiftsCopy>;
 }) {
   return (
     <div className="space-y-8 px-1 py-2">
       {display.gifts &&
         (gifts.length > 0 ? (
           <FadeIn delay={0.1}>
-            <GiftList gifts={gifts} payment={payView(payment)} guestName={guestName} slug={slug} showRaised={display.showRaised} mine={mine} />
+            <GiftList gifts={gifts} payment={payView(payment)} guestName={guestName} slug={slug} showRaised={display.showRaised} mine={mine} copy={flow?.copy} look={flow?.look} />
           </FadeIn>
         ) : preview ? (
           <p className="rounded-lg border border-dashed border-[var(--color-border)] p-4 text-center text-sm text-[var(--color-muted)]">

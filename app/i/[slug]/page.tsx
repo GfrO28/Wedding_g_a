@@ -24,6 +24,7 @@ import { getDesktopBackground } from "@/lib/desktopBackgroundServer";
 import { getWeddingContent, type OrderedSection } from "@/lib/weddingContent";
 import { isAdminAuthed, siteOrigin } from "@/lib/auth";
 import { deadlinePassed, membersFor, passSvg } from "@/lib/rsvp";
+import { getFlowSettings } from "@/lib/flowCopyServer";
 import { asPassType } from "@/lib/panel";
 import { Fragment, type ReactNode } from "react";
 
@@ -64,7 +65,7 @@ export default async function GuestInvitationPage({
 
   const desktop = await getDesktopBackground();
   // Confirmación: las personas de la invitación y su pase (el QR no lleva la mesa: se lee al escanear).
-  const members = await membersFor(guest.id, guest.fullName);
+  const [members, flow] = await Promise.all([membersFor(guest.id, guest.fullName), getFlowSettings()]);
   const deadline = new Date(content.rsvpDeadlineISO);
   const pass = guest.passToken && existingRsvp?.attending ? { svg: await passSvg(guest.passToken, await siteOrigin()), tableName: guest.tableName } : null;
   // Cada sección del cuerpo; se muestran en el orden que se eligió en el editor.
@@ -92,6 +93,8 @@ export default async function GuestInvitationPage({
         deadlineLabel={deadline.toLocaleDateString("es-PE", { day: "numeric", month: "long", timeZone: "America/Lima" })}
         closed={deadlinePassed(content.rsvpDeadlineISO)}
         pass={pass}
+        copy={flow.rsvp.copy}
+        look={flow.rsvp.look}
         layout={rsvpText}
         tokens={tokens}
       />

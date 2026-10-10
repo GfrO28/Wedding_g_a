@@ -6,6 +6,7 @@ import { Camera, Check, ChevronLeft, X } from "lucide-react";
 import { contributeAction, requestReceiptUploadAction } from "@/app/i/[slug]/gift-actions";
 import { fmtMoney, PAYMENT_LABELS, QUICK_AMOUNTS, remainingFor, type BankAccount, type Currency, type GiftCurrency } from "@/lib/panel";
 import type { MyContribution } from "@/lib/gifts";
+import { fill, GIFTS_COPY, LOOK_DEFAULT, lookVars, type FlowLook, type GiftsCopy } from "@/lib/flowCopy";
 import { CopyButton } from "./CopyButton";
 
 export type GiftView = {
@@ -40,6 +41,8 @@ export function GiftList({
   slug,
   showRaised,
   mine: initialMine,
+  copy: c = GIFTS_COPY,
+  look = LOOK_DEFAULT,
 }: {
   gifts: GiftView[];
   payment: PayView;
@@ -47,21 +50,23 @@ export function GiftList({
   slug: string;
   showRaised: boolean;
   mine: MyContribution[];
+  copy?: GiftsCopy;
+  look?: FlowLook;
 }) {
   const [mine, setMine] = useState(initialMine);
   const [open, setOpen] = useState<{ gift: GiftView | null; step: Step } | null>(null);
 
   return (
     <>
-      <div className="space-y-4" data-gift-list>
+      <div className="space-y-4" style={lookVars(look) as React.CSSProperties} data-gift-list>
         {gifts.map((g) => (
-          <GiftCard key={g.id} gift={g} showRaised={showRaised} onGive={() => setOpen({ gift: g, step: "amount" })} />
+          <GiftCard key={g.id} gift={g} showRaised={showRaised} c={c} onGive={() => setOpen({ gift: g, step: "amount" })} />
         ))}
         {/* Siempre a la vista en la invitación de cada invitado (vacío: lo indica). */}
         {guestName && (
           <p className="text-center">
             <button type="button" onClick={() => setOpen({ gift: null, step: "mine" })} className="min-h-11 rounded-full bg-[var(--color-bg)] px-5 text-sm text-[var(--color-accent)] underline underline-offset-2 shadow-sm">
-              Ver mis aportes
+              {c.mineLink}
             </button>
           </p>
         )}
@@ -77,33 +82,35 @@ export function GiftList({
           mine={mine}
           onSaved={setMine}
           onClose={() => setOpen(null)}
+          c={c}
+          look={look}
         />
       )}
     </>
   );
 }
 
-function GiftCard({ gift: g, showRaised, onGive }: { gift: GiftView; showRaised: boolean; onGive: () => void }) {
+function GiftCard({ gift: g, showRaised, onGive, c }: { gift: GiftView; showRaised: boolean; onGive: () => void; c: GiftsCopy }) {
   const done = g.goal !== null && g.raised >= g.goal;
   const pct = g.goal ? Math.min(100, Math.round((g.raised / g.goal) * 100)) : 0;
   const left = remainingFor(g.goal, g.raised);
   // Un regalo con meta siempre tiene moneda fija ("ANY" es solo para aportes libres).
   const gc: Currency = g.currency === "USD" ? "USD" : "PEN";
-  const btn = "flex min-h-11 shrink-0 items-center rounded-md px-5 text-sm font-medium";
+  const btn = "flex min-h-11 shrink-0 items-center rounded-[var(--flow-r,8px)] px-5 text-sm font-medium";
   return (
     // Tarjeta de «papel»: se lee bien sobre cualquier fondo de la sección.
-    <div className="space-y-2.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4 text-left text-[var(--color-fg)] shadow-sm [--color-fg:var(--paper-fg)] [--color-muted:var(--paper-muted)]" data-gift={g.id}>
+    <div className="space-y-2.5 rounded-[calc(var(--flow-r,8px)+2px)] border border-[var(--color-border)] bg-[var(--color-bg)] p-4 text-left text-[var(--color-fg)] shadow-sm [--color-fg:var(--paper-fg)] [--color-muted:var(--paper-muted)]" data-gift={g.id}>
       <div className="flex items-center gap-3">
         {g.imageUrl && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={g.imageUrl} alt="" className="h-14 w-14 shrink-0 rounded-md object-cover" loading="lazy" />
+          <img src={g.imageUrl} alt="" className="h-14 w-14 shrink-0 rounded-[var(--flow-r,8px)] object-cover" loading="lazy" />
         )}
         <div className="min-w-0">
           <h3 className="font-medium text-[var(--color-fg)]">{g.name}</h3>
           {g.description && <p className="text-sm text-[var(--color-muted)]">{g.description}</p>}
           {g.link && (
             <a href={g.link} target="_blank" rel="noopener noreferrer" className="text-sm text-[var(--color-accent)] underline underline-offset-2">
-              Ver en la tienda
+              {c.store}
             </a>
           )}
         </div>
@@ -123,19 +130,19 @@ function GiftCard({ gift: g, showRaised, onGive }: { gift: GiftView; showRaised:
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs text-[var(--color-muted)]" data-gift-status>
           {done ? (
-            <span className="text-sm font-medium text-[var(--color-accent)]">¡Meta cumplida, gracias!</span>
+            <span className="text-sm font-medium text-[var(--color-accent)]">{c.goalDone}</span>
           ) : (
-            [showRaised && left !== null ? `Faltan ${fmtMoney(left, gc)}` : null, g.mine ? `tú aportaste ${g.mine}` : null].filter(Boolean).join(" · ")
+            [showRaised && left !== null ? fill(c.left, { faltan: fmtMoney(left, gc) }) : null, g.mine ? fill(c.mine, { monto: g.mine }) : null].filter(Boolean).join(" · ")
           )}
         </span>
         {!g.closed &&
           (done ? (
             <button type="button" onClick={onGive} className={`${btn} border border-[var(--color-accent)] text-[var(--color-accent)]`}>
-              Aportar igual
+              {c.giveAgain}
             </button>
           ) : (
             <button type="button" onClick={onGive} className={`${btn} bg-[var(--color-accent)] text-[var(--color-accent-fg)] hover:opacity-90`}>
-              Aportar
+              {c.give}
             </button>
           ))}
       </div>
@@ -154,7 +161,13 @@ function Flow({
   mine,
   onSaved,
   onClose,
+  c,
+  look,
+  inline = false,
 }: {
+  c: GiftsCopy;
+  look: FlowLook;
+  inline?: boolean; // en el editor: se dibuja en su lugar, sin cubrir la pantalla
   gift: GiftView | null;
   firstStep: Step;
   payment: PayView;
@@ -183,6 +196,7 @@ function Flow({
 
   // Escape cierra; el fondo no se desplaza mientras está abierto.
   useEffect(() => {
+    if (inline) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -191,8 +205,10 @@ function Flow({
       document.body.style.overflow = prev;
       window.removeEventListener("keydown", onKey);
     };
-  }, [onClose]);
-  useEffect(() => titleRef.current?.focus(), [step]);
+  }, [onClose, inline]);
+  useEffect(() => {
+    if (!inline) titleRef.current?.focus();
+  }, [step, inline]);
 
   const left = gift ? remainingFor(gift.goal, gift.raised) : null;
   const money = (n: number) => fmtMoney(n, cur);
@@ -226,29 +242,29 @@ function Flow({
     });
   }
 
-  const primary = "flex min-h-12 w-full items-center justify-center rounded-md bg-[var(--color-accent)] px-4 text-[15px] font-medium text-[var(--color-accent-fg)] hover:opacity-90 disabled:opacity-50";
-  const field = "min-h-12 w-full rounded-md border border-[var(--color-border)] bg-white/70 px-3 text-base text-[var(--color-fg)]";
+  const primary = "flex min-h-12 w-full items-center justify-center rounded-[var(--flow-r,8px)] bg-[var(--color-accent)] px-4 text-[15px] font-medium text-[var(--color-accent-fg)] hover:opacity-90 disabled:opacity-50";
+  const field = "min-h-12 w-full rounded-[var(--flow-r,8px)] border border-[var(--color-border)] bg-white/70 px-3 text-base text-[var(--color-fg)]";
 
   const body: ReactNode = (() => {
     if (step === "amount" && gift) {
       const over = left !== null && amount > left;
       return (
         <>
-          <Heading refEl={titleRef} kicker="Aporte a" title={gift.name}>
-            {choose ? "Puedes aportar en soles o en dólares." : cur === "USD" ? "Es en dólares: tu aporte va en dólares." : "Es en soles: tu aporte va en soles."}
-            {left !== null && left > 0 && ` Faltan ${money(left)} para la meta.`}
+          <Heading refEl={titleRef} kicker={c.kicker} title={gift.name}>
+            {choose ? c.introAny : cur === "USD" ? c.introUsd : c.introPen}
+            {left !== null && left > 0 && ` ${fill(c.leftGoal, { faltan: money(left) })}`}
           </Heading>
           {choose && (
-            <div role="radiogroup" aria-label="Moneda del aporte" className="grid grid-cols-2 gap-1.5 rounded-lg bg-[var(--color-border)] p-1" data-currency-choice>
+            <div role="radiogroup" aria-label="Moneda del aporte" className="grid grid-cols-2 gap-1.5 rounded-[calc(var(--flow-r,8px)+2px)] bg-[var(--color-border)] p-1" data-currency-choice>
               {(["PEN", "USD"] as const).map((c) => (
-                <button key={c} type="button" role="radio" aria-checked={cur === c} onClick={() => pickCurrency(c)} className={`min-h-11 rounded-md text-sm ${cur === c ? "bg-white font-semibold text-[var(--color-fg)]" : "text-[var(--color-muted)]"}`}>
+                <button key={c} type="button" role="radio" aria-checked={cur === c} onClick={() => pickCurrency(c)} className={`min-h-11 rounded-[var(--flow-r,8px)] text-sm ${cur === c ? "bg-white font-semibold text-[var(--color-fg)]" : "text-[var(--color-muted)]"}`}>
                   {c === "PEN" ? "S/ Soles" : "US$ Dólares"}
                 </button>
               ))}
             </div>
           )}
           <fieldset className="space-y-2.5">
-            <legend className="mb-2.5 text-sm font-medium text-[var(--color-fg)]">¿Cuánto quieres aportar?</legend>
+            <legend className="mb-2.5 text-sm font-medium text-[var(--color-fg)]">{c.question}</legend>
             <div className="grid grid-cols-2 gap-2">
               {QUICK_AMOUNTS[cur].map((n) => (
                 <button
@@ -256,15 +272,15 @@ function Flow({
                   type="button"
                   aria-pressed={amount === n}
                   onClick={() => setAmount(n)}
-                  className={`min-h-12 rounded-md border text-[15px] ${amount === n ? "border-2 border-[var(--color-accent)] font-semibold text-[var(--color-accent)]" : "border-[var(--color-border)] text-[var(--color-fg)]"}`}
+                  className={`min-h-12 rounded-[var(--flow-r,8px)] border text-[15px] ${amount === n ? "border-2 border-[var(--color-accent)] font-semibold text-[var(--color-accent)]" : "border-[var(--color-border)] text-[var(--color-fg)]"}`}
                 >
                   {money(n)}
                 </button>
               ))}
             </div>
             <label className="block text-[13px] text-[var(--color-muted)]">
-              Otro monto
-              <span className="mt-1.5 flex min-h-12 items-center gap-2 rounded-md border border-[var(--color-border)] bg-white/70 px-3">
+              {c.other}
+              <span className="mt-1.5 flex min-h-12 items-center gap-2 rounded-[var(--flow-r,8px)] border border-[var(--color-border)] bg-white/70 px-3">
                 <span className="text-[15px] text-[var(--color-fg)]">{cur === "USD" ? "US$" : "S/"}</span>
                 <input
                   type="number"
@@ -278,23 +294,23 @@ function Flow({
               </span>
             </label>
             {over && (
-              <p role="status" className="rounded-md bg-[var(--color-border)] px-3 py-2.5 text-[13px] text-[var(--color-fg)]" data-over-goal>
-                Con {money(amount)} completas este regalo. ¡Gracias! Lo que pase de la meta también nos llega.
+              <p role="status" className="rounded-[var(--flow-r,8px)] bg-[var(--color-border)] px-3 py-2.5 text-[13px] text-[var(--color-fg)]" data-over-goal>
+                {fill(c.overGoal, { monto: money(amount) })}
               </p>
             )}
           </fieldset>
           {guestName && (
-            <div className="flex items-center gap-3 rounded-lg border border-[var(--color-border)] px-3.5 py-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-accent)] font-serif text-[var(--color-accent-fg)]">{guestName.trim()[0]}</span>
+            <div className="flex items-center gap-3 rounded-[calc(var(--flow-r,8px)+2px)] border border-[var(--color-border)] px-3.5 py-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-accent)] flow-title text-[var(--color-accent-fg)]">{guestName.trim()[0]}</span>
               <span className="text-[15px] font-medium">
-                <span className="block text-xs font-normal text-[var(--color-muted)]">Aportas como</span>
+                <span className="block text-xs font-normal text-[var(--color-muted)]">{c.asWho}</span>
                 {guestName}
               </span>
             </div>
           )}
           <span className="flex-1" />
           <button type="button" disabled={amount < 1} onClick={() => setStep("pay")} className={primary}>
-            Continuar · {money(amount)}
+            {fill(c.next, { monto: money(amount) })}
           </button>
         </>
       );
@@ -305,25 +321,25 @@ function Flow({
       const methods = (["yape", "plin", "bank"] as const).filter((m) => payment[m]);
       return (
         <>
-          <Heading refEl={titleRef} title={usd ? "Transfiere desde tu banco" : "Elige cómo pagar"}>
-            {usd ? "Abre la app de tu banco y haz la transferencia con estos datos." : `Tu aporte a «${gift.name}», en soles.`}
+          <Heading refEl={titleRef} title={usd ? c.titleUsd : c.titlePen}>
+            {usd ? c.subUsd : fill(c.subPen, { regalo: gift.name })}
           </Heading>
-          <div className="rounded-lg bg-[var(--color-accent)] px-4 py-3.5 text-center text-[var(--color-accent-fg)]">
-            <span className="block text-xs uppercase tracking-[0.14em]">Monto a {usd ? "transferir" : "pagar"}</span>
-            <span className="font-serif text-3xl" data-pay-amount>{money(amount)}</span>
+          <div className="rounded-[calc(var(--flow-r,8px)+2px)] bg-[var(--color-accent)] px-4 py-3.5 text-center text-[var(--color-accent-fg)]">
+            <span className="block text-xs uppercase tracking-[0.14em]">{usd ? c.amountTransfer : c.amountPay}</span>
+            <span className="flow-title text-3xl" data-pay-amount>{money(amount)}</span>
           </div>
           {usd ? (
             payment.bankUsd ? (
               <Account title={PAYMENT_LABELS.bankUsd} acc={payment.bankUsd} />
             ) : (
-              <p className="rounded-md border border-[var(--color-border)] p-3 text-sm">Todavía no cargamos la cuenta en dólares. Escríbenos y te pasamos los datos.</p>
+              <p className="rounded-[var(--flow-r,8px)] border border-[var(--color-border)] p-3 text-sm">{c.noUsd}</p>
             )
           ) : methods.length ? (
             <>
               {methods.length > 1 && (
-                <div role="tablist" aria-label="Medio de pago" className="grid gap-1.5 rounded-lg bg-[var(--color-border)] p-1" style={{ gridTemplateColumns: `repeat(${methods.length}, minmax(0, 1fr))` }}>
+                <div role="tablist" aria-label="Medio de pago" className="grid gap-1.5 rounded-[calc(var(--flow-r,8px)+2px)] bg-[var(--color-border)] p-1" style={{ gridTemplateColumns: `repeat(${methods.length}, minmax(0, 1fr))` }}>
                   {methods.map((m) => (
-                    <button key={m} type="button" role="tab" aria-selected={method === m} onClick={() => setMethod(m)} className={`min-h-11 rounded-md text-sm ${method === m ? "bg-white font-semibold text-[var(--color-fg)]" : "text-[var(--color-muted)]"}`}>
+                    <button key={m} type="button" role="tab" aria-selected={method === m} onClick={() => setMethod(m)} className={`min-h-11 rounded-[var(--flow-r,8px)] text-sm ${method === m ? "bg-white font-semibold text-[var(--color-fg)]" : "text-[var(--color-muted)]"}`}>
                       {m === "bank" ? "Transferencia" : PAYMENT_LABELS[m]}
                     </button>
                   ))}
@@ -332,26 +348,26 @@ function Flow({
               {method === "bank" && payment.bank ? (
                 <Account title={PAYMENT_LABELS.bank} acc={payment.bank} />
               ) : method && method !== "bank" && payment[method] ? (
-                <div className="rounded-lg border border-[var(--color-border)]" data-pay-method={method}>
+                <div className="rounded-[calc(var(--flow-r,8px)+2px)] border border-[var(--color-border)]" data-pay-method={method}>
                   <Line label={`Número de ${PAYMENT_LABELS[method]}`} value={payment[method]!.phone} copy />
                   <Line label="A nombre de" value={payment[method]!.name} />
                 </div>
               ) : null}
               {method && method !== "bank" && (
                 <p className="text-[13px] text-[var(--color-muted)]">
-                  Abre {PAYMENT_LABELS[method]}, elige pagar a un número, pega el número y escribe {money(amount)}.
+                  {fill(c.walletHelp, { medio: PAYMENT_LABELS[method], monto: money(amount) })}
                 </p>
               )}
             </>
           ) : (
-            <p className="rounded-md border border-[var(--color-border)] p-3 text-sm">Todavía no cargamos los datos para pagar. Escríbenos y te los pasamos.</p>
+            <p className="rounded-[var(--flow-r,8px)] border border-[var(--color-border)] p-3 text-sm">{c.noPay}</p>
           )}
           <span className="flex-1" />
           <button type="button" onClick={() => setStep("notify")} className={primary}>
-            {usd || method === "bank" ? "Ya transferí" : "Ya pagué"}
+            {usd || method === "bank" ? c.transferred : c.paid}
           </button>
           <button type="button" onClick={onClose} className="min-h-11 text-sm text-[var(--color-accent)] underline underline-offset-2">
-            Lo hago más tarde
+            {c.later}
           </button>
         </>
       );
@@ -360,43 +376,43 @@ function Flow({
     if (step === "notify" && gift) {
       return (
         <>
-          <Heading refEl={titleRef} title="Avísanos tu abono">Con el número de operación lo identificamos rápido en nuestra cuenta.</Heading>
-          <div className="flex items-center justify-between rounded-lg border border-[var(--color-border)] px-3.5 py-2.5">
+          <Heading refEl={titleRef} title={c.notifyTitle}>{c.notifySub}</Heading>
+          <div className="flex items-center justify-between rounded-[calc(var(--flow-r,8px)+2px)] border border-[var(--color-border)] px-3.5 py-2.5">
             <span>
               <span className="block text-xs text-[var(--color-muted)]">{gift.name}{guestName ? ` · ${guestName}` : ""}</span>
               <span className="text-[17px] font-semibold">{money(amount)}</span>
             </span>
-            <button type="button" onClick={() => setStep("amount")} className="min-h-11 text-sm text-[var(--color-accent)] underline underline-offset-2">Cambiar</button>
+            <button type="button" onClick={() => setStep("amount")} className="min-h-11 text-sm text-[var(--color-accent)] underline underline-offset-2">{c.change}</button>
           </div>
           <label className="block text-sm font-medium">
-            N.º de operación
-            <span className="block text-xs font-normal text-[var(--color-muted)]">Obligatorio · lo ves en la constancia de tu banco, Yape o Plin</span>
+            {c.opLabel}
+            <span className="block text-xs font-normal text-[var(--color-muted)]">{c.opHelp}</span>
             <input value={op} onChange={(e) => setOp(e.target.value)} required inputMode="numeric" autoComplete="off" placeholder="Ej.: 04529871" maxLength={30} className={`${field} mt-1.5`} />
           </label>
           <div className="text-sm font-medium">
-            Foto de la constancia <span className="text-xs font-normal text-[var(--color-muted)]">· opcional</span>
+            {c.photoLabel} <span className="text-xs font-normal text-[var(--color-muted)]">· opcional</span>
             {receipt ? (
-              <div className="mt-1.5 flex items-center justify-between gap-2 rounded-md border border-[var(--color-border)] px-3 py-2 font-normal">
+              <div className="mt-1.5 flex items-center justify-between gap-2 rounded-[var(--flow-r,8px)] border border-[var(--color-border)] px-3 py-2 font-normal">
                 <span className="flex min-w-0 items-center gap-2 truncate"><Check size={16} aria-hidden="true" /> <span className="truncate">{receipt.name}</span></span>
                 <button type="button" onClick={() => setReceipt(null)} className="min-h-11 shrink-0 text-sm text-[var(--color-accent)] underline">Quitar</button>
               </div>
             ) : (
-              <label className="mt-1.5 flex min-h-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-md border-[1.5px] border-dashed border-[var(--color-border)] p-3 text-center font-normal text-[var(--color-accent)]">
+              <label className="mt-1.5 flex min-h-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--flow-r,8px)] border-[1.5px] border-dashed border-[var(--color-border)] p-3 text-center font-normal text-[var(--color-accent)]">
                 <Camera size={22} aria-hidden="true" />
-                {uploading ? "Subiendo…" : "Subir captura o foto"}
-                <span className="text-xs text-[var(--color-muted)]">JPG, PNG o WEBP, hasta 5 MB</span>
+                {uploading ? "Subiendo…" : c.photoButton}
+                <span className="text-xs text-[var(--color-muted)]">{c.photoHelp}</span>
                 <input type="file" accept="image/jpeg,image/png,image/webp,image/heic" className="sr-only" disabled={uploading || !guestName} onChange={(e) => e.target.files?.[0] && pickReceipt(e.target.files[0])} />
               </label>
             )}
           </div>
           <label className="block text-sm font-medium">
-            Mensaje para los novios <span className="text-xs font-normal text-[var(--color-muted)]">· opcional</span>
-            <textarea value={msg} onChange={(e) => setMsg(e.target.value)} rows={2} maxLength={300} className="mt-1.5 w-full rounded-md border border-[var(--color-border)] bg-white/70 px-3 py-2.5 text-base text-[var(--color-fg)]" />
+            {c.messageLabel} <span className="text-xs font-normal text-[var(--color-muted)]">· opcional</span>
+            <textarea value={msg} onChange={(e) => setMsg(e.target.value)} rows={2} maxLength={300} className="mt-1.5 w-full rounded-[var(--flow-r,8px)] border border-[var(--color-border)] bg-white/70 px-3 py-2.5 text-base text-[var(--color-fg)]" />
           </label>
-          {!guestName && <p className="rounded-md bg-[var(--color-border)] p-3 text-sm">Vista previa: el aviso no se guarda.</p>}
+          {!guestName && <p className="rounded-[var(--flow-r,8px)] bg-[var(--color-border)] p-3 text-sm">Vista previa: el aviso no se guarda.</p>}
           <span className="flex-1" />
           <button type="button" disabled={!guestName || pending || uploading || op.trim().length < 4} onClick={submit} className={primary}>
-            {pending ? "Enviando…" : "Enviar aviso"}
+            {pending ? "Enviando…" : c.send}
           </button>
         </>
       );
@@ -408,46 +424,52 @@ function Flow({
         {step === "done" ? (
           <div className="flex flex-col items-center gap-2.5 pt-4 text-center">
             <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--color-accent)] text-[var(--color-accent-fg)]"><Check size={30} aria-hidden="true" /></span>
-            <h2 ref={titleRef} tabIndex={-1} className="font-serif text-3xl outline-none">¡Gracias{guestName ? `, ${guestName}` : ""}!</h2>
-            <p className="text-sm text-[var(--color-muted)]">Recibimos tu aviso. Apenas veamos el abono en nuestra cuenta, lo marcamos como recibido.</p>
+            <h2 ref={titleRef} tabIndex={-1} className="flow-title text-3xl outline-none">{fill(c.thanks, { nombre: guestName ?? "" }).replace(/,\s*!/, "!")}</h2>
+            <p className="text-sm text-[var(--color-muted)]">{c.thanksSub}</p>
           </div>
         ) : (
-          <Heading refEl={titleRef} title="Mis aportes">Lo que avisaste desde tu invitación.</Heading>
+          <Heading refEl={titleRef} title={c.mineTitle}>{c.mineSub}</Heading>
         )}
-        <section aria-label="Mis aportes" className="space-y-2.5" data-mine>
-          {step === "done" && <h3 className="text-[15px] font-semibold">Mis aportes</h3>}
+        <section aria-label={c.mineTitle} className="space-y-2.5" data-mine>
+          {step === "done" && <h3 className="text-[15px] font-semibold">{c.mineTitle}</h3>}
           {mine.length === 0 && (
-            <p className="rounded-lg border border-dashed border-[var(--color-border)] px-3.5 py-4 text-center text-sm text-[var(--color-muted)]" data-mine-empty>
-              Todavía no has realizado ningún aporte.
+            <p className="rounded-[calc(var(--flow-r,8px)+2px)] border border-dashed border-[var(--color-border)] px-3.5 py-4 text-center text-sm text-[var(--color-muted)]" data-mine-empty>
+              {c.mineEmpty}
             </p>
           )}
-          {mine.map((c) => (
-            <div key={c.id} className="flex items-center justify-between gap-2.5 rounded-lg border border-[var(--color-border)] px-3.5 py-3">
+          {mine.map((m) => (
+            <div key={m.id} className="flex items-center justify-between gap-2.5 rounded-[calc(var(--flow-r,8px)+2px)] border border-[var(--color-border)] px-3.5 py-3">
               <span className="min-w-0">
-                <span className="block text-[15px] font-medium">{c.giftName}</span>
+                <span className="block text-[15px] font-medium">{m.giftName}</span>
                 <span className="text-[13px] text-[var(--color-muted)]">
-                  {fmtMoney(c.amount, c.currency)}
-                  {c.operationNumber ? ` · op. ${c.operationNumber}` : ""} · {new Date(c.date).toLocaleDateString("es-PE", { day: "numeric", month: "short" })}
+                  {fmtMoney(m.amount, m.currency)}
+                  {m.operationNumber ? ` · op. ${m.operationNumber}` : ""} · {new Date(m.date).toLocaleDateString("es-PE", { day: "numeric", month: "short" })}
                 </span>
               </span>
-              <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${c.received ? "bg-[#e3efe6] text-[#2f6b45]" : "bg-[#f6ecd3] text-[#6e520f]"}`}>
-                {c.received ? "Recibido" : "Por verificar"}
+              <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${m.received ? "bg-[#e3efe6] text-[#2f6b45]" : "bg-[#f6ecd3] text-[#6e520f]"}`}>
+                {m.received ? c.received : c.pending}
               </span>
             </div>
           ))}
-          {mine.length > 0 && <p className="text-xs text-[var(--color-muted)]">¿Te equivocaste en algo? Escríbenos y lo corregimos.</p>}
+          {mine.length > 0 && <p className="text-xs text-[var(--color-muted)]">{c.mistake}</p>}
         </section>
         <span className="flex-1" />
-        <button type="button" onClick={onClose} className="flex min-h-12 w-full items-center justify-center rounded-md border border-[var(--color-accent)] text-[15px] font-medium text-[var(--color-accent)]">
-          Volver a la invitación
+        <button type="button" onClick={onClose} className="flex min-h-12 w-full items-center justify-center rounded-[var(--flow-r,8px)] border border-[var(--color-accent)] text-[15px] font-medium text-[var(--color-accent)]">
+          {c.back}
         </button>
       </>
     );
   })();
 
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-stretch justify-center bg-black/40 sm:items-center sm:p-6" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div role="dialog" aria-modal="true" aria-label={gift ? `Aportar a ${gift.name}` : "Mis aportes"} className="flex w-full max-w-md flex-col overflow-y-auto bg-[var(--color-bg)] font-sans text-[var(--color-fg)] sm:max-h-[92dvh] sm:rounded-2xl" data-gift-flow>
+  const panel = (
+      <div
+        role="dialog"
+        aria-modal={!inline}
+        aria-label={gift ? `Aportar a ${gift.name}` : c.mineTitle}
+        style={lookVars(look) as React.CSSProperties}
+        className={`flex w-full max-w-md flex-col overflow-y-auto bg-[var(--color-bg)] font-sans text-[var(--color-fg)] [--paper-fg:var(--color-fg)] ${inline ? "min-h-[640px] rounded-2xl shadow-xl" : "sm:max-h-[92dvh] sm:rounded-2xl"}`}
+        data-gift-flow
+      >
         <div className="flex items-center justify-between px-3 pb-2 pt-3">
           {back ? (
             <button type="button" aria-label="Volver" onClick={() => setStep(back)} className="flex h-11 w-11 items-center justify-center"><ChevronLeft size={20} /></button>
@@ -464,11 +486,52 @@ function Flow({
         )}
         <div className="flex flex-1 flex-col gap-5 px-5 pb-6 pt-6">
           {body}
-          {error && <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+          {error && <p role="alert" className="rounded-[var(--flow-r,8px)] bg-red-50 p-3 text-sm text-red-800">{error}</p>}
         </div>
       </div>
+  );
+  if (inline) return panel;
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-stretch justify-center bg-black/40 sm:items-center sm:p-6" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      {panel}
     </div>,
     document.body,
+  );
+}
+
+/* ---------- Vista de cada ventana (editor de la invitación) ---------- */
+
+const SAMPLE_GIFT: GiftView = { id: "ejemplo", name: "Luna de miel", description: null, imageUrl: null, link: "https://", currency: "USD", goal: 3000, raised: 2620, closed: false, mine: "US$ 100" };
+const SAMPLE_MINE: MyContribution[] = [
+  { id: "a", giftName: "Luna de miel", amount: 100, currency: "USD", operationNumber: "04529871", received: false, date: "2026-10-09T15:00:00Z" },
+  { id: "b", giftName: "Juego de copas", amount: 150, currency: "PEN", operationNumber: "77310245", received: true, date: "2026-10-02T15:00:00Z" },
+];
+const WINDOW_STEP: Record<string, Step> = { amount: "amount", pay: "pay", notify: "notify", done: "done", mine: "mine" };
+
+export function GiftWindowPreview({ window: w, copy, look, payment, gift }: { window: string; copy: GiftsCopy; look: FlowLook; payment: PayView; gift?: GiftView }) {
+  const g = gift ?? SAMPLE_GIFT;
+  if (w === "card")
+    return (
+      <div className="w-full max-w-md space-y-4" style={lookVars(look) as React.CSSProperties}>
+        <GiftCard gift={g} showRaised c={copy} onGive={() => {}} />
+        <GiftCard gift={{ ...g, id: "completo", name: "Cafetera", raised: g.goal ?? 0, mine: null }} showRaised c={copy} onGive={() => {}} />
+      </div>
+    );
+  return (
+    <Flow
+      key={w}
+      inline
+      gift={g}
+      firstStep={WINDOW_STEP[w] ?? "amount"}
+      payment={payment}
+      guestName="Familia Rojas"
+      slug="preview"
+      mine={w === "mine" ? [] : SAMPLE_MINE}
+      onSaved={() => {}}
+      onClose={() => {}}
+      c={copy}
+      look={look}
+    />
   );
 }
 
@@ -476,7 +539,7 @@ function Heading({ refEl, kicker, title, children }: { refEl: React.RefObject<HT
   return (
     <div className="space-y-1.5">
       {kicker && <p className="text-xs uppercase tracking-[0.16em] text-[var(--color-muted)]">{kicker}</p>}
-      <h2 ref={refEl} tabIndex={-1} className="font-serif text-[28px] leading-tight outline-none">{title}</h2>
+      <h2 ref={refEl} tabIndex={-1} className="flow-title text-[28px] leading-tight outline-none">{title}</h2>
       {children && <p className="text-sm text-[var(--color-muted)]">{children}</p>}
     </div>
   );
@@ -484,7 +547,7 @@ function Heading({ refEl, kicker, title, children }: { refEl: React.RefObject<HT
 
 function Account({ title, acc }: { title: string; acc: BankAccount }) {
   return (
-    <div className="rounded-lg border border-[var(--color-border)]" data-pay-account={title}>
+    <div className="rounded-[calc(var(--flow-r,8px)+2px)] border border-[var(--color-border)]" data-pay-account={title}>
       <p className="px-3.5 pb-1 pt-3 text-sm font-semibold">{title}</p>
       {acc.bank && <Line label="Banco" value={acc.bank} />}
       {acc.accountHolder && <Line label="Titular" value={acc.accountHolder} />}

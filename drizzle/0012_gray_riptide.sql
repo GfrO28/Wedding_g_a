@@ -1,0 +1,1 @@
+ALTER TABLE "guest_members" ADD COLUMN "table_id" text;

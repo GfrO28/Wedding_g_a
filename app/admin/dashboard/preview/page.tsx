@@ -7,6 +7,7 @@ import { Itinerary } from "@/app/components/Itinerary";
 import { Accommodation } from "@/app/components/Accommodation";
 import { Gifts } from "@/app/components/Gifts";
 import { RSVPForm } from "@/app/components/RSVPForm";
+import { getFlowSettings } from "@/lib/flowCopyServer";
 import { GuestMessages } from "@/app/components/GuestMessages";
 import { Footer } from "@/app/components/Footer";
 import { CountdownSection } from "@/app/components/CountdownSection";
@@ -24,6 +25,7 @@ export const dynamic = "force-dynamic";
 // invitado real, con datos de ejemplo en vez de buscar un invitado en la DB.
 // Protegida por el mismo middleware que el resto de /admin/dashboard.
 export default async function PreviewPage() {
+  const flow = await getFlowSettings();
   const [content, rsvpText, tokens] = await Promise.all([
     getWeddingContent(),
     getTextLayout("rsvp"),
@@ -60,6 +62,8 @@ export default async function PreviewPage() {
         closed={false}
         pass={null}
         preview
+        copy={flow.rsvp.copy}
+        look={flow.rsvp.look}
         layout={rsvpText}
         tokens={tokens}
       />

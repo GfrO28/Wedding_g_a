@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Gift, Globe, LayoutDashboard, LogOut, PenLine, ShieldCheck, Users } from "lucide-react";
+import { Armchair, Gift, Globe, LayoutDashboard, LogOut, PenLine, ShieldCheck, Users } from "lucide-react";
 import { logoutAction } from "../panel-actions";
 
 const LINKS = [
@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/admin/dashboard/invitados", label: "Invitados", Icon: Users },
   { href: "/admin/dashboard/regalos", label: "Lista de regalos", Icon: Gift },
   { href: "/admin/dashboard/content", label: "Editor de la invitación", Icon: PenLine },
+  { href: "/admin/dashboard/mesas", label: "Distribución de mesas", Icon: Armchair },
   { href: "/admin/dashboard/web", label: "Web de novios", Icon: Globe, soon: true },
   { href: "/admin/dashboard/seguridad", label: "Seguridad", Icon: ShieldCheck },
 ];
