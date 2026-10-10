@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
-import { Check, Loader2, Minus, Plus, Undo2, X } from "lucide-react";
+import { Check, Loader2, Lock, LockOpen, Minus, Plus, Undo2, X } from "lucide-react";
 import { PanelRail } from "../PanelRail";
 import {
   CATALOG,
@@ -9,6 +9,9 @@ import {
   FENCE_STYLES,
   isFence,
   isShrubs,
+  isWalkway,
+  WALK_STYLES,
+  walkwayBox,
   SHRUB_MAX,
   shrubsBox,
   isPoly,
@@ -30,7 +33,7 @@ import {
   type SeatingPlan,
   type StationShape,
 } from "@/lib/seating";
-import { FenceShape, ShrubsShape, layerOf, ObjectBody, PlanPatterns, ROOM_FILL, stationTypeLabel, FLOOR_FILL } from "./PlanShapes";
+import { FenceShape, ShrubsShape, WalkwayShape, layerOf, ObjectBody, PlanPatterns, ROOM_FILL, stationTypeLabel, FLOOR_FILL } from "./PlanShapes";
 import { requestSeatingPhotoUploadAction, saveSeatingAction } from "./actions";
 
 export type SeatingGuest = {
@@ -42,7 +45,7 @@ export type SeatingGuest = {
 };
 
 type Pt = { x: number; y: number };
-type Mode = "select" | "traceRect" | "tracePoly" | "fence" | "tree" | "paint" | "photo" | "room";
+type Mode = "select" | "traceRect" | "tracePoly" | "fence" | "tree" | "paint" | "walk" | "photo" | "room";
 type Drag =
   | { t: "pan"; sx: number; sy: number; tx: number; ty: number }
   | { t: "move"; sx: number; sy: number; orig: PlanObject[]; bg: PlanBackground | null; saved: boolean }
@@ -52,6 +55,7 @@ type Drag =
   | { t: "rect"; a: Pt; b: Pt }
   | { t: "paint"; id: string; last: Pt; count: number }
   | { t: "erase"; saved: boolean }
+  | { t: "walk"; id: string; last: Pt }
   | { t: "room"; hx: number; hy: number; orig: SeatingPlan["room"]; saved: boolean };
 
 const BG = "__bg";
@@ -62,7 +66,12 @@ const rotPt = (x: number, y: number, deg: number): Pt => {
   return { x: x * c - y * s, y: x * s + y * c };
 };
 const bgObj = (b: PlanBackground): PlanObject => ({ id: BG, kind: "scenery", label: "Foto", x: b.x, y: b.y, w: b.w, h: b.w / b.aspect, rotation: b.rotation, seats: 0 });
-const withPoints = (o: PlanObject, points: [number, number][]): PlanObject => ({ ...o, points, ...(o.kind === "shrubs" ? shrubsBox(points, o.stamp ?? 1.6) : polyBox(points)), rotation: 0 });
+const withPoints = (o: PlanObject, points: [number, number][]): PlanObject => ({
+  ...o,
+  points,
+  ...(o.kind === "shrubs" ? shrubsBox(points, o.stamp ?? 1.6) : o.kind === "walkway" ? walkwayBox(points, o.stamp ?? 3) : polyBox(points)),
+  rotation: 0,
+});
 
 const HINTS: Record<Mode, string> = {
   select: "Arrastra para mover · esquinas para agrandar (Alt: desde el centro) · punto superior para girar (Shift: de 15° en 15°) · Shift+clic elige varios · rueda: zoom · arrastra el fondo para desplazarte",
@@ -70,6 +79,7 @@ const HINTS: Record<Mode, string> = {
   tracePoly: "Haz clic en cada esquina de la zona. Doble clic, Enter o clic en el primer punto para cerrarla. Esc cancela.",
   fence: "Haz clic en cada punto del cerco. Doble clic o Enter lo termina; clic en el primer punto lo cierra alrededor del área. Esc cancela.",
   paint: "Pinta arrastrando: por donde pases se van poniendo arbustos de mandarina. Elige el tamaño o el borrador abajo. Esc para terminar.",
+  walk: "Pinta el camino arrastrando, por ejemplo desde la entrada. Elige el ancho y los faroles abajo. Esc para terminar.",
   room: "Arrastra los bordes o las esquinas del lienzo para ajustarlo al terreno de la foto. Esc para terminar.",
   tree: "Haz clic sobre cada árbol para marcarlo. Esc para terminar.",
   photo: "Mueve, agranda o gira la foto para alinearla con el terreno. Esc para terminar.",
@@ -97,6 +107,7 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
   const [cursor, setCursor] = useState<Pt | null>(null);
   const [uploading, setUploading] = useState(false);
   const [brush, setBrush] = useState({ size: 1.6, erase: false });
+  const [walk, setWalk] = useState({ width: 3, lamps: true });
   const [pending, start] = useTransition();
   const [view, setView] = useState({ s: 12, tx: 40, ty: 40 });
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -251,9 +262,9 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
 
   /* ---------- Agregar, duplicar, borrar ---------- */
   function add(kind: Kind, preset?: Partial<PlanObject>) {
-    if (kind === "shrubs") {
+    if (kind === "shrubs" || kind === "walkway") {
       setAddOpen(false);
-      return setMode("paint");
+      return setMode(kind === "shrubs" ? "paint" : "walk");
     }
     const center = { x: r2((size.w / 2 - view.tx) / s), y: r2((size.h / 2 - view.ty) / s) };
     const o = { ...newObject(kind, objects, center), ...preset };
@@ -263,7 +274,9 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
     setAddOpen(false);
     setMode("select");
   }
+  const setLocked = (ids: string[], locked: boolean) => change(() => setObjects((l) => l.map((o) => (ids.includes(o.id) ? { ...o, locked: locked || undefined } : o))));
   function remove(ids: string[]) {
+    if (!ids.length) return;
     change(() => {
       setObjects((l) => l.filter((o) => !ids.includes(o.id)));
       setAssign((a) => Object.fromEntries(Object.entries(a).map(([m, t]) => [m, t && ids.includes(t) ? null : t])));
@@ -275,7 +288,7 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
     let all = objects;
     const copies = list.map((o) => {
       const fresh = newObject(o.kind, all);
-      const c: PlanObject = { ...o, id: fresh.id, label: isTable(o.kind) && o.kind !== "sweetheart" ? fresh.label : o.label, x: r2(o.x + 1), y: r2(o.y + 1), points: o.points?.map(([x, y]) => [r2(x + 1), r2(y + 1)]) };
+      const c: PlanObject = { ...o, locked: undefined, id: fresh.id, label: isTable(o.kind) && o.kind !== "sweetheart" ? fresh.label : o.label, x: r2(o.x + 1), y: r2(o.y + 1), points: o.points?.map(([x, y]) => [r2(x + 1), r2(y + 1)]) };
       all = [...all, c];
       return c;
     });
@@ -360,6 +373,12 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
       return;
     }
     if (e.button !== 0) return;
+    if (mode === "walk") {
+      const base = newObject("walkway", objects);
+      const o = { ...base, stamp: walk.width, lamps: walk.lamps, ...walkwayBox([[r2(p.x), r2(p.y)]], walk.width), points: [[r2(p.x), r2(p.y)]] as [number, number][] };
+      change(() => setObjects((l) => [...l, o]));
+      return begin(e, { t: "walk", id: o.id, last: p });
+    }
     if (mode === "paint") {
       if (brush.erase) {
         begin(e, { t: "erase", saved: false });
@@ -383,7 +402,7 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
     }
   }
   function onCanvasMove(e: React.PointerEvent) {
-    if (mode === "tracePoly" || mode === "fence" || mode === "paint") setCursor(toWorld(e));
+    if (mode === "tracePoly" || mode === "fence" || mode === "paint" || mode === "walk") setCursor(toWorld(e));
     const d = drag.current;
     if (!d) return;
     const p = toWorld(e);
@@ -391,6 +410,14 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
     if (d.t === "rect") {
       d.b = p;
       return setRectDraft({ a: d.a, b: p });
+    }
+    if (d.t === "walk") {
+      // Un punto cada ~1 m (o 12 px si se ve muy chico) para un trazo suave.
+      if (Math.hypot(p.x - d.last.x, p.y - d.last.y) < Math.max(0.8, 12 / s)) return;
+      d.last = p;
+      const id = d.id;
+      setObjects((l) => l.map((o) => (o.id === id ? withPoints(o, [...(o.points ?? []), [r2(p.x), r2(p.y)]]) : o)));
+      return touch();
     }
     if (d.t === "erase") {
       d.saved = eraseAt(p, d.saved);
@@ -505,6 +532,8 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
   function onCanvasUp() {
     const d = drag.current;
     drag.current = null;
+    // Un clic sin arrastrar no deja un camino de un solo punto.
+    if (d?.t === "walk") setObjects((l) => l.filter((o) => o.id !== d.id || (o.points?.length ?? 0) >= 2));
     if (d?.t === "rect") {
       setRectDraft(null);
       const w = Math.abs(d.b.x - d.a.x), h = Math.abs(d.b.y - d.a.y);
@@ -522,7 +551,9 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
     if (e.shiftKey) return setSelected((l) => (l.includes(o.id) ? l.filter((x) => x !== o.id) : [...l, o.id]));
     const ids = selected.includes(o.id) ? selected : [o.id];
     setSelected(ids);
-    begin(e, { t: "move", sx: e.clientX, sy: e.clientY, orig: objects.filter((x) => ids.includes(x.id)), bg: null, saved: false });
+    // Bloqueado: no se mueve; arrastrar sobre él desplaza el plano.
+    if (o.locked) return begin(e, { t: "pan", sx: e.clientX, sy: e.clientY, tx: view.tx, ty: view.ty });
+    begin(e, { t: "move", sx: e.clientX, sy: e.clientY, orig: objects.filter((x) => ids.includes(x.id) && !x.locked), bg: null, saved: false });
   }
   const startResize = (e: React.PointerEvent, o: PlanObject, hx: number, hy: number) => {
     e.stopPropagation();
@@ -561,17 +592,22 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
       if (e.key === "Enter" && mode === "tracePoly") return closePoly(draft);
       if (e.key === "Enter" && mode === "fence") return finishFence(draft, false);
       if (mode !== "select" || !selObjs.length) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {
+        e.preventDefault();
+        return setLocked(selected, !selObjs.every((o) => o.locked));
+      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
         e.preventDefault();
         return duplicate(selObjs);
       }
       if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
+        if (sel?.locked) return;
         if (sel?.points && vertex !== null) {
           if (sel.points.length > (sel.kind === "fence" ? 2 : 3)) patch(sel.id, withPoints(sel, sel.points.filter((_, i) => i !== vertex)));
           return setVertex(null);
         }
-        return remove(selected);
+        return remove(selObjs.filter((o) => !o.locked).map((o) => o.id));
       }
       const arrows: Record<string, Pt> = { ArrowLeft: { x: -1, y: 0 }, ArrowRight: { x: 1, y: 0 }, ArrowUp: { x: 0, y: -1 }, ArrowDown: { x: 0, y: 1 } };
       const a = arrows[e.key];
@@ -580,7 +616,7 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
         const st = e.shiftKey ? 1 : 0.1;
         change(() =>
           setObjects((l) =>
-            l.map((o) => (selected.includes(o.id) ? { ...o, x: r2(o.x + a.x * st), y: r2(o.y + a.y * st), points: o.points?.map(([x, y]) => [r2(x + a.x * st), r2(y + a.y * st)] as [number, number]) } : o)),
+            l.map((o) => (selected.includes(o.id) && !o.locked ? { ...o, x: r2(o.x + a.x * st), y: r2(o.y + a.y * st), points: o.points?.map(([x, y]) => [r2(x + a.x * st), r2(y + a.y * st)] as [number, number]) } : o)),
           ),
         );
       }
@@ -667,6 +703,7 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
           {modeBtn("fence", "Dibujar cerco")}
           {modeBtn("tree", "Marcar árbol")}
           {modeBtn("paint", "Pintar arbustos")}
+          {modeBtn("walk", "Pintar camino")}
           {modeBtn("room", "Ajustar lienzo")}
           {bg && (
             <>
@@ -797,6 +834,13 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
                       "aria-label": `${o.label}${seatable(o) ? `, ${u} de ${o.seats} sillas` : ""}`,
                       style: { cursor: "move" },
                     };
+                    if (isWalkway(o)) {
+                      return (
+                        <g key={o.id} {...common}>
+                          <WalkwayShape o={o} />
+                        </g>
+                      );
+                    }
                     if (isShrubs(o)) {
                       return (
                         <g key={o.id} {...common} opacity={o.opacity ?? 1}>
@@ -828,7 +872,7 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
                 {/* Nombres (siempre derechos y del mismo tamaño en pantalla) */}
                 <g pointerEvents="none" style={{ fontSize: px(11.5), fontFamily: "Inter, system-ui, sans-serif" }} textAnchor="middle">
                   {ordered.map((o) =>
-                    ["tree", "palm", "bush", "shrubs", "fence"].includes(o.kind) ? null : (
+                    ["tree", "palm", "bush", "shrubs", "fence", "walkway"].includes(o.kind) ? null : (
                       <text key={o.id} x={o.x} y={o.y + (o.kind === "entrance" ? o.h / 2 + px(16) : 0)} dominantBaseline="middle" fill={o.kind === "stage" ? "#fff" : "#221A1C"} stroke={o.kind === "stage" ? "none" : "rgba(255,255,255,.85)"} strokeWidth={px(3)} paintOrder="stroke" fontWeight={600}>
                         <tspan x={o.x}>{o.label}</tspan>
                         {seatable(o) && (
@@ -841,14 +885,23 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
                   )}
                 </g>
                 {/* Manijas */}
-                {mode === "select" && sel && <Handles o={sel} px={px} uniform={isUniform(sel)} onResize={startResize} onRotate={startRotate} />}
+                {mode === "select" && sel && !sel.locked && <Handles o={sel} px={px} uniform={isUniform(sel)} onResize={startResize} onRotate={startRotate} />}
+                {mode === "select" && sel?.locked && (
+                  <g transform={`translate(${sel.x} ${sel.y}) rotate(${sel.rotation})`} pointerEvents="none" data-locked-outline>
+                    <rect x={-sel.w / 2} y={-sel.h / 2} width={sel.w} height={sel.h} fill="none" stroke="#6B6063" strokeWidth={px(1.5)} strokeDasharray={`${px(3)} ${px(3)}`} />
+                    <g transform={`translate(${sel.w / 2} ${-sel.h / 2}) rotate(${-sel.rotation})`}>
+                      <circle r={px(10)} fill="#fff" stroke="#6B6063" strokeWidth={px(1.2)} />
+                      <path d="M-3 -1 v-2 a3 3 0 0 1 6 0 v2 M-4 -1 h8 v6 h-8 z" transform={`scale(${px(1)})`} fill="none" stroke="#4A4043" strokeWidth={1.4} strokeLinejoin="round" />
+                    </g>
+                  </g>
+                )}
                 {mode === "select" && selObjs.length > 1 &&
                   selObjs.map((o) => (
                     <g key={o.id} transform={`translate(${o.x} ${o.y}) rotate(${o.rotation})`} pointerEvents="none">
                       <rect x={-o.w / 2 - px(4)} y={-o.h / 2 - px(4)} width={o.w + px(8)} height={o.h + px(8)} fill="none" stroke="#2563EB" strokeWidth={px(1.5)} strokeDasharray={`${px(5)} ${px(3)}`} />
                     </g>
                   ))}
-                {mode === "select" && sel?.points && sel.kind !== "shrubs" && (
+                {mode === "select" && sel?.points && !sel.locked && sel.kind !== "shrubs" && sel.kind !== "walkway" && (
                   <g>
                     {sel.points.map((p, i) => {
                       if (sel.kind === "fence" && !sel.closed && i === sel.points!.length - 1) return null;
@@ -906,6 +959,9 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
                 {rectDraft && (
                   <rect x={Math.min(rectDraft.a.x, rectDraft.b.x)} y={Math.min(rectDraft.a.y, rectDraft.b.y)} width={Math.abs(rectDraft.b.x - rectDraft.a.x)} height={Math.abs(rectDraft.b.y - rectDraft.a.y)} fill="rgba(244,227,161,.25)" stroke="#C8A43A" strokeWidth={px(2)} strokeDasharray={`${px(8)} ${px(5)}`} pointerEvents="none" />
                 )}
+                {mode === "walk" && cursor && (
+                  <circle cx={cursor.x} cy={cursor.y} r={walk.width / 2} fill="rgba(238,233,224,.5)" stroke="#9E948A" strokeWidth={px(1.5)} pointerEvents="none" />
+                )}
                 {mode === "paint" && cursor && (
                   <circle cx={cursor.x} cy={cursor.y} r={brush.size / 2} fill={brush.erase ? "rgba(122,35,55,.12)" : "rgba(243,154,43,.15)"} stroke={brush.erase ? "#7A2337" : "#C77A1C"} strokeWidth={px(1.5)} strokeDasharray={brush.erase ? `${px(4)} ${px(3)}` : undefined} pointerEvents="none" />
                 )}
@@ -919,6 +975,19 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
             </svg>
 
             <p className="pointer-events-none absolute left-3 top-3 max-w-[min(720px,calc(100%-24px))] rounded-lg bg-white/90 px-3 py-1.5 text-xs text-[#4A4043] shadow-sm print:hidden" data-hint>{HINTS[mode]}</p>
+            {mode === "walk" && (
+              <div className="absolute bottom-3 left-3 flex flex-wrap items-center gap-1 rounded-full bg-white p-1 shadow print:hidden" role="group" aria-label="Camino" data-walk-brush>
+                {([["Angosto", 2], ["Normal", 3], ["Ancho", 4.5]] as const).map(([label, width]) => (
+                  <button key={label} type="button" aria-pressed={walk.width === width} onClick={() => setWalk((w) => ({ ...w, width }))} className={`h-8 rounded-full px-3 text-xs ${walk.width === width ? "bg-[#F3E6E9] font-semibold text-[#7A2337]" : "hover:bg-[#F6F3EF]"}`} data-walk-width={label}>
+                    {label}
+                  </button>
+                ))}
+                <span className="mx-0.5 h-5 w-px bg-[#E7E1DB]" />
+                <button type="button" aria-pressed={walk.lamps} onClick={() => setWalk((w) => ({ ...w, lamps: !w.lamps }))} className={`h-8 rounded-full px-3 text-xs ${walk.lamps ? "bg-[#F3E6E9] font-semibold text-[#7A2337]" : "hover:bg-[#F6F3EF]"}`} data-walk-lamps>
+                  Faroles
+                </button>
+              </div>
+            )}
             {mode === "paint" && (
               <div className="absolute bottom-3 left-3 flex flex-wrap items-center gap-1 rounded-full bg-white p-1 shadow print:hidden" role="group" aria-label="Brocha de arbustos" data-brush>
                 {([["Chico", 1], ["Mediano", 1.6], ["Grande", 2.4]] as const).map(([label, size]) => (
@@ -956,14 +1025,18 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
                 unseat={unseat}
                 onDuplicate={() => duplicate([sel])}
                 onRemove={() => remove([sel.id])}
+                onLock={() => setLocked([sel.id], !sel.locked)}
               />
             ) : selObjs.length > 1 ? (
               <>
                 <h2 className="font-serif text-lg">{selObjs.length} objetos elegidos</h2>
-                <p className="text-xs text-[#6B6063]">Arrástralos para moverlos juntos o usa las flechas del teclado.</p>
+                <p className="text-xs text-[#6B6063]">Arrástralos para moverlos juntos o usa las flechas del teclado. Los bloqueados no se mueven.</p>
+                <button type="button" onClick={() => setLocked(selected, !selObjs.every((o) => o.locked))} className="flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-[#D9D1CA]" data-lock-many>
+                  {selObjs.every((o) => o.locked) ? <><LockOpen size={14} /> Desbloquear todos</> : <><Lock size={14} /> Bloquear todos</>}
+                </button>
                 <div className="flex gap-2">
                   <button type="button" onClick={() => duplicate(selObjs)} className="min-h-10 flex-1 rounded-lg border border-[#D9D1CA]">Duplicar</button>
-                  <button type="button" onClick={() => remove(selected)} className="min-h-10 flex-1 rounded-lg border border-[#D9D1CA] text-[#7A2337]">Eliminar</button>
+                  <button type="button" disabled={selObjs.every((o) => o.locked)} onClick={() => remove(selObjs.filter((o) => !o.locked).map((o) => o.id))} className="min-h-10 flex-1 rounded-lg border border-[#D9D1CA] text-[#7A2337] disabled:opacity-40">Eliminar</button>
                 </div>
               </>
             ) : panel === "terrain" ? (
@@ -1096,7 +1169,7 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
 // Lugar libre para un objeto nuevo, lo más cerca posible del centro de la vista.
 function freeSpot(o: PlanObject, others: PlanObject[], room: SeatingPlan["room"], center: Pt): Pt {
   const pad = 0.8;
-  const blocks = others.filter((p) => (layerOf(p) > 0 && p.kind !== "fence") || FLOORS.find((f) => f.id === p.floor)?.blocked);
+  const blocks = others.filter((p) => (layerOf(p) > 0 && p.kind !== "fence" && p.kind !== "walkway") || FLOORS.find((f) => f.id === p.floor)?.blocked);
   const half = (x: PlanObject) => ({ w: x.w / 2 + pad, h: x.h / 2 + pad });
   const me = half(o);
   const cands: Pt[] = [];
@@ -1161,6 +1234,7 @@ function Inspector({
   unseat,
   onDuplicate,
   onRemove,
+  onLock,
 }: {
   o: PlanObject;
   used: number;
@@ -1168,6 +1242,7 @@ function Inspector({
   patch: (p: Partial<PlanObject>) => void;
   unseat: (ids: string[]) => void;
   onDuplicate: () => void;
+  onLock: () => void;
   onRemove: () => void;
 }) {
   const item = itemOf(o.kind);
@@ -1241,6 +1316,28 @@ function Inspector({
             ))}
           </div>
         </div>
+      )}
+      {o.kind === "walkway" && (
+        <>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[#4A4043]">Diseño</span>
+            <div className="grid grid-cols-3 gap-1.5">
+              {WALK_STYLES.map((w) => (
+                <button key={w.id} type="button" aria-pressed={(o.walkStyle ?? "stoneGrass") === w.id} onClick={() => patch({ walkStyle: w.id })} className={opt((o.walkStyle ?? "stoneGrass") === w.id)} data-walk-style={w.id}>
+                  {w.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <label className="flex flex-col gap-1 text-[#4A4043]">
+            Ancho
+            <input type="range" min={10} max={80} value={Math.round((o.stamp ?? 3) * 10)} onChange={(ev) => { const st = Number(ev.target.value) / 10; patch({ stamp: st, ...walkwayBox(o.points ?? [], st) }); }} className="accent-[#7A2337]" data-walk-size />
+          </label>
+          <label className="flex items-center gap-2 text-[#4A4043]">
+            <input type="checkbox" checked={o.lamps !== false} onChange={(ev) => patch({ lamps: ev.target.checked })} className="accent-[#7A2337]" data-walk-lamps-toggle />
+            Faroles a los lados
+          </label>
+        </>
       )}
       {o.kind === "shrubs" && (
         <>
@@ -1345,9 +1442,13 @@ function Inspector({
         </div>
       )}
       <span className="flex-1" />
+      <button type="button" aria-pressed={!!o.locked} onClick={onLock} className={`flex min-h-10 items-center justify-center gap-1.5 rounded-lg border ${o.locked ? "border-[#4A4043] bg-[#F6F3EF] font-semibold" : "border-[#D9D1CA]"}`} title="Ctrl+L" data-lock>
+        {o.locked ? <><LockOpen size={14} /> Desbloquear</> : <><Lock size={14} /> Bloquear en su lugar</>}
+      </button>
+      {o.locked && <p className="-mt-2 text-xs text-[#6B6063]">Bloqueado: no se mueve ni cambia de tamaño. Arrastrar sobre él desplaza el plano.</p>}
       <div className="flex gap-2">
         <button type="button" onClick={onDuplicate} className="min-h-10 flex-1 rounded-lg border border-[#D9D1CA]">Duplicar</button>
-        <button type="button" onClick={onRemove} className="min-h-10 flex-1 rounded-lg border border-[#D9D1CA] text-[#7A2337]" data-delete-object>Eliminar</button>
+        <button type="button" disabled={!!o.locked} onClick={onRemove} className="min-h-10 flex-1 rounded-lg border border-[#D9D1CA] text-[#7A2337] disabled:opacity-40" data-delete-object>Eliminar</button>
       </div>
     </>
   );

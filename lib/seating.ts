@@ -4,7 +4,7 @@
 
 export type TableKind = "round" | "long" | "serpentine" | "box" | "high" | "sweetheart";
 export type BarKind = "bar" | "barRound";
-export type PlaceKind = "area" | "dance" | "stage" | "entrance" | "path" | "fence";
+export type PlaceKind = "area" | "dance" | "stage" | "entrance" | "path" | "fence" | "walkway";
 export type NatureKind = "tree" | "palm" | "bush" | "shrubs";
 export type Kind = TableKind | BarKind | "station" | PlaceKind | NatureKind | "scenery";
 
@@ -12,6 +12,7 @@ export type StationShape = "straight" | "round" | "L" | "C";
 export type Floor = "lawn" | "stone" | "wood" | "building" | "dirt";
 export type TreeVariant = "round" | "leafy" | "pine" | "flower" | "willow";
 export type FenceStyle = "wood" | "mesh" | "hedge";
+export type WalkStyle = "stoneGrass" | "stone" | "gravel";
 
 export type PlanObject = {
   id: string;
@@ -38,6 +39,11 @@ export type PlanObject = {
   opacity?: number;
   // Arbustos pintados: cada punto es un arbusto; stamp = su tamaño
   stamp?: number;
+  // Camino pintado: diseño y faroles (stamp = ancho)
+  walkStyle?: WalkStyle;
+  lamps?: boolean;
+  // Bloqueado: no se mueve, no cambia de tamaño ni se borra por accidente
+  locked?: boolean;
 };
 
 export type PlanBackground = { src: string; x: number; y: number; w: number; aspect: number; rotation: number; opacity: number; traceOnly: boolean };
@@ -81,7 +87,8 @@ export const CATALOG: { group: string; items: Item[] }[] = [
       { kind: "area", label: "Zona (casa, terraza, baños…)" },
       { kind: "dance", label: "Pista de baile" },
       { kind: "stage", label: "Escenario" },
-      { kind: "path", label: "Camino" },
+      { kind: "walkway", label: "Camino de entrada (pintar)" },
+      { kind: "path", label: "Camino recto" },
       { kind: "fence", label: "Cerco" },
       { kind: "entrance", label: "Entrada" },
     ],
@@ -117,6 +124,14 @@ export function shrubsBox(points: [number, number][], stamp: number) {
   const b = polyBox(points);
   return { x: b.x, y: b.y, w: b.w + stamp, h: b.h + stamp };
 }
+export const isWalkway = (o: PlanObject) => o.kind === "walkway" && !!o.points && o.points.length >= 2;
+export const WALK_STYLES: { id: WalkStyle; label: string }[] = [
+  { id: "stoneGrass", label: "Piedra y césped" },
+  { id: "stone", label: "Piedra" },
+  { id: "gravel", label: "Grava" },
+];
+// Caja de un camino pintado (ancho + grava + faroles).
+export const walkwayBox = (points: [number, number][], width: number) => shrubsBox(points, width + 1.6);
 export const isFence = (o: PlanObject) => o.kind === "fence" && !!o.points && o.points.length >= 2;
 export const TREE_VARIANTS: { id: TreeVariant; label: string }[] = [
   { id: "round", label: "Copa redonda" },
@@ -261,6 +276,11 @@ export function newObject(kind: Kind, existing: PlanObject[], at?: { x: number; 
       return { ...base, label: "Palmera", w: 3, h: 3, opacity: NATURE_OPACITY };
     case "bush":
       return { ...base, label: "Arbusto", w: 1.2, h: 1.2, opacity: 0.8 };
+    case "walkway": {
+      const c = at ?? { x: 0, y: 0 };
+      const points: [number, number][] = [[c.x, c.y - 5], [c.x, c.y + 5]];
+      return { ...base, label: "Camino de entrada", ...walkwayBox(points, 3), points, stamp: 3, walkStyle: "stoneGrass", lamps: true };
+    }
     case "shrubs": {
       const c = at ?? { x: 0, y: 0 };
       const points: [number, number][] = [[c.x, c.y]];
@@ -338,6 +358,15 @@ export function sanitizePlan(raw: unknown): SeatingPlan {
       Object.assign(obj, polyBox(p), { points: p, rotation: 0 });
       obj.fenceStyle = (FENCE_STYLES.some((f) => f.id === x.fenceStyle) ? x.fenceStyle : "wood") as FenceStyle;
       obj.closed = x.closed === true && p.length >= 3;
+    }
+    if (x.locked === true) obj.locked = true;
+    if (kind === "walkway") {
+      const p = pts(2);
+      if (!p) continue;
+      obj.stamp = n(x.stamp, 0.8, 12, 3);
+      obj.walkStyle = (WALK_STYLES.some((w) => w.id === x.walkStyle) ? x.walkStyle : "stoneGrass") as WalkStyle;
+      obj.lamps = x.lamps !== false;
+      Object.assign(obj, walkwayBox(p, obj.stamp), { points: p, rotation: 0 });
     }
     if (kind === "shrubs") {
       const p = pts(1);

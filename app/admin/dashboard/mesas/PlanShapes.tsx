@@ -72,7 +72,7 @@ export const ROOM_FILL: Record<SeatingPlan["style"]["ambience"], string> = { gar
 // Orden de dibujo: zonas → pisos especiales → naturaleza → mesas y demás → entrada.
 export function layerOf(o: PlanObject) {
   if (o.kind === "area") return 0;
-  if (o.kind === "fence") return 1;
+  if (o.kind === "fence" || o.kind === "walkway") return 1;
   if (o.kind === "path" || o.kind === "dance" || o.kind === "stage") return 1;
   if (o.kind === "tree" || o.kind === "palm" || o.kind === "bush" || o.kind === "shrubs") return 2;
   if (o.kind === "entrance") return 4;
@@ -320,6 +320,59 @@ export function ShrubsShape({ o }: { o: PlanObject }) {
     <>
       {(o.points ?? []).map(([x, y], i) => (
         <use key={i} href="#spr-mandarin" transform={`translate(${x} ${y}) rotate(${(i * 137.5) % 360}) scale(${st * (0.85 + ((i * 53) % 30) / 100)})`} />
+      ))}
+    </>
+  );
+}
+
+const rd3 = (v: number) => Math.round(v * 1000) / 1000;
+// Trazo suavizado (curvas por los puntos medios).
+function smoothPath(pts: [number, number][]) {
+  if (pts.length < 3) return `M${pts.map((p) => p.join(" ")).join(" L")}`;
+  let d = `M${pts[0][0]} ${pts[0][1]}`;
+  for (let i = 1; i < pts.length - 1; i++) d += ` Q${pts[i][0]} ${pts[i][1]} ${rd3((pts[i][0] + pts[i + 1][0]) / 2)} ${rd3((pts[i][1] + pts[i + 1][1]) / 2)}`;
+  const l = pts[pts.length - 1];
+  return `${d} L${l[0]} ${l[1]}`;
+}
+
+// Camino pintado: grava a los lados, franjas de piedra con césped al centro y faroles.
+export function WalkwayShape({ o }: { o: PlanObject }) {
+  const pts = o.points ?? [];
+  const W = o.stamp ?? 3;
+  const d = smoothPath(pts);
+  const line = { fill: "none", strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  const lamps: [number, number][] = [];
+  if (o.lamps !== false) {
+    const every = 4, off = W / 2 + 0.45;
+    let next = 1;
+    let acc = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [ax, ay] = pts[i], [bx, by] = pts[i + 1];
+      const len = Math.hypot(bx - ax, by - ay);
+      if (!len) continue;
+      const nx = -(by - ay) / len, ny = (bx - ax) / len;
+      while (next <= acc + len) {
+        const t = (next - acc) / len, x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
+        lamps.push([rd3(x + nx * off), rd3(y + ny * off)], [rd3(x - nx * off), rd3(y - ny * off)]);
+        next += every;
+      }
+      acc += len;
+    }
+  }
+  return (
+    <>
+      <path d={d} {...line} stroke="#D4CDC2" strokeWidth={W + 1.2} />
+      {o.walkStyle === "gravel" ? (
+        <path d={d} {...line} stroke="#C4B9A9" strokeWidth={W} />
+      ) : (
+        <path d={d} {...line} stroke="#EEE9E0" strokeWidth={W} />
+      )}
+      {(o.walkStyle ?? "stoneGrass") === "stoneGrass" && <path d={d} {...line} stroke="#86AD55" strokeWidth={W * 0.32} />}
+      {lamps.map(([x, y], i) => (
+        <g key={i}>
+          <circle cx={x} cy={y} r={0.32} fill="rgba(255,236,170,.45)" />
+          <circle cx={x} cy={y} r={0.15} fill="#FFF8E1" stroke="#A8957A" strokeWidth={0.04} />
+        </g>
       ))}
     </>
   );
