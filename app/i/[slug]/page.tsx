@@ -22,7 +22,9 @@ import { ArtboardSection } from "@/app/components/ArtboardSection";
 import { DesktopFixedBackground, desktopPageProps } from "@/app/components/Slide";
 import { getDesktopBackground } from "@/lib/desktopBackgroundServer";
 import { getWeddingContent, type OrderedSection } from "@/lib/weddingContent";
-import { isAdminAuthed } from "@/lib/auth";
+import { isAdminAuthed, siteOrigin } from "@/lib/auth";
+import { deadlinePassed, membersFor, passSvg } from "@/lib/rsvp";
+import { asPassType } from "@/lib/panel";
 import { Fragment, type ReactNode } from "react";
 
 export const dynamic = "force-dynamic";
@@ -61,6 +63,10 @@ export default async function GuestInvitationPage({
   ]);
 
   const desktop = await getDesktopBackground();
+  // Confirmación: las personas de la invitación y su pase (el QR no lleva la mesa: se lee al escanear).
+  const members = await membersFor(guest.id, guest.fullName);
+  const deadline = new Date(content.rsvpDeadlineISO);
+  const pass = guest.passToken && existingRsvp?.attending ? { svg: await passSvg(guest.passToken, await siteOrigin()), tableName: guest.tableName } : null;
   // Cada sección del cuerpo; se muestran en el orden que se eligió en el editor.
   const sections: Record<OrderedSection, ReactNode> = {
     hero: <Hero guestName={guest.fullName} />,
@@ -77,7 +83,18 @@ export default async function GuestInvitationPage({
     custom3: <ArtboardSection section="custom3" guestName={guest.fullName} />,
     gifts: <Gifts slug={guest.slug} />,
     rsvp: (
-      <RSVPForm slug={guest.slug} maxAttendees={guest.maxAttendees} existing={existingRsvp ?? null} layout={rsvpText} tokens={tokens} />
+      <RSVPForm
+        slug={guest.slug}
+        guestName={guest.fullName}
+        passType={asPassType(guest.passType)}
+        members={members}
+        existing={existingRsvp ? { attending: existingRsvp.attending, dietaryRestrictions: existingRsvp.dietaryRestrictions, notes: existingRsvp.notes } : null}
+        deadlineLabel={deadline.toLocaleDateString("es-PE", { day: "numeric", month: "long", timeZone: "America/Lima" })}
+        closed={deadlinePassed(content.rsvpDeadlineISO)}
+        pass={pass}
+        layout={rsvpText}
+        tokens={tokens}
+      />
     ),
     messages: <GuestMessages slug={guest.slug} />,
   };

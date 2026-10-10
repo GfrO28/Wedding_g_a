@@ -7,10 +7,12 @@ import { db } from "@/lib/db";
 import { giftContributions, giftItems, guests } from "@/lib/db/schema";
 import { getJSON, setJSON, setSetting } from "@/lib/kv";
 import { makeSlug } from "@/lib/slug";
+import { MAX_MEMBERS, newPassToken, syncMembers, type MemberInput } from "@/lib/rsvp";
 import { audit, destroyAdminSession, requireAdmin } from "@/lib/auth";
 import { deleteObject, getUploadUrl, publicUrlFor } from "@/lib/storage/r2";
 import {
   asCurrency,
+  asPassType,
   asGiftCurrency,
   fmtMoney,
   GIFTS_DISPLAY_KEY,
@@ -22,6 +24,7 @@ import {
   sanitizeGiftsDisplay,
   withPaymentDefaults,
   type GiftCurrency,
+  type PassType,
   type Payment,
   type PaymentMethod,
 } from "@/lib/panel";
@@ -61,7 +64,9 @@ export type GuestInput = {
   id?: string;
   fullName: string;
   groupName?: string;
-  maxAttendees?: number;
+  passType?: PassType;
+  members?: MemberInput[]; // pareja o familia: las personas (con nombre o acompañantes)
+  maxAttendees?: number; // solo al importar: lugares sin nombres
   phone?: string;
   email?: string;
   tableName?: string;
@@ -72,7 +77,6 @@ function cleanGuest(g: GuestInput) {
   return {
     fullName: clip(g.fullName, 120),
     groupName: orNull(g.groupName, 60),
-    maxAttendees: Math.min(30, Math.max(1, Math.round(Number(g.maxAttendees) || 1))),
     phone: orNull(g.phone, 30),
     email: orNull(g.email, 120),
     tableName: orNull(g.tableName, 40),
@@ -84,8 +88,12 @@ export async function saveGuestAction(input: GuestInput): Promise<{ ok: boolean;
   await guard();
   const g = cleanGuest(input);
   if (!g.fullName) return { ok: false, error: "Falta el nombre." };
-  if (input.id) await db.update(guests).set(g).where(eq(guests.id, input.id));
-  else await db.insert(guests).values({ ...g, slug: makeSlug(g.fullName) });
+  const passType = asPassType(input.passType);
+  if (passType === "group" && !(input.members ?? []).some((m) => m.name?.trim() || m.companion)) return { ok: false, error: "Agrega al menos una persona." };
+  let id = input.id;
+  if (id) await db.update(guests).set(g).where(eq(guests.id, id));
+  else [{ id }] = await db.insert(guests).values({ ...g, slug: makeSlug(g.fullName), passToken: newPassToken() }).returning({ id: guests.id });
+  await syncMembers(id!, passType, g.fullName, input.members ?? []);
   revalidate();
   return { ok: true };
 }
@@ -113,11 +121,17 @@ export async function bulkUpdateGuestsAction(ids: string[], changes: { groupName
 // Alta en lote (desde un CSV o lo copiado de Excel).
 export async function importGuestsAction(rows: GuestInput[]): Promise<{ ok: boolean; count: number }> {
   await guard();
-  const clean = rows.slice(0, 1000).map(cleanGuest).filter((g) => g.fullName);
-  if (clean.length) {
-    await db.insert(guests).values(clean.map((g) => ({ ...g, slug: makeSlug(g.fullName) })));
-    await audit(`Importó ${clean.length} invitados`);
+  const list = rows.slice(0, 1000).filter((r) => clip(r.fullName, 120));
+  // Lugares sin nombres: 1 = individual, 2 = con acompañante, más = el titular y acompañantes.
+  for (const r of list) {
+    const g = cleanGuest(r);
+    const seats = Math.min(MAX_MEMBERS, Math.max(1, Math.round(Number(r.maxAttendees) || 1)));
+    const passType = seats === 1 ? "single" : seats === 2 ? "plusone" : "group";
+    const [{ id }] = await db.insert(guests).values({ ...g, slug: makeSlug(g.fullName), passToken: newPassToken() }).returning({ id: guests.id });
+    await syncMembers(id, passType, g.fullName, [{ name: g.fullName }, ...Array.from({ length: seats - 1 }, () => ({ name: "", companion: true }))]);
   }
+  const clean = list;
+  if (clean.length) await audit(`Importó ${clean.length} invitados`);
   revalidate();
   return { ok: true, count: clean.length };
 }

@@ -69,7 +69,7 @@ export default async function ContentEditorPage() {
     blessing: { divider: <Divider scaled /> },
     accommodation: { body: <AccommodationBody hotels={w.accommodation} /> },
     gifts: { body: <GiftsBody display={giftsDisplay} gifts={gifts} payment={w.gifts.payment} slug="preview" preview /> },
-    rsvp: { body: <RSVPPreviewBody maxAttendees={2} /> },
+    rsvp: { body: <RSVPPreviewBody /> },
     messages: { body: <MessagesBody messages={approvedMessages} slug="preview" /> },
   };
 

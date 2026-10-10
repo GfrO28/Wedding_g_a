@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition, type ReactNode } from "react";
 import { Check, Copy, Download, MessageCircle, Pencil, Upload, X } from "lucide-react";
 import { bulkUpdateGuestsAction, deleteGuestsAction, importGuestsAction, saveGuestAction, type GuestInput } from "../../panel-actions";
-import { inviteMessage, reminderMessage, whatsappLink } from "@/lib/panel";
+import { inviteMessage, memberName, PASS_LABELS, reminderMessage, whatsappLink, type MemberView, type PassType } from "@/lib/panel";
 
 export type GuestRow = {
   id: string;
@@ -11,6 +11,8 @@ export type GuestRow = {
   fullName: string;
   groupName: string | null;
   maxAttendees: number;
+  passType: PassType;
+  members: MemberView[];
   phone: string | null;
   email: string | null;
   tableName: string | null;
@@ -42,7 +44,7 @@ function ago(iso: string | null) {
   return d === 1 ? "ayer" : d < 7 ? `hace ${d} días` : new Date(iso).toLocaleDateString("es-PE", { day: "numeric", month: "short" });
 }
 
-const EMPTY: GuestInput = { fullName: "", groupName: "", maxAttendees: 1, phone: "", email: "", tableName: "", notes: "" };
+const EMPTY: GuestInput = { fullName: "", groupName: "", passType: "single", members: [], phone: "", email: "", tableName: "", notes: "" };
 
 // Registro, lista y acciones de los invitados.
 export function GuestsManager({ guests, groups, origin, deadline, target }: { guests: GuestRow[]; groups: string[]; origin: string; deadline: string; target: number }) {
@@ -96,10 +98,10 @@ export function GuestsManager({ guests, groups, origin, deadline, target }: { gu
   }
 
   function exportCsv() {
-    const head = ["Nombre", "Grupo", "Lugares", "Confirmados", "Estado", "Menú", "Restricciones", "Mesa", "WhatsApp", "Correo", "Abrió la invitación", "Nota", "Enlace"];
+    const head = ["Nombre", "Grupo", "Tipo de pase", "Lugares", "Personas", "Confirmados", "Asisten", "Estado", "Restricciones", "Mesa", "WhatsApp", "Correo", "Abrió la invitación", "Nota", "Enlace"];
     const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const lines = guests.map((g) =>
-      [g.fullName, g.groupName, g.maxAttendees, g.attending ? g.numAttendees : g.attending === false ? 0 : "", STATE[stateOf(g)].label, g.meal, g.diet, g.tableName, g.phone, g.email, g.openedAt ? new Date(g.openedAt).toLocaleString("es-PE") : "no", g.notes, link(g)].map(esc).join(";"),
+      [g.fullName, g.groupName, PASS_LABELS[g.passType], g.maxAttendees, g.members.map(memberName).join(", "), g.attending ? g.numAttendees : g.attending === false ? 0 : "", g.members.filter((m) => m.attending).map(memberName).join(", "), STATE[stateOf(g)].label, g.diet, g.tableName, g.phone, g.email, g.openedAt ? new Date(g.openedAt).toLocaleString("es-PE") : "no", g.notes, link(g)].map(esc).join(";"),
     );
     const blob = new Blob(["﻿" + [head.map(esc).join(";"), ...lines].join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
@@ -142,7 +144,7 @@ export function GuestsManager({ guests, groups, origin, deadline, target }: { gu
 
       <section className="rounded-2xl border border-[#E7E1DB] bg-white p-5" aria-label="Registrar invitado">
         <h2 className="text-[15px] font-semibold">Registrar invitado</h2>
-        <p className="text-sm text-[#6B6063]">Cada invitación tiene su enlace personal y la cantidad de lugares que le guardan.</p>
+        <p className="text-sm text-[#6B6063]">Cada invitación tiene su enlace personal. Defines quiénes son: el invitado solo marca quiénes asisten, nunca suma personas.</p>
         <form
           className="mt-4 grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4"
           onSubmit={(e) => {
@@ -152,7 +154,7 @@ export function GuestsManager({ guests, groups, origin, deadline, target }: { gu
           data-guest-form
         >
           <GuestFields value={form} onChange={setForm} />
-          <button type="submit" disabled={pending || !form.fullName.trim()} className="min-h-11 self-end rounded-lg bg-[#7A2337] px-4 text-sm font-semibold text-white hover:bg-[#5A1828] disabled:opacity-50">
+          <button type="submit" disabled={pending || !form.fullName.trim()} className="min-h-11 self-end rounded-lg bg-[#7A2337] px-4 text-sm font-semibold text-white hover:bg-[#5A1828] disabled:opacity-50 lg:col-start-4">
             Guardar invitado
           </button>
         </form>
@@ -207,7 +209,7 @@ export function GuestsManager({ guests, groups, origin, deadline, target }: { gu
                     onChange={(e) => setSel((s) => (e.target.checked ? [...new Set([...s, ...pageRows.map((g) => g.id)])] : s.filter((id) => !pageRows.some((g) => g.id === id))))}
                   />
                 </th>
-                {["Invitado", "Lugares", "Estado", "Menú / restricciones", "Mesa", "Abrió la invitación", "Enlace", ""].map((h, i) => (
+                {["Invitado", "Quiénes asisten", "Estado", "Restricciones", "Mesa", "Abrió la invitación", "Enlace", ""].map((h, i) => (
                   <th key={i} className="whitespace-nowrap border-b border-[#E7E1DB] px-3 py-2.5 font-semibold">{h}</th>
                 ))}
               </tr>
@@ -225,9 +227,24 @@ export function GuestsManager({ guests, groups, origin, deadline, target }: { gu
                       <p className="font-semibold">{g.fullName}</p>
                       <p className="text-xs text-[#6B6063]">{[g.groupName, g.phone].filter(Boolean).join(" · ") || "—"}</p>
                     </td>
-                    <td className="whitespace-nowrap px-3 py-3">{g.attending ? g.numAttendees : g.attending === false ? 0 : "—"} de {g.maxAttendees}</td>
-                    <td className="px-3 py-3"><span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${st.cls}`}>{st.label}</span></td>
-                    <td className="px-3 py-3 text-[13px] text-[#4A4043]">{[g.meal, g.diet].filter(Boolean).join(" · ") || "—"}</td>
+                    <td className="px-3 py-3" data-members>
+                      <span className="mb-1 block text-xs text-[#6B6063]">{PASS_LABELS[g.passType]} · {g.maxAttendees} {g.maxAttendees === 1 ? "lugar" : "lugares"}</span>
+                      <span className="flex max-w-[320px] flex-wrap gap-1">
+                        {g.members.map((m) => (
+                          <span
+                            key={m.id}
+                            className={`rounded-full px-2 py-0.5 text-xs ${m.attending === true ? "bg-[#E6F2EA] text-[#2F6B45]" : m.attending === false ? "bg-[#F1ECE6] text-[#6B6063] line-through" : "bg-[#F6F3EF] text-[#4A4043]"}`}
+                          >
+                            {memberName(m)}
+                            {m.companion && m.name ? " (acompañante)" : ""}
+                          </span>
+                        ))}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${st.cls}`}>{g.attending === true && g.maxAttendees > 1 ? `${g.numAttendees} de ${g.maxAttendees}` : st.label}</span>
+                    </td>
+                    <td className="px-3 py-3 text-[13px] text-[#4A4043]">{g.diet || "—"}</td>
                     <td className="px-3 py-3 text-[13px]">{g.tableName || "—"}</td>
                     <td className="whitespace-nowrap px-3 py-3 text-[13px] text-[#6B6063]">{ago(g.openedAt)}</td>
                     <td className="px-3 py-3">
@@ -312,9 +329,9 @@ function GuestFields({ value, onChange }: { value: GuestInput; onChange: (v: Gue
   const f = (k: keyof GuestInput) => ({ value: String(value[k] ?? ""), onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChange({ ...value, [k]: e.target.value }) });
   return (
     <>
-      <Field label="Nombre en la invitación"><input className={inputCls} required maxLength={120} {...f("fullName")} placeholder="Familia Rojas Díaz" /></Field>
+      <PassFields value={value} onChange={onChange} />
+      <Field label={value.passType === "group" ? "Nombre de la invitación" : "Nombre del invitado"}><input className={inputCls} required maxLength={120} {...f("fullName")} placeholder={value.passType === "group" ? "Familia Rojas" : "Lucía Pérez"} /></Field>
       <Field label="Grupo"><input className={inputCls} list="guest-groups" maxLength={60} {...f("groupName")} placeholder="Elige o escribe uno" /></Field>
-      <Field label="Lugares (personas)"><input className={inputCls} type="number" min={1} max={30} {...f("maxAttendees")} /></Field>
       <Field label="WhatsApp"><input className={inputCls} type="tel" maxLength={30} {...f("phone")} placeholder="987 654 321" /></Field>
       <Field label="Correo (opcional)"><input className={inputCls} type="email" maxLength={120} {...f("email")} placeholder="nombre@correo.com" /></Field>
       <Field label="Mesa"><input className={inputCls} maxLength={40} {...f("tableName")} placeholder="Sin asignar" /></Field>
@@ -323,8 +340,75 @@ function GuestFields({ value, onChange }: { value: GuestInput; onChange: (v: Gue
   );
 }
 
+// Tipo de pase y, en pareja o familia, las personas (con nombre o acompañantes que nombra el invitado).
+function PassFields({ value, onChange }: { value: GuestInput; onChange: (v: GuestInput) => void }) {
+  const type = value.passType ?? "single";
+  const members = value.members ?? [];
+  const setMembers = (list: NonNullable<GuestInput["members"]>) => onChange({ ...value, members: list });
+  const pick = (t: PassType) =>
+    onChange({ ...value, passType: t, members: t === "group" && !members.some((m) => m.name || m.companion) ? [{ name: value.fullName }, { name: "" }] : members });
+  return (
+    <div className="flex flex-col gap-3 sm:col-span-2 lg:col-span-4">
+      <fieldset className="grid gap-2 sm:grid-cols-3" data-pass-type>
+        <legend className="mb-1.5 text-[13px] text-[#4A4043]">Tipo de pase</legend>
+        {([
+          ["single", "Individual", "1 persona"],
+          ["plusone", "Con acompañante", "El invitado escribe el nombre"],
+          ["group", "Pareja o familia", "Tú pones cada nombre"],
+        ] as const).map(([k, label, help]) => (
+          <label key={k} className={`flex cursor-pointer flex-col rounded-lg border p-3 text-sm ${type === k ? "border-[#7A2337] bg-[#F3E6E9]" : "border-[#D9D1CA]"}`}>
+            <span className="flex items-center gap-2 font-semibold"><input type="radio" name={`pass-${value.id ?? "new"}`} checked={type === k} onChange={() => pick(k)} className="accent-[#7A2337]" />{label}</span>
+            <span className="text-xs text-[#6B6063]">{help}</span>
+          </label>
+        ))}
+      </fieldset>
+      {type === "group" && (
+        <div className="flex flex-col gap-2" data-members-editor>
+          <p className="text-[13px] text-[#4A4043]">Personas de esta invitación · <b>{members.filter((m) => m.name.trim() || m.companion).length} lugares</b></p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {members.map((m, i) => (
+              <div key={m.id ?? `n${i}`} className="flex min-h-11 items-center gap-1 rounded-lg border border-[#D9D1CA] bg-white pl-3 pr-1">
+                {m.companion ? (
+                  <span className="flex-1 text-sm text-[#6B6063]">Acompañante (lo nombra el invitado)</span>
+                ) : (
+                  <input
+                    aria-label={`Persona ${i + 1}`}
+                    value={m.name}
+                    maxLength={80}
+                    onChange={(e) => setMembers(members.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
+                    placeholder={`Persona ${i + 1}`}
+                    className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                  />
+                )}
+                <button type="button" aria-label={`Quitar a ${m.companion ? "acompañante" : m.name || `persona ${i + 1}`}`} onClick={() => setMembers(members.filter((_, j) => j !== i))} className="flex h-9 w-9 items-center justify-center rounded-md text-[#6B6063] hover:bg-[#F6F3EF]">
+                  <X size={16} />
+                </button>
+              </div>
+            ))}
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setMembers([...members, { name: "" }])} className="min-h-11 flex-1 rounded-lg border border-dashed border-[#B9AEA6] text-sm text-[#7A2337]">+ Persona</button>
+              <button type="button" onClick={() => setMembers([...members, { name: "", companion: true }])} className="min-h-11 flex-1 rounded-lg border border-dashed border-[#B9AEA6] text-sm text-[#7A2337]">+ Acompañante</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EditGuest({ guest, link, onClose }: { guest: GuestRow; link: string; onClose: () => void }) {
-  const [v, setV] = useState<GuestInput>({ id: guest.id, fullName: guest.fullName, groupName: guest.groupName ?? "", maxAttendees: guest.maxAttendees, phone: guest.phone ?? "", email: guest.email ?? "", tableName: guest.tableName ?? "", notes: guest.notes ?? "" });
+  const [v, setV] = useState<GuestInput>({
+    id: guest.id,
+    fullName: guest.fullName,
+    groupName: guest.groupName ?? "",
+    passType: guest.passType,
+    members: guest.members.map((m) => ({ id: m.id, name: m.companion ? "" : m.name ?? "", companion: m.companion })),
+    phone: guest.phone ?? "",
+    email: guest.email ?? "",
+    tableName: guest.tableName ?? "",
+    notes: guest.notes ?? "",
+  });
+  const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   return (
     <form
@@ -332,8 +416,9 @@ function EditGuest({ guest, link, onClose }: { guest: GuestRow; link: string; on
       onSubmit={(e) => {
         e.preventDefault();
         start(async () => {
-          await saveGuestAction(v);
-          onClose();
+          const res = await saveGuestAction(v);
+          if (res.ok) onClose();
+          else setError(res.error ?? "No se pudo guardar.");
         });
       }}
     >
@@ -342,6 +427,7 @@ function EditGuest({ guest, link, onClose }: { guest: GuestRow; link: string; on
         <p>Enlace personal: <a href={link} target="_blank" rel="noopener noreferrer" className="break-all text-[#7A2337] underline">{link}</a></p>
         {guest.rsvpNotes && <p className="mt-1">Nota del invitado: “{guest.rsvpNotes}”</p>}
       </div>
+      {error && <p className="text-sm text-[#7A2337] sm:col-span-2" role="alert">{error}</p>}
       <div className="flex flex-wrap justify-between gap-2 sm:col-span-2">
         <button
           type="button"
@@ -397,7 +483,7 @@ function toGuests(rows: string[][]): GuestInput[] {
   const hasHeader = header.some((h) => COLS.some(([, re]) => re.test(h)));
   const idx = COLS.map(([k, re], i) => [k, hasHeader ? header.findIndex((h) => re.test(h)) : i] as const);
   return (hasHeader ? rows.slice(1) : rows)
-    .map((r) => Object.fromEntries(idx.filter(([, i]) => i >= 0).map(([k, i]) => [k, k === "maxAttendees" ? Number(r[i]) || 1 : r[i] ?? ""])) as GuestInput)
+    .map((r) => Object.fromEntries(idx.filter(([, i]) => i >= 0).map(([k, i]) => [k, k === "maxAttendees" ? Number(r[i]) || 1 : r[i] ?? ""])) as unknown as GuestInput)
     .filter((g) => g.fullName);
 }
 
@@ -408,7 +494,7 @@ function ImportGuests({ onDone }: { onDone: (n: number) => void }) {
   return (
     <div className="flex flex-col gap-3 text-sm">
       <p className="text-[#4A4043]">
-        Copia las filas desde Excel y pégalas aquí, o sube el archivo guardado como CSV. Columnas: <b>Nombre</b>, Grupo, Lugares, WhatsApp, Correo, Mesa, Nota (con encabezado o en ese orden).
+        Copia las filas desde Excel y pégalas aquí, o sube el archivo guardado como CSV. Columnas: <b>Nombre</b>, Grupo, Lugares, WhatsApp, Correo, Mesa, Nota (con encabezado o en ese orden). Con 1 lugar queda como pase individual, con 2 como pase con acompañante y con más, el titular y sus acompañantes (los nombres los puedes completar después).
       </p>
       <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#D9D1CA] px-3 py-2.5 hover:bg-[#FBF9F7]">
         <Upload size={16} /> Elegir archivo CSV

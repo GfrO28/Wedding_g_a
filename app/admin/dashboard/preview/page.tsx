@@ -46,7 +46,24 @@ export default async function PreviewPage() {
     custom2: <ArtboardSection section="custom2" guestName={"Invitado de ejemplo"} />,
     custom3: <ArtboardSection section="custom3" guestName={"Invitado de ejemplo"} />,
     gifts: <Gifts slug={"preview"} />,
-    rsvp: <RSVPForm slug="preview" maxAttendees={2} existing={null} layout={rsvpText} tokens={tokens} />,
+    rsvp: (
+      <RSVPForm
+        slug="preview"
+        guestName="Invitación de ejemplo"
+        passType="group"
+        members={[
+          { id: "a", name: "Nombre del invitado", companion: false, attending: null },
+          { id: "b", name: "Segunda persona", companion: false, attending: null },
+        ]}
+        existing={null}
+        deadlineLabel=""
+        closed={false}
+        pass={null}
+        preview
+        layout={rsvpText}
+        tokens={tokens}
+      />
+    ),
     messages: <GuestMessages slug={"preview"} />,
   };
   return (

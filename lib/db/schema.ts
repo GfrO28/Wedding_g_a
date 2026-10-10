@@ -12,7 +12,12 @@ export const guests = pgTable("guests", {
   slug: text("slug").notNull().unique(),
   fullName: text("full_name").notNull(),
   groupName: text("group_name"),
+  // Lugares = cantidad de personas de la invitación (guest_members); se mantiene sincronizado.
   maxAttendees: integer("max_attendees").notNull().default(1),
+  // "single": pase individual · "plusone": con acompañante (el invitado pone el nombre) · "group": pareja o familia.
+  passType: text("pass_type").notNull().default("single"),
+  // Código al azar del pase QR (distinto del link de la invitación).
+  passToken: text("pass_token").unique(),
   language: text("language").notNull().default("es"),
   phone: text("phone"),
   email: text("email"),
@@ -23,6 +28,19 @@ export const guests = pgTable("guests", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
+});
+
+// Las personas de cada invitación y si asisten (null: sin responder).
+// companion: el nombre lo escribe el invitado (acompañante).
+export const guestMembers = pgTable("guest_members", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  guestId: uuid("guest_id")
+    .notNull()
+    .references(() => guests.id, { onDelete: "cascade" }),
+  name: text("name"),
+  companion: boolean("companion").notNull().default(false),
+  attending: boolean("attending"),
+  sortOrder: integer("sort_order").notNull().default(0),
 });
 
 export const rsvps = pgTable("rsvps", {

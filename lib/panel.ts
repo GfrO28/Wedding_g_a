@@ -16,6 +16,17 @@ export function sanitizeGiftsDisplay(v: unknown): GiftsDisplay {
   return { gifts: b("gifts", legacy), showRaised: b("showRaised", true) };
 }
 
+/* ---------- Invitaciones y lugares ---------- */
+
+// "single": individual · "plusone": con acompañante (el invitado escribe su nombre) · "group": pareja o familia.
+export type PassType = "single" | "plusone" | "group";
+export const asPassType = (v: unknown): PassType => (v === "plusone" || v === "group" ? v : "single");
+export const PASS_LABELS: Record<PassType, string> = { single: "Individual", plusone: "Con acompañante", group: "Pareja o familia" };
+
+export type MemberView = { id: string; name: string | null; companion: boolean; attending: boolean | null };
+// Nombre para mostrar de una persona (un acompañante sin nombre todavía).
+export const memberName = (m: { name: string | null; companion: boolean }) => m.name || (m.companion ? "Acompañante" : "Invitado");
+
 // Grupos sugeridos (se puede escribir cualquier otro).
 export const DEFAULT_GROUPS = ["Familia de Antonella", "Familia de Gianfranco", "Amigos", "Trabajo"];
 
