@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { FLOORS, isTable, NATURE_OPACITY, seatsOf, STATION_TYPES, type PlanObject, type SeatingPlan } from "@/lib/seating";
+import { FLOORS, isTable, NATURE_OPACITY, SERP_T, seatsOf, serpRadius, STATION_TYPES, type PlanObject, type SeatingPlan } from "@/lib/seating";
 
 // Dibujo (SVG, en metros) de cada objeto del plano y de los fondos del terreno.
 
@@ -106,15 +106,14 @@ export function ObjectBody({ o, used, hover }: { o: PlanObject; used: number; ho
       body = <rect x={-w / 2} y={-h / 2} width={w} height={h} rx={0.08} fill="#F6EDEF" stroke={ACC} strokeWidth={sw * 1.4} />;
       break;
     case "serpentine": {
-      const R = h / 2, t = Math.min(0.8, R * 0.6), cxL = -w / 2 + R, cxR = w / 2 - R;
+      // Una sola curva continua: media luna de arriba y luego media luna de abajo.
+      const r = serpRadius(w, h);
+      const d = `M${-2 * r} 0 A${r} ${r} 0 0 1 0 0 A${r} ${r} 0 0 0 ${2 * r} 0`;
       body = (
-        <path
-          d={`M${cxL - R + t / 2} ${R / 2} A${R - t / 2} ${R - t / 2} 0 0 1 ${cxL + R - t / 2} ${R / 2} L${cxR - R + t / 2} ${-R / 2} A${R - t / 2} ${R - t / 2} 0 0 0 ${cxR + R - t / 2} ${-R / 2}`}
-          fill="none"
-          stroke={fill}
-          strokeWidth={t}
-          strokeLinecap="round"
-        />
+        <>
+          <path d={d} fill="none" stroke={line} strokeWidth={SERP_T + sw * 2} strokeLinecap="round" />
+          <path d={d} fill="none" stroke={fill} strokeWidth={SERP_T} strokeLinecap="round" />
+        </>
       );
       break;
     }

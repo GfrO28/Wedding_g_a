@@ -176,8 +176,11 @@ export function tableSize(kind: TableKind, n: number): { w: number; h: number } 
     }
     case "long":
       return { w: Math.max(1.2, Math.ceil(n / 2) * 0.65 + 0.3), h: 0.9 };
-    case "serpentine":
-      return { w: 4 + n * 0.25, h: 2 + n * 0.12 };
+    case "serpentine": {
+      // Radio de cada media luna según las sillas; la S mide 4 radios de largo y 2 de alto.
+      const r = Math.max(1.2, n * 0.11);
+      return { w: Math.round((4 * r + SERP_T) * 100) / 100, h: Math.round((2 * r + SERP_T) * 100) / 100 };
+    }
     case "box":
       return { w: 1.8 + Math.ceil(n / 3) * 0.5, h: 1.8 };
     case "high":
@@ -186,6 +189,11 @@ export function tableSize(kind: TableKind, n: number): { w: number; h: number } 
       return { w: Math.max(1.4, n * 0.7), h: 0.8 };
   }
 }
+
+// Mesa en S: dos medias lunas sobre la misma línea que se unen en el centro
+// (la izquierda abre hacia abajo, la derecha hacia arriba). SERP_T = ancho del tablero.
+export const SERP_T = 0.8;
+export const serpRadius = (w: number, h: number) => Math.max(0.3, Math.min((w - SERP_T) / 4, (h - SERP_T) / 2));
 
 export type Seat = { x: number; y: number }; // metros, relativo al centro, sin rotar
 // Redondeado: servidor y navegador calculan la trigonometría con decimales distintos.
@@ -211,13 +219,19 @@ export function seatsOf(o: PlanObject): Seat[] {
     case "sweetheart":
       return Array.from({ length: n }, (_, i) => ({ x: -w / 2 + ((i + 0.5) * w) / n, y: -h / 2 - off }));
     case "serpentine": {
-      // Dos medios anillos (izquierda abre hacia abajo, derecha hacia arriba).
-      const R = h / 2, a = n - Math.floor(n / 2), b = n - a;
-      const cxL = -w / 2 + R, cxR = w / 2 - R;
-      return [
-        ...Array.from({ length: a }, (_, i) => polar(R + off, 180 + (180 * (i + 0.5)) / a, cxL, R / 2)),
-        ...Array.from({ length: b }, (_, i) => polar(R + off, (180 * (i + 0.5)) / b, cxR, -R / 2)),
-      ];
+      // Sillas por fuera de cada media luna y, si hay espacio, también por dentro.
+      const r = serpRadius(w, h);
+      const ro = r + SERP_T / 2 + off, ri = r - SERP_T / 2 - off;
+      const arc = (k: number, cx: number, from: number, dir: 1 | -1): Seat[] => {
+        const ko = ri >= 0.7 ? Math.round((k * ro) / (ro + ri)) : k, ki = k - ko;
+        return [
+          ...Array.from({ length: ko }, (_, i) => polar(ro, from + (dir * 180 * (i + 0.5)) / ko, cx, 0)),
+          ...Array.from({ length: ki }, (_, i) => polar(ri, from + (dir * 180 * (i + 0.5)) / ki, cx, 0)),
+        ];
+      };
+      const a = Math.ceil(n / 2);
+      // Izquierda: arco de arriba (180° → 360°); derecha: arco de abajo (180° → 0°).
+      return [...arc(a, -r, 180, 1), ...arc(n - a, r, 180, -1)];
     }
     case "box": {
       const side = Math.floor(n / 3), bottom = n - side * 2;
