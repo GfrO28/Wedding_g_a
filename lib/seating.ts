@@ -4,12 +4,14 @@
 
 export type TableKind = "round" | "long" | "serpentine" | "box" | "high" | "sweetheart";
 export type BarKind = "bar" | "barRound";
-export type PlaceKind = "area" | "dance" | "stage" | "entrance" | "path";
+export type PlaceKind = "area" | "dance" | "stage" | "entrance" | "path" | "fence";
 export type NatureKind = "tree" | "palm" | "bush";
 export type Kind = TableKind | BarKind | "station" | PlaceKind | NatureKind | "scenery";
 
 export type StationShape = "straight" | "round" | "L" | "C";
-export type Floor = "lawn" | "stone" | "wood" | "building" | "dirt";
+export type Floor = "lawn" | "stone" | "wood" | "building" | "dirt" | "brush";
+export type TreeVariant = "round" | "leafy" | "pine" | "flower" | "willow";
+export type FenceStyle = "wood" | "mesh" | "hedge";
 
 export type PlanObject = {
   id: string;
@@ -28,23 +30,29 @@ export type PlanObject = {
   // Zona calcada: piso y, si es por puntos, los vértices (en metros, absolutos)
   floor?: Floor;
   points?: [number, number][];
+  // Cerco: línea por puntos (cerrada si rodea un área)
+  fenceStyle?: FenceStyle;
+  closed?: boolean;
+  // Árboles y arbustos: diseño y transparencia (0–1)
+  variant?: TreeVariant;
+  opacity?: number;
 };
 
 export type PlanBackground = { src: string; x: number; y: number; w: number; aspect: number; rotation: number; opacity: number; traceOnly: boolean };
 export type SeatingPlan = {
   v: 2;
-  room: { w: number; h: number }; // metros
+  room: { x: number; y: number; w: number; h: number }; // límites del lienzo
   style: { ambience: "garden" | "stone" | "neutral"; grid: boolean };
   background: PlanBackground | null;
   objects: PlanObject[];
 };
 
 export const SEATING_KEY = "seatingPlan";
-export const EMPTY_PLAN: SeatingPlan = { v: 2, room: { w: 50, h: 40 }, style: { ambience: "garden", grid: false }, background: null, objects: [] };
+export const EMPTY_PLAN: SeatingPlan = { v: 2, room: { x: 0, y: 0, w: 50, h: 40 }, style: { ambience: "garden", grid: false }, background: null, objects: [] };
 
 /* ---------- Catálogo ---------- */
 
-type Item = { kind: Kind; label: string; seats?: number; min?: number; max?: number };
+type Item = { kind: Kind; label: string; seats?: number; min?: number; max?: number; id?: string; preset?: Partial<PlanObject> };
 export const CATALOG: { group: string; items: Item[] }[] = [
   {
     group: "Mesas",
@@ -72,6 +80,7 @@ export const CATALOG: { group: string; items: Item[] }[] = [
       { kind: "dance", label: "Pista de baile" },
       { kind: "stage", label: "Escenario" },
       { kind: "path", label: "Camino" },
+      { kind: "fence", label: "Cerco" },
       { kind: "entrance", label: "Entrada" },
     ],
   },
@@ -79,13 +88,18 @@ export const CATALOG: { group: string; items: Item[] }[] = [
     group: "Naturaleza",
     items: [
       { kind: "tree", label: "Árbol" },
+      { kind: "tree", id: "tree:leafy", label: "Árbol frondoso", preset: { variant: "leafy" } },
+      { kind: "tree", id: "tree:pine", label: "Pino o ciprés", preset: { variant: "pine", w: 3.5, h: 3.5 } },
+      { kind: "tree", id: "tree:flower", label: "Árbol con flores", preset: { variant: "flower" } },
+      { kind: "tree", id: "tree:willow", label: "Sauce o molle", preset: { variant: "willow", w: 6, h: 6 } },
       { kind: "palm", label: "Palmera" },
       { kind: "bush", label: "Arbusto o maceta" },
+      { kind: "area", id: "area:brush", label: "Zona de arbustos (fundo)", preset: { floor: "brush", label: "Arbustos", w: 14, h: 8 } },
     ],
   },
   { group: "Decoración", items: [{ kind: "scenery", label: "Escenografía (arco, fondo para fotos)" }] },
 ];
-const ITEMS = CATALOG.flatMap((g) => g.items);
+const ITEMS = CATALOG.flatMap((g) => g.items).filter((i) => !i.preset);
 export const itemOf = (k: Kind) => ITEMS.find((i) => i.kind === k)!;
 export const SEAT_KINDS: TableKind[] = ["round", "long", "serpentine", "box", "high", "sweetheart"];
 export const isTable = (k: string): k is TableKind => (SEAT_KINDS as string[]).includes(k);
@@ -94,6 +108,21 @@ export const kindLabel = (k: string) => ITEMS.find((i) => i.kind === k)?.label ?
 // Objetos que se agrandan sin deformarse (círculos).
 export const isUniform = (o: PlanObject) => ["round", "high", "barRound", "tree", "palm", "bush"].includes(o.kind) || (o.kind === "station" && o.shape === "round");
 export const isPoly = (o: PlanObject) => o.kind === "area" && !!o.points && o.points.length >= 3;
+export const isFence = (o: PlanObject) => o.kind === "fence" && !!o.points && o.points.length >= 2;
+export const TREE_VARIANTS: { id: TreeVariant; label: string }[] = [
+  { id: "round", label: "Copa redonda" },
+  { id: "leafy", label: "Frondoso" },
+  { id: "pine", label: "Pino o ciprés" },
+  { id: "flower", label: "Con flores" },
+  { id: "willow", label: "Sauce o molle" },
+];
+export const FENCE_STYLES: { id: FenceStyle; label: string }[] = [
+  { id: "wood", label: "Madera" },
+  { id: "mesh", label: "Malla" },
+  { id: "hedge", label: "Cerco vivo" },
+];
+// Transparencia por defecto de la naturaleza: deja ver lo que se pone debajo.
+export const NATURE_OPACITY = 0.55;
 
 export const STATION_TYPES: { id: string; label: string; color: string }[] = [
   { id: "dulces", label: "Dulces", color: "#F3DFE6" },
@@ -109,6 +138,7 @@ export const FLOORS: { id: Floor; label: string; blocked?: boolean }[] = [
   { id: "stone", label: "Piedra (terraza)" },
   { id: "wood", label: "Madera (deck)" },
   { id: "dirt", label: "Tierra" },
+  { id: "brush", label: "Arbustos (fundo)", blocked: true },
   { id: "building", label: "Construcción (no se usa)", blocked: true },
 ];
 
@@ -213,11 +243,16 @@ export function newObject(kind: Kind, existing: PlanObject[], at?: { x: number; 
     case "entrance":
       return { ...base, label: "Entrada", w: 2.2, h: 0.7 };
     case "tree":
-      return { ...base, label: `Árbol ${count("tree")}`, w: 5, h: 5 };
+      return { ...base, label: `Árbol ${count("tree")}`, w: 5, h: 5, variant: "round", opacity: NATURE_OPACITY };
+    case "fence": {
+      const c = at ?? { x: 0, y: 0 };
+      const points: [number, number][] = [[c.x - 5, c.y], [c.x + 5, c.y]];
+      return { ...base, label: "Cerco", ...polyBox(points), points, fenceStyle: "wood", closed: false };
+    }
     case "palm":
-      return { ...base, label: "Palmera", w: 3, h: 3 };
+      return { ...base, label: "Palmera", w: 3, h: 3, opacity: NATURE_OPACITY };
     case "bush":
-      return { ...base, label: "Arbusto", w: 1.2, h: 1.2 };
+      return { ...base, label: "Arbusto", w: 1.2, h: 1.2, opacity: 0.8 };
     default:
       return { ...base, label: "Escenografía", w: 3.5, h: 1 };
   }
@@ -237,7 +272,7 @@ export function sanitizePlan(raw: unknown): SeatingPlan {
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   if (o.v !== 2) return { ...EMPTY_PLAN }; // formato anterior: se arranca de cero
   const r = (o.room ?? {}) as Record<string, unknown>;
-  const room = { w: n(r.w, 5, 500, 50, 1), h: n(r.h, 5, 500, 40, 1) };
+  const room = { x: n(r.x, -1000, 1000, 0, 1), y: n(r.y, -1000, 1000, 0, 1), w: n(r.w, 5, 1000, 50, 1), h: n(r.h, 5, 1000, 40, 1) };
   const s = (o.style ?? {}) as Record<string, unknown>;
   const style = { ambience: (["garden", "stone", "neutral"].includes(String(s.ambience)) ? s.ambience : "garden") as SeatingPlan["style"]["ambience"], grid: s.grid === true };
   const b = o.background as Record<string, unknown> | null | undefined;
@@ -245,8 +280,8 @@ export function sanitizePlan(raw: unknown): SeatingPlan {
     b && typeof b.src === "string" && /^https:\/\/[^\s"<>]+$/.test(b.src)
       ? {
           src: b.src.slice(0, 600),
-          x: n(b.x, -1000, 1000, room.w / 2),
-          y: n(b.y, -1000, 1000, room.h / 2),
+          x: n(b.x, -2000, 2000, room.x + room.w / 2),
+          y: n(b.y, -2000, 2000, room.y + room.h / 2),
           w: n(b.w, 1, 2000, room.w),
           aspect: n(b.aspect, 0.05, 20, 1, 4),
           rotation: n(b.rotation, -360, 360, 0, 1),
@@ -267,8 +302,8 @@ export function sanitizePlan(raw: unknown): SeatingPlan {
       id,
       kind,
       label: String(x.label ?? "").trim().slice(0, 40) || item.label,
-      x: n(x.x, -100, 600, room.w / 2),
-      y: n(x.y, -100, 600, room.h / 2),
+      x: n(x.x, -2000, 2000, room.x + room.w / 2),
+      y: n(x.y, -2000, 2000, room.y + room.h / 2),
       w: n(x.w, 0.2, 300, 2),
       h: n(x.h, 0.2, 300, 2),
       rotation: n(x.rotation, -360, 360, 0, 1),
@@ -279,12 +314,25 @@ export function sanitizePlan(raw: unknown): SeatingPlan {
       obj.shape = (["straight", "round", "L", "C"].includes(String(x.shape)) ? x.shape : "straight") as StationShape;
       obj.color = typeof x.color === "string" && HEX.test(x.color) ? x.color : "#E9DFD3";
     }
+    const pts = (min: number) => {
+      if (!Array.isArray(x.points)) return undefined;
+      const list = x.points.slice(0, 300).filter((p) => Array.isArray(p) && p.length === 2).map((p) => [n(p[0], -2000, 2000, 0), n(p[1], -2000, 2000, 0)] as [number, number]);
+      return list.length >= min ? list : undefined;
+    };
+    if (kind === "fence") {
+      const p = pts(2);
+      if (!p) continue;
+      Object.assign(obj, polyBox(p), { points: p, rotation: 0 });
+      obj.fenceStyle = (FENCE_STYLES.some((f) => f.id === x.fenceStyle) ? x.fenceStyle : "wood") as FenceStyle;
+      obj.closed = x.closed === true && p.length >= 3;
+    }
+    if (kind === "tree") obj.variant = (TREE_VARIANTS.some((t) => t.id === x.variant) ? x.variant : "round") as TreeVariant;
+    if (kind === "tree" || kind === "palm" || kind === "bush") obj.opacity = n(x.opacity, 0.15, 1, kind === "bush" ? 0.8 : NATURE_OPACITY);
     if (kind === "area") {
       obj.floor = (FLOORS.some((f) => f.id === x.floor) ? x.floor : "building") as Floor;
       if (typeof x.color === "string" && HEX.test(x.color)) obj.color = x.color;
-      if (Array.isArray(x.points) && x.points.length >= 3)
-        obj.points = x.points.slice(0, 200).filter((p) => Array.isArray(p) && p.length === 2).map((p) => [n(p[0], -100, 600, 0), n(p[1], -100, 600, 0)] as [number, number]);
-      if (obj.points && obj.points.length < 3) delete obj.points;
+      const p = pts(3);
+      if (p) obj.points = p;
     }
     objects.push(obj);
   }

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { FLOORS, isTable, seatsOf, STATION_TYPES, type PlanObject, type SeatingPlan } from "@/lib/seating";
+import { FLOORS, isTable, NATURE_OPACITY, seatsOf, STATION_TYPES, type PlanObject, type SeatingPlan } from "@/lib/seating";
 
 // Dibujo (SVG, en metros) de cada objeto del plano y de los fondos del terreno.
 
@@ -13,6 +13,7 @@ export const FLOOR_FILL: Record<string, string> = {
   wood: "url(#pat-wood)",
   dirt: "#D8C6A8",
   building: "url(#pat-building)",
+  brush: "url(#pat-brush)",
 };
 
 // Patrones del terreno (césped, piedra, madera, construcción, cuadrícula).
@@ -40,6 +41,15 @@ export function PlanPatterns() {
         <rect width="0.6" height="0.6" fill="#D3CCC4" />
         <path d="M0 0V0.6" stroke="#BDB4AA" strokeWidth="0.08" />
       </pattern>
+      <pattern id="pat-brush" width="2.4" height="2.1" patternUnits="userSpaceOnUse">
+        <rect width="2.4" height="2.1" fill="#7E9B5C" />
+        <circle cx="0.5" cy="0.5" r="0.55" fill="#6A8A4A" />
+        <circle cx="0.75" cy="0.35" r="0.32" fill="#8DAB69" />
+        <circle cx="1.75" cy="1.45" r="0.6" fill="#5F8042" />
+        <circle cx="1.95" cy="1.25" r="0.35" fill="#86A563" />
+        <circle cx="1.6" cy="0.35" r="0.3" fill="#6F9050" />
+        <circle cx="0.55" cy="1.65" r="0.38" fill="#678746" />
+      </pattern>
       <pattern id="pat-dance" width="1" height="1" patternUnits="userSpaceOnUse">
         <rect width="1" height="1" fill="#F4EFE9" />
         <rect width="0.5" height="0.5" fill="#E2D9CF" />
@@ -60,6 +70,7 @@ export const ROOM_FILL: Record<SeatingPlan["style"]["ambience"], string> = { gar
 // Orden de dibujo: zonas → pisos especiales → naturaleza → mesas y demás → entrada.
 export function layerOf(o: PlanObject) {
   if (o.kind === "area") return 0;
+  if (o.kind === "fence") return 1;
   if (o.kind === "path" || o.kind === "dance" || o.kind === "stage") return 1;
   if (o.kind === "tree" || o.kind === "palm" || o.kind === "bush") return 2;
   if (o.kind === "entrance") return 4;
@@ -162,13 +173,7 @@ export function ObjectBody({ o, used, hover }: { o: PlanObject; used: number; ho
       );
       break;
     case "tree":
-      body = (
-        <>
-          <ellipse rx={w / 2} ry={h / 2} fill="rgba(86,125,62,0.55)" stroke="#4E7035" strokeWidth={0.06} />
-          <ellipse rx={w / 2.6} ry={h / 2.6} cx={-w * 0.06} cy={-h * 0.06} fill="rgba(110,150,80,0.45)" />
-          <circle r={Math.min(w, h) * 0.06} fill="#6B4E37" />
-        </>
-      );
+      body = <TreeShape o={o} />;
       break;
     case "palm":
       body = (
@@ -197,7 +202,7 @@ export function ObjectBody({ o, used, hover }: { o: PlanObject; used: number; ho
   return (
     <>
       {hover && <rect x={-w / 2 - 0.5} y={-h / 2 - 0.5} width={w + 1} height={h + 1} rx={0.3} fill={hover === "full" ? "rgba(122,35,55,.12)" : "rgba(47,107,69,.14)"} stroke={hover === "full" ? ACC : "#2F6B45"} strokeWidth={0.08} />}
-      {body}
+      {o.kind === "tree" || o.kind === "palm" || o.kind === "bush" ? <g opacity={o.opacity ?? NATURE_OPACITY}>{body}</g> : body}
       {seats.map((s, i) => (
         <circle
           key={i}
@@ -214,3 +219,94 @@ export function ObjectBody({ o, used, hover }: { o: PlanObject; used: number; ho
 }
 
 export const stationTypeLabel = (id?: string) => STATION_TYPES.find((t) => t.id === id)?.label ?? "Otra";
+
+// Diseños de árbol (vistos desde arriba).
+function TreeShape({ o }: { o: PlanObject }) {
+  const { w, h } = o;
+  const rx = w / 2, ry = h / 2;
+  const trunk = <circle r={Math.min(w, h) * 0.06} fill="#6B4E37" />;
+  switch (o.variant) {
+    case "leafy": {
+      const lobes = Array.from({ length: 7 }, (_, i) => {
+        const a = (i / 7) * Math.PI * 2;
+        return <ellipse key={i} cx={Math.cos(a) * rx * 0.48} cy={Math.sin(a) * ry * 0.48} rx={rx * 0.5} ry={ry * 0.5} fill={i % 2 ? "#5E8A45" : "#6F9B52"} />;
+      });
+      return (
+        <>
+          {lobes}
+          <ellipse rx={rx * 0.55} ry={ry * 0.55} fill="#7FAA5E" />
+          {trunk}
+        </>
+      );
+    }
+    case "pine":
+      return (
+        <>
+          <polygon points={Array.from({ length: 16 }, (_, i) => { const a = (i / 16) * Math.PI * 2, r = i % 2 ? 0.62 : 1; return `${Math.cos(a) * rx * r},${Math.sin(a) * ry * r}`; }).join(" ")} fill="#3F6B45" stroke="#2F5235" strokeWidth={0.04} />
+          <polygon points={Array.from({ length: 12 }, (_, i) => { const a = (i / 12) * Math.PI * 2 + 0.3, r = i % 2 ? 0.35 : 0.6; return `${Math.cos(a) * rx * r},${Math.sin(a) * ry * r}`; }).join(" ")} fill="#4F7F54" />
+          {trunk}
+        </>
+      );
+    case "flower":
+      return (
+        <>
+          <ellipse rx={rx} ry={ry} fill="#9C7FB8" stroke="#7A5E98" strokeWidth={0.05} />
+          {Array.from({ length: 9 }, (_, i) => {
+            const a = i * 2.4, r = 0.25 + ((i * 37) % 60) / 100;
+            return <circle key={i} cx={Math.cos(a) * rx * r * 0.85} cy={Math.sin(a) * ry * r * 0.85} r={Math.min(rx, ry) * 0.16} fill={i % 2 ? "#C9A8E0" : "#E7B9CF"} />;
+          })}
+          {trunk}
+        </>
+      );
+    case "willow":
+      return (
+        <>
+          <ellipse rx={rx} ry={ry} fill="#8BAF6A" />
+          {Array.from({ length: 18 }, (_, i) => {
+            const a = (i / 18) * Math.PI * 2;
+            return <line key={i} x1={Math.cos(a) * rx * 0.25} y1={Math.sin(a) * ry * 0.25} x2={Math.cos(a) * rx * 0.97} y2={Math.sin(a) * ry * 0.97} stroke="#6A9150" strokeWidth={0.12} strokeLinecap="round" />;
+          })}
+          {trunk}
+        </>
+      );
+    default:
+      return (
+        <>
+          <ellipse rx={rx} ry={ry} fill="#567D3E" stroke="#4E7035" strokeWidth={0.06} />
+          <ellipse rx={rx / 1.3} ry={ry / 1.3} cx={-w * 0.06} cy={-h * 0.06} fill="#6E9650" />
+          {trunk}
+        </>
+      );
+  }
+}
+
+// Cerco: línea por puntos (en coordenadas del terreno).
+export function FenceShape({ o }: { o: PlanObject }) {
+  const pts = o.points ?? [];
+  const d = `M${pts.map((p) => p.join(" ")).join(" L")}${o.closed ? " Z" : ""}`;
+  if (o.fenceStyle === "hedge")
+    return (
+      <>
+        <path d={d} fill="none" stroke="#4F7A3A" strokeWidth={0.9} strokeLinejoin="round" strokeLinecap="round" />
+        <path d={d} fill="none" stroke="#6E9A52" strokeWidth={0.5} strokeDasharray="0.35 0.3" strokeLinejoin="round" strokeLinecap="round" />
+      </>
+    );
+  // Postes cada ~2.5 m a lo largo del cerco.
+  const segs = pts.map((p, i) => [p, pts[i + 1] ?? (o.closed ? pts[0] : null)] as const).filter((x): x is readonly [[number, number], [number, number]] => !!x[1]);
+  const posts: [number, number][] = [];
+  for (const [a, b] of segs) {
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.round(len / 2.5));
+    for (let i = 0; i < n; i++) posts.push([a[0] + ((b[0] - a[0]) * i) / n, a[1] + ((b[1] - a[1]) * i) / n]);
+  }
+  if (!o.closed && pts.length) posts.push(pts[pts.length - 1]);
+  const mesh = o.fenceStyle === "mesh";
+  return (
+    <>
+      <path d={d} fill="none" stroke={mesh ? "#8C9399" : "#8A6A4E"} strokeWidth={mesh ? 0.07 : 0.12} strokeDasharray={mesh ? "0.18 0.1" : undefined} strokeLinejoin="round" />
+      {!mesh && <path d={d} fill="none" stroke="#A88664" strokeWidth={0.05} strokeLinejoin="round" transform="translate(0.06 0.06)" />}
+      {posts.map((p, i) => (
+        <rect key={i} x={p[0] - 0.1} y={p[1] - 0.1} width={0.2} height={0.2} fill={mesh ? "#5E666C" : "#5E4535"} />
+      ))}
+    </>
+  );
+}
