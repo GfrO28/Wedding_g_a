@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { guestMembers, guests } from "@/lib/db/schema";
 import { audit, requireAdmin } from "@/lib/auth";
 import { setSetting } from "@/lib/kv";
+import { getUploadUrl, publicUrlFor, r2PublicBase } from "@/lib/storage/r2";
 import { isTable, sanitizePlan, SEATING_KEY, shortLabel, tablesLabel } from "@/lib/seating";
 
 // Guarda el plano del salón y en qué mesa se sienta cada persona. La mesa de
@@ -13,8 +14,10 @@ import { isTable, sanitizePlan, SEATING_KEY, shortLabel, tablesLabel } from "@/l
 export async function saveSeatingAction(input: { plan: unknown; assignments: Record<string, string | null> }): Promise<{ ok: true } | { ok: false; error: string }> {
   await requireAdmin();
   const plan = sanitizePlan(input.plan);
-  // Objetos con sillas: las mesas y la mesa de novios.
-  const seatable = new Map(plan.objects.filter((o) => isTable(o.kind) || (o.kind === "sweetheart" && o.seats > 0)).map((o) => [o.id, o]));
+  // La foto de fondo solo puede venir de nuestro almacenamiento.
+  if (plan.background && !plan.background.src.startsWith(`${r2PublicBase()}/seating/`)) plan.background = null;
+  // Objetos con sillas: las mesas (incluida la de novios).
+  const seatable = new Map(plan.objects.filter((o) => isTable(o.kind) && o.seats > 0).map((o) => [o.id, o]));
   const members = await db.select({ id: guestMembers.id, guestId: guestMembers.guestId, tableId: guestMembers.tableId }).from(guestMembers);
   const valid = new Set(members.map((m) => m.id));
 
@@ -46,4 +49,16 @@ export async function saveSeatingAction(input: { plan: unknown; assignments: Rec
   await audit("Actualizó la distribución de mesas", `${seatable.size} mesas · ${[...next.values()].filter(Boolean).length} personas ubicadas`);
   revalidatePath("/", "layout");
   return { ok: true };
+}
+
+const PHOTO_TYPES: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+
+// URL firmada para subir la foto aérea (o un plano) que se usa de fondo para calcar.
+export async function requestSeatingPhotoUploadAction(contentType: string, size: number): Promise<{ ok: true; uploadUrl: string; publicUrl: string } | { ok: false; error: string }> {
+  await requireAdmin();
+  const ext = PHOTO_TYPES[contentType];
+  if (!ext) return { ok: false, error: "Sube una imagen JPG, PNG o WebP." };
+  if (!Number.isInteger(size) || size <= 0 || size > 15 * 1024 * 1024) return { ok: false, error: "La foto debe pesar menos de 15 MB." };
+  const key = `seating/${crypto.randomUUID()}.${ext}`;
+  return { ok: true, uploadUrl: await getUploadUrl(key, contentType, size), publicUrl: publicUrlFor(key) };
 }

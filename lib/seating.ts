@@ -1,146 +1,310 @@
-// Distribución de mesas: el plano del salón (mesas y zonas) y la geometría de
-// cada objeto. Sirve en el navegador (editor) y en el servidor (al guardar).
+// Distribución de mesas: el plano del lugar (en metros) con mesas, barras,
+// estaciones, zonas calcadas, árboles y decoración. Sirve en el navegador
+// (editor) y en el servidor (al guardar).
 
-export type TableKind = "round" | "long" | "serpentine" | "box" | "high";
-export type ZoneKind = "dance" | "bar" | "stage" | "entrance" | "sweetheart";
+export type TableKind = "round" | "long" | "serpentine" | "box" | "high" | "sweetheart";
+export type BarKind = "bar" | "barRound";
+export type PlaceKind = "area" | "dance" | "stage" | "entrance" | "path";
+export type NatureKind = "tree" | "palm" | "bush";
+export type Kind = TableKind | BarKind | "station" | PlaceKind | NatureKind | "scenery";
+
+export type StationShape = "straight" | "round" | "L" | "C";
+export type Floor = "lawn" | "stone" | "wood" | "building" | "dirt";
+
 export type PlanObject = {
   id: string;
-  kind: TableKind | ZoneKind;
+  kind: Kind;
   label: string;
-  x: number; // centro, en unidades del salón
+  x: number; // centro, en metros
   y: number;
+  w: number; // tamaño, en metros
+  h: number;
   rotation: number; // grados
-  seats: number; // mesas (las zonas: 0)
-  w?: number; // zonas: tamaño
-  h?: number;
+  seats: number; // sillas (mesas) o banquetas (barras)
+  // Estación
+  stationType?: string;
+  shape?: StationShape;
+  color?: string;
+  // Zona calcada: piso y, si es por puntos, los vértices (en metros, absolutos)
+  floor?: Floor;
+  points?: [number, number][];
 };
-export type SeatingPlan = { room: { w: number; h: number }; objects: PlanObject[] };
 
-export const ROOM = { w: 1000, h: 700 };
-export const EMPTY_PLAN: SeatingPlan = { room: ROOM, objects: [] };
+export type PlanBackground = { src: string; x: number; y: number; w: number; aspect: number; rotation: number; opacity: number; traceOnly: boolean };
+export type SeatingPlan = {
+  v: 2;
+  room: { w: number; h: number }; // metros
+  style: { ambience: "garden" | "stone" | "neutral"; grid: boolean };
+  background: PlanBackground | null;
+  objects: PlanObject[];
+};
+
 export const SEATING_KEY = "seatingPlan";
+export const EMPTY_PLAN: SeatingPlan = { v: 2, room: { w: 50, h: 40 }, style: { ambience: "garden", grid: false }, background: null, objects: [] };
 
-export const TABLE_KINDS: { kind: TableKind; label: string; seats: number; min: number; max: number }[] = [
-  { kind: "round", label: "Mesa redonda", seats: 8, min: 2, max: 14 },
-  { kind: "long", label: "Mesa larga", seats: 10, min: 2, max: 30 },
-  { kind: "serpentine", label: "Mesa en S", seats: 12, min: 6, max: 24 },
-  { kind: "box", label: "Box (sillones)", seats: 6, min: 3, max: 10 },
-  { kind: "high", label: "Mesa alta de bar", seats: 4, min: 2, max: 6 },
+/* ---------- Catálogo ---------- */
+
+type Item = { kind: Kind; label: string; seats?: number; min?: number; max?: number };
+export const CATALOG: { group: string; items: Item[] }[] = [
+  {
+    group: "Mesas",
+    items: [
+      { kind: "round", label: "Redonda", seats: 8, min: 2, max: 14 },
+      { kind: "long", label: "Larga", seats: 10, min: 2, max: 30 },
+      { kind: "serpentine", label: "En S", seats: 12, min: 6, max: 24 },
+      { kind: "box", label: "Box de sillones", seats: 6, min: 3, max: 10 },
+      { kind: "high", label: "Alta de bar", seats: 4, min: 2, max: 6 },
+      { kind: "sweetheart", label: "Mesa de novios", seats: 2, min: 1, max: 12 },
+    ],
+  },
+  {
+    group: "Barras",
+    items: [
+      { kind: "bar", label: "Barra recta", seats: 0, min: 0, max: 20 },
+      { kind: "barRound", label: "Barra circular", seats: 10, min: 0, max: 30 },
+    ],
+  },
+  { group: "Estaciones", items: [{ kind: "station", label: "Estación (dulces, quesos, buffet…)" }] },
+  {
+    group: "El lugar",
+    items: [
+      { kind: "area", label: "Zona (casa, terraza, baños…)" },
+      { kind: "dance", label: "Pista de baile" },
+      { kind: "stage", label: "Escenario" },
+      { kind: "path", label: "Camino" },
+      { kind: "entrance", label: "Entrada" },
+    ],
+  },
+  {
+    group: "Naturaleza",
+    items: [
+      { kind: "tree", label: "Árbol" },
+      { kind: "palm", label: "Palmera" },
+      { kind: "bush", label: "Arbusto o maceta" },
+    ],
+  },
+  { group: "Decoración", items: [{ kind: "scenery", label: "Escenografía (arco, fondo para fotos)" }] },
 ];
-export const ZONE_KINDS: { kind: ZoneKind; label: string; w: number; h: number }[] = [
-  { kind: "dance", label: "Pista de baile", w: 240, h: 160 },
-  { kind: "sweetheart", label: "Mesa de novios", w: 220, h: 50 },
-  { kind: "bar", label: "Barra", w: 200, h: 40 },
-  { kind: "stage", label: "Escenario", w: 220, h: 90 },
-  { kind: "entrance", label: "Entrada", w: 120, h: 30 },
+const ITEMS = CATALOG.flatMap((g) => g.items);
+export const itemOf = (k: Kind) => ITEMS.find((i) => i.kind === k)!;
+export const SEAT_KINDS: TableKind[] = ["round", "long", "serpentine", "box", "high", "sweetheart"];
+export const isTable = (k: string): k is TableKind => (SEAT_KINDS as string[]).includes(k);
+export const TABLE_SHAPES: TableKind[] = ["round", "long", "serpentine", "box", "high"];
+export const kindLabel = (k: string) => ITEMS.find((i) => i.kind === k)?.label ?? k;
+// Objetos que se agrandan sin deformarse (círculos).
+export const isUniform = (o: PlanObject) => ["round", "high", "barRound", "tree", "palm", "bush"].includes(o.kind) || (o.kind === "station" && o.shape === "round");
+export const isPoly = (o: PlanObject) => o.kind === "area" && !!o.points && o.points.length >= 3;
+
+export const STATION_TYPES: { id: string; label: string; color: string }[] = [
+  { id: "dulces", label: "Dulces", color: "#F3DFE6" },
+  { id: "quesos", label: "Quesos", color: "#F5EBC9" },
+  { id: "buffet", label: "Buffet", color: "#E9DFD3" },
+  { id: "bebidas", label: "Bebidas", color: "#DBE7EF" },
+  { id: "cafe", label: "Café", color: "#E8DACB" },
+  { id: "otra", label: "Otra", color: "#DFE8D2" },
 ];
-export const isTable = (k: string): k is TableKind => TABLE_KINDS.some((t) => t.kind === k);
-export const kindInfo = (k: TableKind) => TABLE_KINDS.find((t) => t.kind === k)!;
-export const kindLabel = (k: string) => TABLE_KINDS.find((t) => t.kind === k)?.label ?? ZONE_KINDS.find((z) => z.kind === k)?.label ?? k;
+export const STATION_COLORS = ["#E9DFD3", "#F3DFE6", "#F5EBC9", "#DFE8D2", "#DBE7EF", "#E8DACB"];
+export const FLOORS: { id: Floor; label: string; blocked?: boolean }[] = [
+  { id: "lawn", label: "Césped" },
+  { id: "stone", label: "Piedra (terraza)" },
+  { id: "wood", label: "Madera (deck)" },
+  { id: "dirt", label: "Tierra" },
+  { id: "building", label: "Construcción (no se usa)", blocked: true },
+];
 
-export type Seat = { x: number; y: number }; // relativo al centro del objeto
-export type Shape = { w: number; h: number; seats: Seat[] };
+/* ---------- Tamaños y sillas ---------- */
 
-// Tamaño del objeto y posición de cada silla (sin rotar; relativo al centro).
-export function shapeOf(o: PlanObject): Shape {
-  const n = o.seats;
-  switch (o.kind) {
+// Tamaño por defecto de una mesa según sus sillas (metros).
+export function tableSize(kind: TableKind, n: number): { w: number; h: number } {
+  switch (kind) {
     case "round": {
-      const d = Math.max(60, n * 9);
-      const r = d / 2 + 14;
-      return { w: d, h: d, seats: Array.from({ length: n }, (_, i) => polar(r, (i / n) * 360 - 90)) };
+      const d = Math.max(1.1, n * 0.2);
+      return { w: d, h: d };
     }
+    case "long":
+      return { w: Math.max(1.2, Math.ceil(n / 2) * 0.65 + 0.3), h: 0.9 };
+    case "serpentine":
+      return { w: 4 + n * 0.25, h: 2 + n * 0.12 };
+    case "box":
+      return { w: 1.8 + Math.ceil(n / 3) * 0.5, h: 1.8 };
+    case "high":
+      return { w: 0.7, h: 0.7 };
+    case "sweetheart":
+      return { w: Math.max(1.4, n * 0.7), h: 0.8 };
+  }
+}
+
+export type Seat = { x: number; y: number }; // metros, relativo al centro, sin rotar
+// Redondeado: servidor y navegador calculan la trigonometría con decimales distintos.
+const rd = (v: number) => Math.round(v * 1000) / 1000;
+const polar = (r: number, deg: number, cx = 0, cy = 0): Seat => ({ x: rd(cx + r * Math.cos((deg * Math.PI) / 180)), y: rd(cy + r * Math.sin((deg * Math.PI) / 180)) });
+
+// Dónde va cada silla (o banqueta) según la forma y el tamaño del objeto.
+export function seatsOf(o: PlanObject): Seat[] {
+  const n = o.seats;
+  const { w, h } = o;
+  const off = 0.35;
+  switch (o.kind) {
+    case "round":
+    case "high":
+      return Array.from({ length: n }, (_, i) => polar(Math.min(w, h) / 2 + off * (o.kind === "high" ? 0.8 : 1), (i / n) * 360 - 90));
     case "long": {
-      const per = Math.ceil(n / 2);
-      const w = Math.max(80, per * 34 + 16);
-      const h = 46;
-      const seats: Seat[] = [];
-      for (let i = 0; i < n; i++) {
-        const top = i % 2 === 0;
-        const col = Math.floor(i / 2);
-        const cols = top ? per : Math.floor(n / 2);
-        seats.push({ x: -w / 2 + ((col + 0.5) * w) / Math.max(1, cols), y: top ? -h / 2 - 14 : h / 2 + 14 });
-      }
-      return { w, h, seats };
+      const top = Math.ceil(n / 2), bottom = n - top;
+      return [
+        ...Array.from({ length: top }, (_, i) => ({ x: -w / 2 + ((i + 0.5) * w) / top, y: -h / 2 - off })),
+        ...Array.from({ length: bottom }, (_, i) => ({ x: -w / 2 + ((i + 0.5) * w) / bottom, y: h / 2 + off })),
+      ];
     }
+    case "sweetheart":
+      return Array.from({ length: n }, (_, i) => ({ x: -w / 2 + ((i + 0.5) * w) / n, y: -h / 2 - off }));
     case "serpentine": {
-      // Dos medios anillos: el de la izquierda abre hacia abajo y el de la derecha hacia arriba.
-      const R = 46 + n * 2;
-      const seats: Seat[] = [];
-      const half = Math.ceil(n / 2);
-      for (let i = 0; i < half; i++) seats.push(add(polar(R + 14, 180 + (180 * (i + 0.5)) / half), -R + 10, 0));
-      for (let i = 0; i < n - half; i++) seats.push(add(polar(R + 14, (180 * (i + 0.5)) / (n - half)), R - 10, 0));
-      return { w: R * 4 - 20, h: R * 2, seats };
+      // Dos medios anillos (izquierda abre hacia abajo, derecha hacia arriba).
+      const R = h / 2, a = n - Math.floor(n / 2), b = n - a;
+      const cxL = -w / 2 + R, cxR = w / 2 - R;
+      return [
+        ...Array.from({ length: a }, (_, i) => polar(R + off, 180 + (180 * (i + 0.5)) / a, cxL, R / 2)),
+        ...Array.from({ length: b }, (_, i) => polar(R + off, (180 * (i + 0.5)) / b, cxR, -R / 2)),
+      ];
     }
     case "box": {
-      // Sillones en U alrededor de una mesa baja.
-      const w = 70 + Math.ceil(n / 3) * 30;
-      const h = 90;
-      const seats: Seat[] = [];
-      const side = Math.floor(n / 3);
-      const bottom = n - side * 2;
-      for (let i = 0; i < side; i++) seats.push({ x: -w / 2 + 6, y: -h / 2 + 18 + (i * (h - 30)) / Math.max(1, side) });
-      for (let i = 0; i < bottom; i++) seats.push({ x: -w / 2 + 22 + ((i + 0.5) * (w - 44)) / bottom, y: h / 2 - 6 });
-      for (let i = 0; i < side; i++) seats.push({ x: w / 2 - 6, y: h / 2 - 22 - (i * (h - 30)) / Math.max(1, side) });
-      return { w, h, seats };
+      const side = Math.floor(n / 3), bottom = n - side * 2;
+      return [
+        ...Array.from({ length: side }, (_, i) => ({ x: -w / 2 + 0.25, y: -h / 2 + 0.4 + (i * (h - 0.6)) / Math.max(1, side) })),
+        ...Array.from({ length: bottom }, (_, i) => ({ x: -w / 2 + 0.5 + ((i + 0.5) * (w - 1)) / bottom, y: h / 2 - 0.25 })),
+        ...Array.from({ length: side }, (_, i) => ({ x: w / 2 - 0.25, y: h / 2 - 0.4 - (i * (h - 0.6)) / Math.max(1, side) })),
+      ];
     }
-    case "high": {
-      const d = 30;
-      return { w: d, h: d, seats: Array.from({ length: n }, (_, i) => polar(d / 2 + 9, (i / n) * 360 - 90)) };
-    }
+    case "barRound":
+      return Array.from({ length: n }, (_, i) => polar(w / 2 + 0.35, (i / Math.max(1, n)) * 360));
+    case "bar":
+      return Array.from({ length: n }, (_, i) => ({ x: -w / 2 + ((i + 0.5) * w) / Math.max(1, n), y: h / 2 + 0.35 }));
     default:
-      return { w: o.w ?? 200, h: o.h ?? 60, seats: [] };
+      return [];
   }
 }
-const polar = (r: number, deg: number): Seat => ({ x: r * Math.cos((deg * Math.PI) / 180), y: r * Math.sin((deg * Math.PI) / 180) });
-const add = (p: Seat, dx: number, dy: number): Seat => ({ x: p.x + dx, y: p.y + dy });
 
-// Un objeto nuevo en el centro del salón.
-export function newObject(kind: TableKind | ZoneKind, existing: PlanObject[]): PlanObject {
-  const id = `${kind}-${Math.random().toString(36).slice(2, 9)}`;
+/* ---------- Objetos nuevos ---------- */
+
+const uid = (k: string) => `${k}-${Math.random().toString(36).slice(2, 9)}`;
+export function newObject(kind: Kind, existing: PlanObject[], at?: { x: number; y: number }): PlanObject {
+  const base = { id: uid(kind), kind, x: at?.x ?? 0, y: at?.y ?? 0, rotation: 0, seats: 0 };
+  const count = (k: Kind) => existing.filter((o) => o.kind === k).length + 1;
   if (isTable(kind)) {
-    const n = existing.filter((o) => isTable(o.kind)).length + 1;
-    const info = kindInfo(kind);
-    const label = kind === "box" ? `Box ${existing.filter((o) => o.kind === "box").length + 1}` : kind === "high" ? `Alta ${existing.filter((o) => o.kind === "high").length + 1}` : `Mesa ${n}`;
-    return { id, kind, label, x: ROOM.w / 2, y: ROOM.h / 2, rotation: 0, seats: info.seats };
+    const n = itemOf(kind).seats!;
+    const tables = existing.filter((o) => isTable(o.kind) && o.kind !== "sweetheart").length + 1;
+    const label = kind === "sweetheart" ? "Mesa de novios" : kind === "box" ? `Box ${count("box")}` : kind === "high" ? `Alta ${count("high")}` : `Mesa ${tables}`;
+    return { ...base, label, seats: n, ...tableSize(kind, n) };
   }
-  const z = ZONE_KINDS.find((x) => x.kind === kind)!;
-  return { id, kind, label: z.label, x: ROOM.w / 2, y: ROOM.h / 2, rotation: 0, seats: kind === "sweetheart" ? 2 : 0, w: z.w, h: z.h };
+  switch (kind) {
+    case "bar":
+      return { ...base, label: "Barra", w: 4, h: 0.7 };
+    case "barRound":
+      return { ...base, label: "Barra circular", w: 4.5, h: 4.5, seats: 10 };
+    case "station":
+      return { ...base, label: "Buffet", w: 3.2, h: 2.4, stationType: "buffet", shape: "C", color: "#E9DFD3" };
+    case "area":
+      return { ...base, label: `Zona ${count("area")}`, w: 8, h: 6, floor: "building" };
+    case "dance":
+      return { ...base, label: "Pista de baile", w: 6, h: 5 };
+    case "stage":
+      return { ...base, label: "Escenario", w: 5, h: 3 };
+    case "path":
+      return { ...base, label: "Camino", w: 2, h: 10 };
+    case "entrance":
+      return { ...base, label: "Entrada", w: 2.2, h: 0.7 };
+    case "tree":
+      return { ...base, label: `Árbol ${count("tree")}`, w: 5, h: 5 };
+    case "palm":
+      return { ...base, label: "Palmera", w: 3, h: 3 };
+    case "bush":
+      return { ...base, label: "Arbusto", w: 1.2, h: 1.2 };
+    default:
+      return { ...base, label: "Escenografía", w: 3.5, h: 1 };
+  }
 }
 
-const num = (v: unknown, min: number, max: number, d: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, Math.round(v))) : d);
+/* ---------- Validación (al guardar y al leer) ---------- */
 
-// Lo guardado, con valores válidos.
+const KINDS = new Set(ITEMS.map((i) => i.kind));
+const HEX = /^#[0-9a-fA-F]{6}$/;
+const n = (v: unknown, min: number, max: number, d: number, dec = 2) => {
+  if (typeof v !== "number" || !Number.isFinite(v)) return d;
+  const f = 10 ** dec;
+  return Math.round(Math.min(max, Math.max(min, v)) * f) / f;
+};
+
 export function sanitizePlan(raw: unknown): SeatingPlan {
-  const o = (raw && typeof raw === "object" ? raw : {}) as { objects?: unknown[] };
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  if (o.v !== 2) return { ...EMPTY_PLAN }; // formato anterior: se arranca de cero
+  const r = (o.room ?? {}) as Record<string, unknown>;
+  const room = { w: n(r.w, 5, 500, 50, 1), h: n(r.h, 5, 500, 40, 1) };
+  const s = (o.style ?? {}) as Record<string, unknown>;
+  const style = { ambience: (["garden", "stone", "neutral"].includes(String(s.ambience)) ? s.ambience : "garden") as SeatingPlan["style"]["ambience"], grid: s.grid === true };
+  const b = o.background as Record<string, unknown> | null | undefined;
+  const background: PlanBackground | null =
+    b && typeof b.src === "string" && /^https:\/\/[^\s"<>]+$/.test(b.src)
+      ? {
+          src: b.src.slice(0, 600),
+          x: n(b.x, -1000, 1000, room.w / 2),
+          y: n(b.y, -1000, 1000, room.h / 2),
+          w: n(b.w, 1, 2000, room.w),
+          aspect: n(b.aspect, 0.05, 20, 1, 4),
+          rotation: n(b.rotation, -360, 360, 0, 1),
+          opacity: n(b.opacity, 0, 1, 0.6),
+          traceOnly: b.traceOnly !== false,
+        }
+      : null;
   const objects: PlanObject[] = [];
   const seen = new Set<string>();
-  for (const it of Array.isArray(o.objects) ? o.objects.slice(0, 300) : []) {
+  for (const it of Array.isArray(o.objects) ? o.objects.slice(0, 400) : []) {
     const x = (it && typeof it === "object" ? it : {}) as Record<string, unknown>;
-    const kind = String(x.kind ?? "");
+    const kind = String(x.kind ?? "") as Kind;
     const id = String(x.id ?? "").slice(0, 40);
-    if (!id || seen.has(id) || !(isTable(kind) || ZONE_KINDS.some((z) => z.kind === kind))) continue;
+    if (!id || seen.has(id) || !KINDS.has(kind)) continue;
     seen.add(id);
-    const info = isTable(kind) ? kindInfo(kind) : null;
-    objects.push({
+    const item = itemOf(kind);
+    const obj: PlanObject = {
       id,
-      kind: kind as PlanObject["kind"],
-      label: String(x.label ?? "").trim().slice(0, 40) || kindLabel(kind),
-      x: num(x.x, 0, ROOM.w, ROOM.w / 2),
-      y: num(x.y, 0, ROOM.h, ROOM.h / 2),
-      rotation: num(x.rotation, -360, 360, 0),
-      seats: info ? num(x.seats, info.min, info.max, info.seats) : kind === "sweetheart" ? num(x.seats, 0, 12, 2) : 0,
-      ...(info ? {} : { w: num(x.w, 30, 600, 200), h: num(x.h, 20, 400, 60) }),
-    });
+      kind,
+      label: String(x.label ?? "").trim().slice(0, 40) || item.label,
+      x: n(x.x, -100, 600, room.w / 2),
+      y: n(x.y, -100, 600, room.h / 2),
+      w: n(x.w, 0.2, 300, 2),
+      h: n(x.h, 0.2, 300, 2),
+      rotation: n(x.rotation, -360, 360, 0, 1),
+      seats: item.max !== undefined ? n(x.seats, item.min ?? 0, item.max, item.seats ?? 0, 0) : 0,
+    };
+    if (kind === "station") {
+      obj.stationType = STATION_TYPES.some((t) => t.id === x.stationType) ? String(x.stationType) : "otra";
+      obj.shape = (["straight", "round", "L", "C"].includes(String(x.shape)) ? x.shape : "straight") as StationShape;
+      obj.color = typeof x.color === "string" && HEX.test(x.color) ? x.color : "#E9DFD3";
+    }
+    if (kind === "area") {
+      obj.floor = (FLOORS.some((f) => f.id === x.floor) ? x.floor : "building") as Floor;
+      if (typeof x.color === "string" && HEX.test(x.color)) obj.color = x.color;
+      if (Array.isArray(x.points) && x.points.length >= 3)
+        obj.points = x.points.slice(0, 200).filter((p) => Array.isArray(p) && p.length === 2).map((p) => [n(p[0], -100, 600, 0), n(p[1], -100, 600, 0)] as [number, number]);
+      if (obj.points && obj.points.length < 3) delete obj.points;
+    }
+    objects.push(obj);
   }
-  return { room: ROOM, objects };
+  return { v: 2, room, style, background, objects };
 }
 
-// Mesas donde se sientan las personas de una invitación: "4" o "2 y 5".
+/* ---------- Mesa de cada invitación ---------- */
+
+// "4" o "2 y 5".
 export function tablesLabel(labels: string[]) {
   const u = [...new Set(labels)];
   if (u.length <= 1) return u[0] ?? null;
   return `${u.slice(0, -1).join(", ")} y ${u[u.length - 1]}`;
 }
-// "Mesa 4" → "4" (para el pase, que ya dice «Mesa»).
+// "Mesa 4" → "4" (el pase ya dice «Mesa»).
 export const shortLabel = (label: string) => label.replace(/^mesa\s+/i, "");
+
+// Caja (sin rotar) de una zona por puntos.
+export function polyBox(points: [number, number][]) {
+  const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, w: Math.max(0.2, x1 - x0), h: Math.max(0.2, y1 - y0) };
+}
