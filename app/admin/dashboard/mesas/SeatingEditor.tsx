@@ -1,39 +1,31 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
-import { Check, Loader2, Lock, LockOpen, Minus, Plus, Undo2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { AlertTriangle, Check, Loader2, Lock, LockOpen, Minus, Plus, Redo2, Undo2 } from "lucide-react";
 import { PanelRail } from "../PanelRail";
 import {
-  CATALOG,
   FLOORS,
-  FENCE_STYLES,
   isFence,
-  isShrubs,
-  isWalkway,
-  WALK_STYLES,
-  walkwayBox,
-  SHRUB_MAX,
-  shrubsBox,
   isPoly,
-  NATURE_OPACITY,
-  TREE_VARIANTS,
+  isShrubs,
   isTable,
+  isTerrain,
   isUniform,
-  itemOf,
-  kindLabel,
+  isWalkway,
   newObject,
-  polyBox,
-  STATION_COLORS,
-  STATION_TYPES,
-  TABLE_SHAPES,
-  tableSize,
+  SHRUB_MAX,
+  walkwayBox,
   type Kind,
   type PlanBackground,
   type PlanObject,
   type SeatingPlan,
-  type StationShape,
 } from "@/lib/seating";
-import { FenceShape, ShrubsShape, WalkwayShape, layerOf, ObjectBody, PlanPatterns, ROOM_FILL, stationTypeLabel, FLOOR_FILL } from "./PlanShapes";
+import { FenceShape, FLOOR_FILL, layerOf, ObjectBody, PlanPatterns, ROOM_FILL, ShrubsShape, WalkwayShape } from "./PlanShapes";
+import { freeSpot, gridCopies, newGrid, numberable, placeFree, r2, rotPt, seatable, shiftObj, withPoints, type Pt } from "./editorUtils";
+import { Inspector, type Candidate } from "./Inspector";
+import { AddMenu } from "./AddMenu";
+import { LayersPanel } from "./LayersPanel";
+import { ExportDialog, PrintSheet, type ExportOpts } from "./ExportSheet";
 import { requestSeatingPhotoUploadAction, saveSeatingAction } from "./actions";
 
 export type SeatingGuest = {
@@ -44,8 +36,8 @@ export type SeatingGuest = {
   members: { id: string; name: string; attending: boolean | null; tableId: string | null }[];
 };
 
-type Pt = { x: number; y: number };
-type Mode = "select" | "traceRect" | "tracePoly" | "fence" | "tree" | "paint" | "walk" | "photo" | "room";
+type Step = "place" | "tables";
+type Mode = "select" | "traceRect" | "tracePoly" | "fence" | "tree" | "entrance" | "paint" | "walk" | "photo" | "room";
 type Drag =
   | { t: "pan"; sx: number; sy: number; tx: number; ty: number }
   | { t: "move"; sx: number; sy: number; orig: PlanObject[]; bg: PlanBackground | null; saved: boolean }
@@ -57,57 +49,66 @@ type Drag =
   | { t: "erase"; saved: boolean }
   | { t: "walk"; id: string; last: Pt }
   | { t: "room"; hx: number; hy: number; orig: SeatingPlan["room"]; saved: boolean };
+type Snapshot = { plan: SeatingPlan; assign: Record<string, string | null> };
 
 const BG = "__bg";
-const seatable = (o: PlanObject) => isTable(o.kind) && o.seats > 0;
-const r2 = (v: number) => Math.round(v * 100) / 100;
-const rotPt = (x: number, y: number, deg: number): Pt => {
-  const a = (deg * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
-  return { x: x * c - y * s, y: x * s + y * c };
-};
 const bgObj = (b: PlanBackground): PlanObject => ({ id: BG, kind: "scenery", label: "Foto", x: b.x, y: b.y, w: b.w, h: b.w / b.aspect, rotation: b.rotation, seats: 0 });
-const withPoints = (o: PlanObject, points: [number, number][]): PlanObject => ({
-  ...o,
-  points,
-  ...(o.kind === "shrubs" ? shrubsBox(points, o.stamp ?? 1.6) : o.kind === "walkway" ? walkwayBox(points, o.stamp ?? 3) : polyBox(points)),
-  rotation: 0,
-});
 
 const HINTS: Record<Mode, string> = {
-  select: "Arrastra para mover · esquinas para agrandar (Alt: desde el centro) · punto superior para girar (Shift: de 15° en 15°) · Shift+clic elige varios · rueda: zoom · arrastra el fondo para desplazarte",
-  traceRect: "Arrastra sobre la foto para calcar una zona rectangular. Esc para salir.",
-  tracePoly: "Haz clic en cada esquina de la zona. Doble clic, Enter o clic en el primer punto para cerrarla. Esc cancela.",
-  fence: "Haz clic en cada punto del cerco. Doble clic o Enter lo termina; clic en el primer punto lo cierra alrededor del área. Esc cancela.",
-  paint: "Pinta arrastrando: por donde pases se van poniendo arbustos de mandarina. Elige el tamaño o el borrador abajo. Esc para terminar.",
-  walk: "Pinta el camino arrastrando, por ejemplo desde la entrada. Elige el ancho y los faroles abajo. Esc para terminar.",
-  room: "Arrastra los bordes o las esquinas del lienzo para ajustarlo al terreno de la foto. Esc para terminar.",
-  tree: "Haz clic sobre cada árbol para marcarlo. Esc para terminar.",
-  photo: "Mueve, agranda o gira la foto para alinearla con el terreno. Esc para terminar.",
+  select: "",
+  traceRect: "Calcar con rectángulo: arrastra sobre la foto · Esc para salir",
+  tracePoly: "Calcar por puntos: clic en cada esquina · Enter o clic en el primer punto para cerrar",
+  fence: "Cerco: clic en cada punto · Enter termina · clic en el primer punto lo cierra",
+  paint: "Pintar arbustos: arrastra por donde quieras ponerlos · tamaño y borrador abajo",
+  walk: "Camino: arrastra desde la entrada · ancho y faroles abajo",
+  room: "Lienzo: arrastra sus bordes o esquinas · Esc para terminar",
+  tree: "Marcar árbol: clic sobre cada árbol · Esc para terminar",
+  entrance: "Entrada: haz clic donde está la entrada",
+  photo: "Foto: muévela, agrándala o gírala para alinearla · Esc para terminar",
 };
+const SHORTCUTS: [string, string][] = [
+  ["Ctrl+Z / Ctrl+Shift+Z", "Deshacer / rehacer"],
+  ["Supr", "Borrar lo elegido (o el punto elegido)"],
+  ["Ctrl+D", "Duplicar"],
+  ["Ctrl+L", "Bloquear o desbloquear"],
+  ["Flechas", "Mover un poco (Shift: más)"],
+  ["Shift+clic", "Elegir varios"],
+  ["Alt al agrandar", "Desde el centro"],
+  ["Shift al girar", "De 15° en 15°"],
+  ["Rueda", "Zoom · arrastra el fondo para moverte"],
+  ["Esc", "Salir de la herramienta"],
+];
 
-// Distribución de mesas: el plano del lugar a escala (en metros) y quién se
-// sienta en cada mesa.
+// Distribución de mesas en dos pasos: «El lugar» (se arma una vez) y
+// «Mesas e invitados» (lo del lugar queda bloqueado).
 export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: SeatingPlan; guests: SeatingGuest[]; initials: string }) {
   const [plan, setPlan] = useState<SeatingPlan>(initialPlan);
   const [assign, setAssign] = useState<Record<string, string | null>>(() => Object.fromEntries(guests.flatMap((g) => g.members.map((m) => [m.id, m.tableId]))));
+  const [step, setStepRaw] = useState<Step>(() => (initialPlan.objects.length || initialPlan.background ? "tables" : "place")); // plano vacío: se empieza por el lugar
   const [selected, setSelected] = useState<string[]>([]);
   const [vertex, setVertex] = useState<number | null>(null);
   const [mode, setModeRaw] = useState<Mode>("select");
-  const [panel, setPanel] = useState<"summary" | "terrain">("summary");
   const [addOpen, setAddOpen] = useState(false);
+  const [pop, setPop] = useState<null | "avisos" | "help" | "align" | "repeat">(null);
+  const [repeat, setRepeat] = useState({ rows: 2, cols: 3 });
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [showPending, setShowPending] = useState(false);
   const [q, setQ] = useState("");
+  const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
+  const [tip, setTip] = useState<string | null>(null);
   const [split, setSplit] = useState<{ guest: SeatingGuest; table: PlanObject; free: number; pick: string[] } | null>(null);
-  const [draft, setDraft] = useState<Pt[]>([]); // calcar por puntos
+  const [draft, setDraft] = useState<Pt[]>([]);
   const [rectDraft, setRectDraft] = useState<{ a: Pt; b: Pt } | null>(null);
   const [cursor, setCursor] = useState<Pt | null>(null);
   const [uploading, setUploading] = useState(false);
   const [brush, setBrush] = useState({ size: 1.6, erase: false });
   const [walk, setWalk] = useState({ width: 3, lamps: true });
+  const [exportOpen, setExportOpen] = useState(false);
+  const [printOpts, setPrintOpts] = useState<ExportOpts | null>(null);
+  const [printReq, setPrintReq] = useState(0);
   const [pending, start] = useTransition();
   const [view, setView] = useState({ s: 12, tx: 40, ty: 40 });
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -115,11 +116,13 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
   const fileRef = useRef<HTMLInputElement>(null);
   const drag = useRef<Drag | null>(null);
   const fitted = useRef(false);
-  const history = useRef<{ plan: SeatingPlan; assign: Record<string, string | null> }[]>([]);
-  const [undoCount, setUndoCount] = useState(0);
+  const history = useRef<Snapshot[]>([]);
+  const future = useRef<Snapshot[]>([]);
+  const [hist, setHist] = useState({ undo: 0, redo: 0 });
   const objects = plan.objects;
   const bg = plan.background;
   const s = view.s;
+  const inStep = (o: PlanObject) => (step === "place" ? isTerrain(o) : !isTerrain(o));
 
   /* ---------- Vista: zoom y desplazamiento ---------- */
   const fitView = (w = size.w, h = size.h, room = plan.room) => {
@@ -164,6 +167,7 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
       const px = size.w / 2, py = size.h / 2;
       return { s: ns, tx: px - ((px - v.tx) * ns) / v.s, ty: py - ((py - v.ty) * ns) / v.s };
     });
+  const centerOn = (o: PlanObject) => setView((v) => ({ ...v, tx: size.w / 2 - o.x * v.s, ty: size.h / 2 - o.y * v.s }));
   const toWorld = (e: { clientX: number; clientY: number }): Pt => {
     const r = svgRef.current!.getBoundingClientRect();
     return { x: (e.clientX - r.left - view.tx) / s, y: (e.clientY - r.top - view.ty) / s };
@@ -177,11 +181,19 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
+  // Exportar: imprimir cuando la hoja ya está armada.
+  useEffect(() => {
+    if (!printReq) return;
+    const t = setTimeout(() => window.print(), 60);
+    return () => clearTimeout(t);
+  }, [printReq]);
 
-  /* ---------- Cambios (con deshacer) ---------- */
+  /* ---------- Cambios (con deshacer y rehacer) ---------- */
+  const syncHist = () => setHist({ undo: history.current.length, redo: future.current.length });
   const remember = () => {
     history.current = [...history.current.slice(-59), { plan, assign }];
-    setUndoCount(history.current.length);
+    future.current = [];
+    syncHist();
   };
   const touch = () => {
     setDirty(true);
@@ -192,19 +204,31 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
     fn();
     touch();
   };
-  const undo = () => {
-    const last = history.current.pop();
-    setUndoCount(history.current.length);
-    if (!last) return;
-    setPlan(last.plan);
-    setAssign(last.assign);
-    setSelected((sel) => sel.filter((id) => last.plan.objects.some((o) => o.id === id)));
+  const restore = (snap: Snapshot) => {
+    setPlan(snap.plan);
+    setAssign(snap.assign);
+    setSelected((sel) => sel.filter((id) => snap.plan.objects.some((o) => o.id === id)));
     setVertex(null);
     touch();
+  };
+  const undo = () => {
+    const last = history.current.pop();
+    if (!last) return;
+    future.current = [...future.current, { plan, assign }];
+    syncHist();
+    restore(last);
+  };
+  const redo = () => {
+    const next = future.current.pop();
+    if (!next) return;
+    history.current = [...history.current, { plan, assign }];
+    syncHist();
+    restore(next);
   };
   const setObjects = (fn: (l: PlanObject[]) => PlanObject[]) => setPlan((p) => ({ ...p, objects: fn(p.objects) }));
   const setBg = (fn: (b: PlanBackground) => PlanBackground | null) => setPlan((p) => ({ ...p, background: p.background ? fn(p.background) : null }));
   const patch = (id: string, p: Partial<PlanObject>) => change(() => setObjects((l) => l.map((o) => (o.id === id ? { ...o, ...p } : o))));
+  const patchMany = (ids: string[], p: Partial<PlanObject>) => change(() => setObjects((l) => l.map((o) => (ids.includes(o.id) ? { ...o, ...p } : o))));
   const put = (o: PlanObject) => {
     if (o.id === BG) setBg((b) => ({ ...b, x: r2(o.x), y: r2(o.y), w: r2(o.w), rotation: o.rotation }));
     else setObjects((l) => l.map((x) => (x.id === o.id ? o : x)));
@@ -218,6 +242,15 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
       setSelected([]);
       setVertex(null);
     }
+  };
+  const setStep = (st: Step) => {
+    setStepRaw(st);
+    setMode("select");
+    setSelected([]);
+    setVertex(null);
+    setAddOpen(false);
+    setPop(null);
+    setTip(null);
   };
 
   /* ---------- Invitados ---------- */
@@ -233,9 +266,9 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
     return map;
   }, [guests, assign]);
   const used = (id: string) => (seatedAt.get(id) ?? []).reduce((n, x) => n + x.members.length, 0);
-  const toPlace = guests
-    .map((g) => ({ g, left: g.members.filter((m) => counts(m) && !assign[m.id]) }))
-    .filter((x) => x.left.length && (!q.trim() || x.g.name.toLowerCase().includes(q.trim().toLowerCase())));
+  const candidates: Candidate[] = guests.map((g) => ({ g, left: g.members.filter((m) => counts(m) && !assign[m.id]) })).filter((x) => x.left.length);
+  const groups = [...new Set(guests.map((g) => g.group).filter((x): x is string => !!x))].sort((a, b) => a.localeCompare(b, "es"));
+  const toPlace = candidates.filter((x) => (!groupFilter || x.g.group === groupFilter) && (!q.trim() || x.g.name.toLowerCase().includes(q.trim().toLowerCase())));
   const seatsTotal = objects.filter(seatable).reduce((n, o) => n + o.seats, 0);
   const attending = guests.reduce((n, g) => n + g.members.filter((m) => m.attending === true).length, 0);
   const placed = guests.reduce((n, g) => n + g.members.filter((m) => m.attending === true && assign[m.id]).length, 0);
@@ -244,6 +277,30 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
   const over = objects.filter((o) => seatable(o) && used(o.id) > o.seats);
   const selObjs = objects.filter((o) => selected.includes(o.id));
   const sel = selObjs.length === 1 ? selObjs[0] : null;
+  const movable = selObjs.filter((o) => !o.locked);
+
+  // Avisos del plano (en la cabecera).
+  const focus = (o: PlanObject) => {
+    setSelected([o.id]);
+    centerOn(o);
+    setPop(null);
+  };
+  const warnings: { key: string; text: string; action: string; run: () => void }[] = [
+    ...(seatsTotal < attending ? [{ key: "seats", text: `Faltan ${attending - seatsTotal} sillas para quienes confirmaron (hay ${seatsTotal} y asisten ${attending}).`, action: "Agregar mesa", run: () => { setPop(null); setAddOpen(true); } }] : []),
+    ...over.map((o) => ({ key: `over-${o.id}`, text: `«${o.label}» tiene más personas que sillas.`, action: "Ir", run: () => focus(o) })),
+    ...splitGuests.map((g) => ({
+      key: `split-${g.id}`,
+      text: `${g.name} quedó dividida en varias mesas o con parte sin mesa.`,
+      action: "Ir",
+      run: () => {
+        const t = objects.find((o) => g.members.some((m) => assign[m.id] === o.id));
+        setQ(g.name);
+        setGroupFilter(null);
+        if (t) focus(t);
+        else setPop(null);
+      },
+    })),
+  ];
 
   // Soltar una invitación sobre una mesa: si no entran todos, se elige quiénes.
   function drop(guestId: string, table: PlanObject) {
@@ -260,21 +317,28 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
   }
   const unseat = (ids: string[]) => change(() => setAssign((a) => ({ ...a, ...Object.fromEntries(ids.map((id) => [id, null])) })));
 
-  /* ---------- Agregar, duplicar, borrar ---------- */
+  /* ---------- Agregar, duplicar, borrar, ordenar ---------- */
+  const viewCenter = () => ({ x: r2((size.w / 2 - view.tx) / s), y: r2((size.h / 2 - view.ty) / s) });
   function add(kind: Kind, preset?: Partial<PlanObject>) {
-    if (kind === "shrubs" || kind === "walkway") {
-      setAddOpen(false);
-      return setMode(kind === "shrubs" ? "paint" : "walk");
-    }
-    const center = { x: r2((size.w / 2 - view.tx) / s), y: r2((size.h / 2 - view.ty) / s) };
+    const center = viewCenter();
     const o = { ...newObject(kind, objects, center), ...preset };
-    const spot = kind === "fence" ? {} : freeSpot(o, objects, plan.room, center);
+    const spot = freeSpot(o, objects, plan.room, center);
     change(() => setObjects((l) => [...l, { ...o, ...spot }]));
     setSelected([o.id]);
     setAddOpen(false);
     setMode("select");
   }
-  const setLocked = (ids: string[], locked: boolean) => change(() => setObjects((l) => l.map((o) => (ids.includes(o.id) ? { ...o, locked: locked || undefined } : o))));
+  function addGrid(kind: Kind, rows: number, cols: number) {
+    const list = placeFree(newGrid(kind, rows, cols, objects, viewCenter()), objects);
+    change(() => setObjects((l) => [...l, ...list]));
+    setSelected(list.map((o) => o.id));
+    setAddOpen(false);
+  }
+  const setLocked = (ids: string[], locked: boolean) => patchMany(ids, { locked: locked || undefined });
+  const setHidden = (ids: string[], hidden: boolean) => {
+    patchMany(ids, { hidden: hidden || undefined });
+    if (hidden) setSelected((l) => l.filter((id) => !ids.includes(id)));
+  };
   function remove(ids: string[]) {
     if (!ids.length) return;
     change(() => {
@@ -288,12 +352,41 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
     let all = objects;
     const copies = list.map((o) => {
       const fresh = newObject(o.kind, all);
-      const c: PlanObject = { ...o, locked: undefined, id: fresh.id, label: isTable(o.kind) && o.kind !== "sweetheart" ? fresh.label : o.label, x: r2(o.x + 1), y: r2(o.y + 1), points: o.points?.map(([x, y]) => [r2(x + 1), r2(y + 1)]) };
+      const c: PlanObject = { ...shiftObj(o, 1, 1), locked: undefined, id: fresh.id, label: isTable(o.kind) && o.kind !== "sweetheart" ? fresh.label : o.label };
       all = [...all, c];
       return c;
     });
     change(() => setObjects((l) => [...l, ...copies]));
     setSelected(copies.map((c) => c.id));
+  }
+  function align(axis: "row" | "col") {
+    if (movable.length < 2) return;
+    const avg = movable.reduce((n, o) => n + (axis === "row" ? o.y : o.x), 0) / movable.length;
+    const ids = movable.map((o) => o.id);
+    change(() => setObjects((l) => l.map((o) => (ids.includes(o.id) ? shiftObj(o, axis === "col" ? avg - o.x : 0, axis === "row" ? avg - o.y : 0) : o))));
+    setPop(null);
+  }
+  function distribute() {
+    if (movable.length < 3) return;
+    const xs = movable.map((o) => o.x), ys = movable.map((o) => o.y);
+    const horiz = Math.max(...xs) - Math.min(...xs) >= Math.max(...ys) - Math.min(...ys);
+    const sorted = [...movable].sort((a, b) => (horiz ? a.x - b.x : a.y - b.y));
+    const a = horiz ? sorted[0].x : sorted[0].y, b = horiz ? sorted[sorted.length - 1].x : sorted[sorted.length - 1].y;
+    const target = new Map(sorted.map((o, i) => [o.id, a + ((b - a) * i) / (sorted.length - 1)]));
+    change(() => setObjects((l) => l.map((o) => (target.has(o.id) ? shiftObj(o, horiz ? target.get(o.id)! - o.x : 0, horiz ? 0 : target.get(o.id)! - o.y) : o))));
+  }
+  function repeatSel() {
+    if (!sel) return;
+    const copies = placeFree(gridCopies(sel, repeat.rows, repeat.cols, objects, false), objects);
+    change(() => setObjects((l) => [...l, ...copies]));
+    setSelected([sel.id, ...copies.map((c) => c.id)]);
+    setPop(null);
+  }
+  // Mesa 1, 2, 3… de arriba hacia abajo y de izquierda a derecha.
+  function renumber() {
+    const list = objects.filter(numberable).sort((a, b) => Math.round(a.y / 2.5) - Math.round(b.y / 2.5) || a.x - b.x);
+    const label = new Map(list.map((o, i) => [o.id, `Mesa ${i + 1}`]));
+    change(() => setObjects((l) => l.map((o) => (label.has(o.id) ? { ...o, label: label.get(o.id)! } : o))));
   }
 
   /* ---------- Gestos en el lienzo ---------- */
@@ -308,18 +401,17 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
     setMode("select");
     setSelected([o.id]);
   }
-  // Brocha de arbustos.
   function newShrubs(p: Pt): PlanObject {
     const base = newObject("shrubs", objects);
     return { ...withPoints({ ...base, stamp: brush.size }, [[r2(p.x), r2(p.y)]]), label: "Arbustos de mandarina" };
   }
   function eraseAt(p: Pt, saved: boolean) {
     const hit = (o: PlanObject) => (o.points ?? []).some(([x, y]) => Math.hypot(x - p.x, y - p.y) < (o.stamp ?? 1.6) / 2 + brush.size / 2);
-    if (!objects.some((o) => o.kind === "shrubs" && hit(o))) return saved;
+    if (!objects.some((o) => o.kind === "shrubs" && !o.locked && !o.hidden && hit(o))) return saved;
     if (!saved) remember();
     setObjects((l) =>
       l.flatMap((o) => {
-        if (o.kind !== "shrubs") return [o];
+        if (o.kind !== "shrubs" || o.locked || o.hidden) return [o];
         const keep = (o.points ?? []).filter(([x, y]) => Math.hypot(x - p.x, y - p.y) >= (o.stamp ?? 1.6) / 2 + brush.size / 2);
         return keep.length ? [keep.length === o.points!.length ? o : withPoints(o, keep)] : [];
       }),
@@ -345,7 +437,7 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
         ys.push(bg.y + c.y);
       }
     } else {
-      for (const o of objects.filter((x) => x.kind === "area" || x.kind === "fence" || x.kind === "tree" || x.kind === "palm" || x.kind === "entrance")) {
+      for (const o of objects.filter((x) => isTerrain(x) && !x.hidden && x.kind !== "shrubs")) {
         if (o.points) {
           xs = xs.concat(o.points.map((p) => p[0]));
           ys = ys.concat(o.points.map((p) => p[1]));
@@ -364,6 +456,7 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
   }
   function onCanvasDown(e: React.PointerEvent) {
     const p = toWorld(e);
+    setTip(null);
     if (e.button === 1 || mode === "select" || mode === "photo" || mode === "room") {
       if (mode === "select" && !e.shiftKey && e.button === 0) {
         setSelected([]);
@@ -399,6 +492,11 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
     } else if (mode === "tree") {
       const t = { ...newObject("tree", objects), x: r2(p.x), y: r2(p.y) };
       change(() => setObjects((l) => [...l, t]));
+    } else if (mode === "entrance") {
+      const t = { ...newObject("entrance", objects), x: r2(p.x), y: r2(p.y) };
+      change(() => setObjects((l) => [...l, t]));
+      setMode("select");
+      setSelected([t.id]);
     }
   }
   function onCanvasMove(e: React.PointerEvent) {
@@ -469,13 +567,13 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
         remember();
         d.saved = true;
       }
-      const step = plan.style.grid ? 0.25 : 0.05;
-      const dx = Math.round((e.clientX - d.sx) / s / step) * step, dy = Math.round((e.clientY - d.sy) / s / step) * step;
+      const st = plan.style.grid ? 0.25 : 0.05;
+      const dx = Math.round((e.clientX - d.sx) / s / st) * st, dy = Math.round((e.clientY - d.sy) / s / st) * st;
       if (d.bg) {
         const b0 = d.bg;
         setBg((b) => ({ ...b, x: r2(b0.x + dx), y: r2(b0.y + dy) }));
       } else {
-        const moved = new Map(d.orig.map((o) => [o.id, { ...o, x: r2(o.x + dx), y: r2(o.y + dy), points: o.points?.map(([x, y]) => [r2(x + dx), r2(y + dy)] as [number, number]) }]));
+        const moved = new Map(d.orig.map((o) => [o.id, shiftObj(o, dx, dy)]));
         setObjects((l) => l.map((o) => moved.get(o.id) ?? o));
       }
       touch();
@@ -548,6 +646,12 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
     if (mode !== "select" || e.button !== 0) return;
     e.stopPropagation();
     setVertex(null);
+    setTip(null);
+    // Lo del otro paso no se toca: arrastrar encima desplaza el plano.
+    if (!inStep(o)) {
+      if (!e.shiftKey) setSelected([]);
+      return begin(e, { t: "pan", sx: e.clientX, sy: e.clientY, tx: view.tx, ty: view.ty });
+    }
     if (e.shiftKey) return setSelected((l) => (l.includes(o.id) ? l.filter((x) => x !== o.id) : [...l, o.id]));
     const ids = selected.includes(o.id) ? selected : [o.id];
     setSelected(ids);
@@ -578,12 +682,18 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.closest("input,textarea,select,[role=dialog]")) return;
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+      const k = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && (k === "y" || (k === "z" && e.shiftKey))) {
+        e.preventDefault();
+        return redo();
+      }
+      if ((e.ctrlKey || e.metaKey) && k === "z") {
         e.preventDefault();
         return undo();
       }
       if (e.key === "Escape") {
         if (addOpen) return setAddOpen(false);
+        if (pop) return setPop(null);
         if ((mode === "tracePoly" || mode === "fence") && draft.length) return setDraft([]);
         if (mode !== "select") return setMode("select");
         setSelected([]);
@@ -592,11 +702,11 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
       if (e.key === "Enter" && mode === "tracePoly") return closePoly(draft);
       if (e.key === "Enter" && mode === "fence") return finishFence(draft, false);
       if (mode !== "select" || !selObjs.length) return;
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {
+      if ((e.ctrlKey || e.metaKey) && k === "l") {
         e.preventDefault();
         return setLocked(selected, !selObjs.every((o) => o.locked));
       }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
+      if ((e.ctrlKey || e.metaKey) && k === "d") {
         e.preventDefault();
         return duplicate(selObjs);
       }
@@ -614,11 +724,7 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
       if (a) {
         e.preventDefault();
         const st = e.shiftKey ? 1 : 0.1;
-        change(() =>
-          setObjects((l) =>
-            l.map((o) => (selected.includes(o.id) && !o.locked ? { ...o, x: r2(o.x + a.x * st), y: r2(o.y + a.y * st), points: o.points?.map(([x, y]) => [r2(x + a.x * st), r2(y + a.y * st)] as [number, number]) } : o)),
-          ),
-        );
+        change(() => setObjects((l) => l.map((o) => (selected.includes(o.id) && !o.locked ? shiftObj(o, a.x * st, a.y * st) : o))));
       }
     };
     window.addEventListener("keydown", onKey);
@@ -632,8 +738,8 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
     try {
       const res = await requestSeatingPhotoUploadAction(file.type, file.size);
       if (!res.ok) return setError(res.error);
-      const put = await fetch(res.uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-      if (!put.ok) return setError("No se pudo subir la foto. Inténtalo de nuevo.");
+      const up = await fetch(res.uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      if (!up.ok) return setError("No se pudo subir la foto. Inténtalo de nuevo.");
       const aspect = await new Promise<number>((ok) => {
         const img = new Image();
         img.onload = () => ok(img.naturalWidth / img.naturalHeight || 1);
@@ -662,118 +768,193 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
     });
   }
 
-  const showBg = !!bg && (!bg.traceOnly || mode !== "select" || panel === "terrain");
-  const ordered = [...objects].sort((a, b) => layerOf(a) - layerOf(b));
+  const showBg = !!bg && (step === "place" || !bg.traceOnly);
+  const visible = objects.filter((o) => !o.hidden);
+  const ordered = [...visible].sort((a, b) => layerOf(a) - layerOf(b));
+  const tipObj = tip ? objects.find((o) => o.id === tip) : null;
+  const hint = mode !== "select" ? HINTS[mode] : step === "place" ? "Toca una capa para editarla · arrastra el fondo para moverte · rueda: zoom" : "Arrastra invitaciones a las mesas · el lugar está bloqueado: edítalo en «1 · El lugar»";
   const chip = "rounded-full px-2.5 py-1 text-[13px]";
-  const modeBtn = (m: Mode, label: string, extra = "") => (
-    <button type="button" aria-pressed={mode === m} onClick={() => setMode(mode === m ? "select" : m)} className={`min-h-9 rounded-full border px-3 text-[13px] ${mode === m ? "border-[#7A2337] bg-[#F3E6E9] font-semibold text-[#7A2337]" : "border-[#D9D1CA] bg-white hover:bg-[#FBF9F7]"} ${extra}`} data-mode={m}>
+  const tool = (m: Mode, label: string) => (
+    <button type="button" aria-pressed={mode === m} onClick={() => setMode(mode === m ? "select" : m)} className={`min-h-[34px] rounded-[9px] px-3 text-[13px] ${mode === m ? "bg-[#F3E6E9] font-semibold text-[#7A2337]" : "hover:bg-[#F6F3EF]"}`} data-mode={m}>
       {label}
     </button>
   );
+  const group = (title: string, children: React.ReactNode, extra = "") => (
+    <div className={`flex items-center gap-1 rounded-xl border border-[#E7E1DB] p-[3px] ${extra}`}>
+      <span className="px-2 text-[11px] font-semibold uppercase tracking-wide text-[#6B6063]">{title}</span>
+      {children}
+    </div>
+  );
   const px = (n: number) => n / s; // n píxeles en metros
+  const iconBtn = "flex h-10 w-10 items-center justify-center rounded-[10px] border border-[#D9D1CA] bg-white disabled:opacity-40";
 
   return (
-    <div className="flex h-dvh bg-[#F6F3EF] text-[#221A1C]">
+    <div className="flex h-dvh bg-[#F6F3EF] text-[#221A1C] print:block print:h-auto print:bg-white">
       <div className="print:hidden"><PanelRail initials={initials} current="/admin/dashboard/mesas" /></div>
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/* Al imprimir el editor sale de la hoja (no se oculta): la hoja usa sus patrones. */}
+      <div className="flex min-w-0 flex-1 flex-col print:fixed print:left-[-10000px] print:top-0 print:h-px print:w-px print:overflow-hidden">
         <header className="flex flex-wrap items-center gap-3 border-b border-[#E7E1DB] bg-white px-4 py-2.5">
           <h1 className="font-serif text-[22px]">Distribución de mesas</h1>
-          <div className="flex flex-wrap gap-1.5" data-seating-totals>
-            <span className={`${chip} bg-[#F6F3EF]`}>Sillas <b>{seatsTotal}</b></span>
-            <span className={`${chip} bg-[#F6F3EF]`}>Asisten <b>{attending}</b></span>
-            <span className={`${chip} bg-[#E6F2EA] text-[#2F6B45]`}>Ubicados <b>{placed}</b></span>
-            <span className={`${chip} ${leftCount ? "bg-[#FBF5E8] text-[#6E520F]" : "bg-[#F6F3EF]"}`}>Por ubicar <b>{leftCount}</b></span>
-          </div>
+          <nav aria-label="Pasos" className="flex rounded-full bg-[#F1ECE6] p-[3px]">
+            {([["place", "1 · El lugar"], ["tables", "2 · Mesas e invitados"]] as const).map(([id, label]) => (
+              <button key={id} type="button" aria-current={step === id ? "step" : undefined} onClick={() => setStep(id)} className={`min-h-9 rounded-full px-4 text-[13px] ${step === id ? "bg-white font-bold text-[#7A2337] shadow-sm" : "text-[#4A4043]"}`} data-step={id}>
+                {label}
+              </button>
+            ))}
+          </nav>
+          {step === "tables" && (
+            <>
+              <div className="flex flex-wrap gap-1.5" data-seating-totals>
+                <span className={`${chip} bg-[#F6F3EF]`}>Sillas <b>{seatsTotal}</b></span>
+                <span className={`${chip} bg-[#F6F3EF]`}>Asisten <b>{attending}</b></span>
+                <span className={`${chip} bg-[#E6F2EA] text-[#2F6B45]`}>Ubicados <b>{placed}</b></span>
+                <span className={`${chip} ${leftCount ? "bg-[#FBF5E8] text-[#6E520F]" : "bg-[#F6F3EF]"}`}>Por ubicar <b>{leftCount}</b></span>
+              </div>
+              <div className="relative">
+                <button type="button" aria-expanded={pop === "avisos"} onClick={() => setPop(pop === "avisos" ? null : "avisos")} className={`flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-semibold ${warnings.length ? "border-[#E3C98A] bg-[#FBF5E8] text-[#6E520F]" : "border-[#BFDCC8] bg-[#E6F2EA] text-[#2F6B45]"}`} data-avisos={warnings.length}>
+                  {warnings.length ? <AlertTriangle size={14} /> : <Check size={14} />}
+                  {warnings.length ? `${warnings.length} ${warnings.length === 1 ? "aviso" : "avisos"}` : "Todo en orden"}
+                </button>
+                {pop === "avisos" && (
+                  <div className="absolute left-0 top-full z-40 mt-1.5 flex w-[360px] flex-col gap-2 rounded-xl border border-[#E7E1DB] bg-white p-3 text-[13px] shadow-xl" role="group" aria-label="Avisos del plano" data-warnings>
+                    <b className="text-sm">Avisos del plano</b>
+                    {warnings.map((w) => (
+                      <button key={w.key} type="button" onClick={w.run} className="flex items-center justify-between gap-2 rounded-lg bg-[#FBF5E8] p-2.5 text-left text-[#6E520F]" data-warning={w.key}>
+                        <span>{w.text}</span>
+                        <b className="shrink-0">{w.action}</b>
+                      </button>
+                    ))}
+                    {!warnings.length && <p className="text-[#2F6B45]">Todo en orden: hay sillas para todos y nadie quedó dividido.</p>}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
           <span className="flex-1" />
           {error && <span role="alert" className="text-sm text-[#7A2337]">{error}</span>}
           {!dirty && savedAt && <span className="flex items-center gap-1 text-xs text-[#2F6B4F]"><Check size={13} /> Guardado</span>}
-          <button type="button" onClick={() => window.print()} className="min-h-10 rounded-lg border border-[#D9D1CA] bg-white px-3.5 text-[13px] font-semibold print:hidden">Exportar plano (PDF)</button>
-          <button type="button" onClick={save} disabled={!dirty || pending} className="flex min-h-10 items-center gap-1.5 rounded-lg bg-[#7A2337] px-4 text-[13px] font-semibold text-white disabled:opacity-40 print:hidden" data-save-seating>
+          <button type="button" onClick={undo} disabled={!hist.undo} aria-label="Deshacer (Ctrl+Z)" title="Deshacer (Ctrl+Z)" className={iconBtn} data-undo><Undo2 size={16} /></button>
+          <button type="button" onClick={redo} disabled={!hist.redo} aria-label="Rehacer (Ctrl+Shift+Z)" title="Rehacer (Ctrl+Shift+Z)" className={iconBtn} data-redo><Redo2 size={16} /></button>
+          <button type="button" onClick={() => setExportOpen(true)} className="min-h-10 rounded-[10px] border border-[#D9D1CA] bg-white px-3.5 text-[13px] font-semibold" data-export-open>Exportar</button>
+          <button type="button" onClick={save} disabled={!dirty || pending} className="flex min-h-10 items-center gap-1.5 rounded-[10px] bg-[#7A2337] px-4 text-[13px] font-semibold text-white disabled:opacity-40" data-save-seating>
             {pending && <Loader2 size={14} className="animate-spin" />} Guardar
           </button>
         </header>
-        <div className="relative flex flex-wrap items-center gap-1.5 border-b border-[#E7E1DB] bg-white px-4 py-2 print:hidden" role="toolbar" aria-label="Herramientas del plano">
-          <button type="button" onClick={() => setAddOpen((v) => !v)} aria-expanded={addOpen} className="flex min-h-9 items-center gap-1 rounded-full bg-[#7A2337] px-3.5 text-[13px] font-semibold text-white" data-add-menu>
-            <Plus size={14} /> Agregar
-          </button>
-          <span className="mx-1 h-5 w-px bg-[#E7E1DB]" />
-          {modeBtn("select", "Seleccionar")}
-          {modeBtn("traceRect", "Calcar con rectángulo")}
-          {modeBtn("tracePoly", "Calcar por puntos")}
-          {modeBtn("fence", "Dibujar cerco")}
-          {modeBtn("tree", "Marcar árbol")}
-          {modeBtn("paint", "Pintar arbustos")}
-          {modeBtn("walk", "Pintar camino")}
-          {modeBtn("room", "Ajustar lienzo")}
-          {bg && (
+
+        <div className="relative flex flex-wrap items-center gap-2.5 border-b border-[#E7E1DB] bg-white px-4 py-2" role="toolbar" aria-label={step === "place" ? "Herramientas del lugar" : "Herramientas de mesas"}>
+          {step === "place" ? (
             <>
-              <span className="mx-1 h-5 w-px bg-[#E7E1DB]" />
-              {modeBtn("photo", "Ajustar foto")}
+              {group("Calcar", <>{tool("traceRect", "Rectángulo")}{tool("tracePoly", "Por puntos")}</>)}
+              {group("Dibujar", <>{tool("fence", "Cerco")}{tool("walk", "Camino")}</>)}
+              {group("Naturaleza", <>{tool("paint", "Pintar arbustos")}{tool("tree", "Marcar árbol")}</>)}
+              {group("Marcar", tool("entrance", "Entrada"))}
             </>
-          )}
-          <span className="mx-1 h-5 w-px bg-[#E7E1DB]" />
-          <button type="button" aria-pressed={panel === "terrain" && !selObjs.length} onClick={() => { setSelected([]); setPanel(panel === "terrain" ? "summary" : "terrain"); }} className={`min-h-9 rounded-full border px-3 text-[13px] ${panel === "terrain" && !selObjs.length ? "border-[#7A2337] bg-[#F3E6E9] font-semibold text-[#7A2337]" : "border-[#D9D1CA] bg-white"}`} data-terrain-btn>
-            Terreno y foto
-          </button>
-          <button type="button" onClick={undo} disabled={!undoCount} aria-label="Deshacer (Ctrl+Z)" title="Deshacer (Ctrl+Z)" className="flex min-h-9 items-center gap-1 rounded-full border border-[#D9D1CA] bg-white px-3 text-[13px] disabled:opacity-40" data-undo>
-            <Undo2 size={14} /> Deshacer
-          </button>
-          {addOpen && (
+          ) : (
             <>
-              <div className="fixed inset-0 z-30" onClick={() => setAddOpen(false)} />
-              <div className="absolute left-4 top-full z-40 mt-1 grid w-[min(760px,calc(100vw-120px))] grid-cols-3 gap-x-5 gap-y-3 rounded-xl border border-[#E7E1DB] bg-white p-4 shadow-xl" role="menu" aria-label="Agregar al plano">
-                {CATALOG.map((g) => (
-                  <div key={g.group} className="flex flex-col gap-1">
-                    <span className="text-[11px] font-semibold uppercase tracking-wide text-[#6B6063]">{g.group}</span>
-                    {g.items.map((it) => (
-                      <button key={it.id ?? it.kind} type="button" role="menuitem" onClick={() => add(it.kind, it.preset)} className="rounded-lg px-2 py-1.5 text-left text-[13px] hover:bg-[#F6F3EF]" data-add={it.id ?? it.kind}>
-                        {it.label}
-                        {it.seats ? <span className="text-[#6B6063]"> · {it.seats}</span> : null}
-                      </button>
-                    ))}
+              <button type="button" onClick={() => setAddOpen((v) => !v)} aria-expanded={addOpen} className="flex min-h-[38px] items-center gap-1.5 rounded-full bg-[#7A2337] px-4 text-[13px] font-semibold text-white" data-add-menu>
+                <Plus size={15} /> Agregar
+              </button>
+              <span className="text-xs text-[#6B6063]">Mesas · Barras · Estaciones · Decoración</span>
+              <span className="h-5 w-px bg-[#E7E1DB]" />
+              {group(
+                "Ordenar",
+                <>
+                  <div className="relative">
+                    <button type="button" disabled={movable.length < 2} aria-expanded={pop === "align"} onClick={() => setPop(pop === "align" ? null : "align")} className="min-h-[34px] rounded-[9px] px-3 text-[13px] hover:bg-[#F6F3EF] disabled:opacity-40" data-order="align">Alinear</button>
+                    {pop === "align" && (
+                      <div className="absolute left-0 top-full z-40 mt-1 flex w-48 flex-col rounded-xl border border-[#E7E1DB] bg-white p-1.5 text-[13px] shadow-xl">
+                        <button type="button" onClick={() => align("row")} className="rounded-lg px-2.5 py-2 text-left hover:bg-[#F6F3EF]" data-align="row">En una fila (horizontal)</button>
+                        <button type="button" onClick={() => align("col")} className="rounded-lg px-2.5 py-2 text-left hover:bg-[#F6F3EF]" data-align="col">En una columna (vertical)</button>
+                      </div>
+                    )}
                   </div>
-                ))}
-              </div>
+                  <button type="button" disabled={movable.length < 3} onClick={distribute} className="min-h-[34px] rounded-[9px] px-3 text-[13px] hover:bg-[#F6F3EF] disabled:opacity-40" data-order="distribute">Distribuir parejo</button>
+                  <div className="relative">
+                    <button type="button" disabled={!sel || isTerrain(sel)} aria-expanded={pop === "repeat"} onClick={() => setPop(pop === "repeat" ? null : "repeat")} className="min-h-[34px] rounded-[9px] px-3 text-[13px] hover:bg-[#F6F3EF] disabled:opacity-40" data-order="repeat">Repetir en filas</button>
+                    {pop === "repeat" && sel && (
+                      <div className="absolute left-0 top-full z-40 mt-1 flex w-56 flex-col gap-2 rounded-xl border border-[#E7E1DB] bg-white p-3 text-[13px] shadow-xl" data-repeat>
+                        <span className="text-xs text-[#6B6063]">Copias de «{sel.label}» ordenadas en filas.</span>
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="flex flex-col gap-1 text-xs text-[#4A4043]">Filas<input type="number" min={1} max={10} value={repeat.rows} onChange={(e) => setRepeat((r) => ({ ...r, rows: Math.min(10, Math.max(1, Number(e.target.value) || 1)) }))} className="min-h-9 rounded-lg border border-[#D9D1CA] px-2" data-repeat-rows /></label>
+                          <label className="flex flex-col gap-1 text-xs text-[#4A4043]">Por fila<input type="number" min={1} max={10} value={repeat.cols} onChange={(e) => setRepeat((r) => ({ ...r, cols: Math.min(10, Math.max(1, Number(e.target.value) || 1)) }))} className="min-h-9 rounded-lg border border-[#D9D1CA] px-2" data-repeat-cols /></label>
+                        </div>
+                        <button type="button" disabled={repeat.rows * repeat.cols < 2} onClick={repeatSel} className="min-h-9 rounded-lg bg-[#221A1C] font-semibold text-white disabled:opacity-40" data-repeat-go>Crear {repeat.rows * repeat.cols - 1} copias</button>
+                      </div>
+                    )}
+                  </div>
+                  <button type="button" disabled={!objects.some(numberable)} onClick={renumber} className="min-h-[34px] rounded-[9px] px-3 text-[13px] hover:bg-[#F6F3EF] disabled:opacity-40" data-order="renumber">Renumerar</button>
+                </>,
+              )}
+              {addOpen && <AddMenu onAdd={add} onGrid={addGrid} onClose={() => setAddOpen(false)} />}
             </>
           )}
+          <span className="flex-1" />
+          <div className="relative">
+            <button type="button" aria-label="Atajos de teclado" aria-expanded={pop === "help"} onClick={() => setPop(pop === "help" ? null : "help")} className="h-9 w-9 rounded-full border border-[#D9D1CA] bg-white font-bold text-[#4A4043]" data-help>?</button>
+            {pop === "help" && (
+              <div className="absolute right-0 top-full z-40 mt-1 w-80 rounded-xl border border-[#E7E1DB] bg-white p-3 text-[13px] shadow-xl" data-shortcuts>
+                <b className="text-sm">Atajos de teclado</b>
+                <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5">
+                  {SHORTCUTS.map(([k, v]) => (
+                    <div key={k} className="contents">
+                      <dt className="font-semibold">{k}</dt>
+                      <dd className="text-[#4A4043]">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex min-h-0 flex-1">
-          {/* Por ubicar */}
-          <aside aria-label="Por ubicar" className="flex w-[260px] shrink-0 flex-col gap-2.5 overflow-y-auto border-r border-[#E7E1DB] bg-white p-3.5 print:hidden">
-            <h2 className="text-[15px] font-semibold">Por ubicar · {leftCount} {leftCount === 1 ? "persona" : "personas"}</h2>
-            <p className="text-xs text-[#6B6063]">Arrastra cada invitación a una mesa.</p>
-            <label>
-              <span className="sr-only">Buscar invitación</span>
-              <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar invitación" className="min-h-9 w-full rounded-lg border border-[#D9D1CA] px-2.5 text-[13px]" />
-            </label>
-            {toPlace.map(({ g, left }) => (
-              <div
-                key={g.id}
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData("text/plain", g.id);
-                  e.dataTransfer.effectAllowed = "move";
-                }}
-                className="cursor-grab rounded-[10px] border border-[#E7E1DB] bg-[#FBF9F7] px-3 py-2.5 active:cursor-grabbing"
-                data-to-place={g.id}
-              >
-                <div className="flex justify-between gap-2 text-sm">
-                  <b className="min-w-0 truncate">{g.name}</b>
-                  <span className="shrink-0 rounded-full bg-[#F3E6E9] px-2 text-xs font-semibold leading-5 text-[#7A2337]">
-                    {left.length === g.members.filter(counts).length ? left.length : `${left.length} de ${g.members.filter(counts).length}`}
-                  </span>
+          {step === "place" ? (
+            <LayersPanel objects={objects} selected={selected} onSelect={(ids) => { setMode("select"); setSelected(ids); }} onHide={setHidden} onLock={setLocked} onDone={() => setStep("tables")} />
+          ) : (
+            <aside aria-label="Por ubicar" className="flex w-[260px] shrink-0 flex-col gap-2.5 overflow-y-auto border-r border-[#E7E1DB] bg-white p-3.5">
+              <h2 className="text-[15px] font-semibold">Por ubicar · {leftCount} {leftCount === 1 ? "persona" : "personas"}</h2>
+              <label>
+                <span className="sr-only">Buscar invitación</span>
+                <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar invitación" className="min-h-9 w-full rounded-lg border border-[#D9D1CA] px-2.5 text-[13px]" data-guest-search />
+              </label>
+              {groups.length > 0 && (
+                <div role="group" aria-label="Filtrar por grupo" className="flex flex-wrap gap-1.5" data-group-filter>
+                  {[null, ...groups].map((gname) => (
+                    <button key={gname ?? "all"} type="button" aria-pressed={groupFilter === gname} onClick={() => setGroupFilter(gname)} className={`min-h-[30px] rounded-full px-2.5 text-xs ${groupFilter === gname ? "bg-[#221A1C] text-white" : "border border-[#D9D1CA] bg-white"}`} data-group={gname ?? ""}>
+                      {gname ?? "Todos"}
+                    </button>
+                  ))}
                 </div>
-                <p className="mt-0.5 truncate text-xs text-[#6B6063]">{left.map((m) => m.name).join(", ")}</p>
-                {!g.responded && <p className="text-[11px] text-[#6E520F]">Sin responder</p>}
-              </div>
-            ))}
-            {!toPlace.length && <p className="rounded-lg border border-dashed border-[#D9D1CA] p-3 text-center text-xs text-[#6B6063]">{attending ? "Todos los que confirmaron tienen mesa." : "Todavía nadie confirmó asistencia."}</p>}
-            <label className="mt-auto flex items-center gap-2 pt-2 text-xs text-[#4A4043]">
-              <input type="checkbox" checked={showPending} onChange={(e) => setShowPending(e.target.checked)} className="accent-[#7A2337]" data-show-pending />
-              Mostrar también los que no respondieron
-            </label>
-          </aside>
+              )}
+              {toPlace.map(({ g, left }) => (
+                <div
+                  key={g.id}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData("text/plain", g.id);
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  className="cursor-grab rounded-[10px] border border-[#E7E1DB] bg-[#FBF9F7] px-3 py-2.5 active:cursor-grabbing"
+                  data-to-place={g.id}
+                >
+                  <div className="flex justify-between gap-2 text-sm">
+                    <b className="min-w-0 truncate">{g.name}</b>
+                    <span className="shrink-0 rounded-full bg-[#F3E6E9] px-2 text-xs font-semibold leading-5 text-[#7A2337]">
+                      {left.length === g.members.filter(counts).length ? left.length : `${left.length} de ${g.members.filter(counts).length}`}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 truncate text-xs text-[#6B6063]">{left.map((m) => m.name).join(", ")}</p>
+                  {!g.responded && <p className="text-[11px] text-[#6E520F]">Sin responder</p>}
+                </div>
+              ))}
+              {!toPlace.length && <p className="rounded-lg border border-dashed border-[#D9D1CA] p-3 text-center text-xs text-[#6B6063]">{candidates.length ? "Nadie coincide con el filtro." : attending ? "Todos los que confirmaron tienen mesa." : "Todavía nadie confirmó asistencia."}</p>}
+              <p className="text-xs text-[#6B6063]">Arrastra a una mesa, o elige la mesa y usa «+ Sentar invitación».</p>
+              <label className="mt-auto flex items-center gap-2 pt-2 text-xs text-[#4A4043]">
+                <input type="checkbox" checked={showPending} onChange={(e) => setShowPending(e.target.checked)} className="accent-[#7A2337]" data-show-pending />
+                Mostrar también los que no respondieron
+              </label>
+            </aside>
+          )}
 
           {/* Plano */}
           <main aria-label="Plano del lugar" className="relative min-w-0 flex-1 overflow-hidden bg-[#E4DED7]">
@@ -795,7 +976,6 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
                   <g
                     transform={`translate(${bg.x} ${bg.y}) rotate(${bg.rotation})`}
                     style={{ pointerEvents: mode === "photo" ? "auto" : "none", cursor: "move" }}
-                    className="print:hidden"
                     onPointerDown={(e) => {
                       if (mode !== "photo" || e.button !== 0) return;
                       e.stopPropagation();
@@ -815,11 +995,14 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
                 <g style={{ pointerEvents: mode === "select" ? "auto" : "none" }}>
                   {ordered.map((o) => {
                     const u = used(o.id);
+                    const mine = inStep(o);
                     const hv = hover === o.id ? (u >= o.seats ? "full" : "ok") : null;
                     const common = {
                       onPointerDown: (e: React.PointerEvent) => onObjectDown(e, o),
+                      onPointerEnter: () => step === "tables" && seatable(o) && !drag.current && setTip(o.id),
+                      onPointerLeave: () => setTip((t) => (t === o.id ? null : t)),
                       onDragOver: (e: React.DragEvent) => {
-                        if (!seatable(o)) return;
+                        if (!seatable(o) || step !== "tables") return;
                         e.preventDefault();
                         setHover(o.id);
                       },
@@ -829,38 +1012,30 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
                         setHover(null);
                         drop(e.dataTransfer.getData("text/plain"), o);
                       },
+                      opacity: mine ? undefined : step === "place" ? 0.35 : 0.7,
                       "data-object": o.id,
                       "data-kind": o.kind,
+                      "data-locked-step": mine ? undefined : "",
                       "aria-label": `${o.label}${seatable(o) ? `, ${u} de ${o.seats} sillas` : ""}`,
-                      style: { cursor: "move" },
+                      style: { cursor: mine ? "move" : "grab" },
                     };
-                    if (isWalkway(o)) {
+                    if (isWalkway(o)) return <g key={o.id} {...common}><WalkwayShape o={o} /></g>;
+                    if (isShrubs(o))
                       return (
-                        <g key={o.id} {...common}>
-                          <WalkwayShape o={o} />
-                        </g>
-                      );
-                    }
-                    if (isShrubs(o)) {
-                      return (
-                        <g key={o.id} {...common} opacity={o.opacity ?? 1}>
+                        <g key={o.id} {...common} opacity={(o.opacity ?? 1) * (mine ? 1 : 0.7)}>
                           <ShrubsShape o={o} />
                         </g>
                       );
-                    }
-                    if (isFence(o)) {
+                    if (isFence(o))
                       return (
                         <g key={o.id} {...common}>
                           <path d={`M${o.points!.map((p) => p.join(" ")).join(" L")}${o.closed ? " Z" : ""}`} fill="none" stroke="transparent" strokeWidth={Math.max(px(12), 1)} strokeLinejoin="round" />
                           <FenceShape o={o} />
                         </g>
                       );
-                    }
                     if (isPoly(o)) {
                       const f = FLOORS.find((x) => x.id === o.floor);
-                      return (
-                        <polygon key={o.id} {...common} points={o.points!.map((p) => p.join(",")).join(" ")} fill={o.color ?? FLOOR_FILL[o.floor ?? "building"]} stroke={f?.blocked ? "#9E948A" : "rgba(34,26,28,.35)"} strokeWidth={0.08} strokeLinejoin="round" />
-                      );
+                      return <polygon key={o.id} {...common} points={o.points!.map((p) => p.join(",")).join(" ")} fill={o.color ?? FLOOR_FILL[o.floor ?? "building"]} stroke={f?.blocked ? "#9E948A" : "rgba(34,26,28,.35)"} strokeWidth={0.08} strokeLinejoin="round" />;
                     }
                     return (
                       <g key={o.id} {...common} transform={`translate(${o.x} ${o.y}) rotate(${o.rotation})`}>
@@ -869,10 +1044,10 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
                     );
                   })}
                 </g>
-                {/* Nombres (siempre derechos y del mismo tamaño en pantalla) */}
+                {/* Nombres: solo los del paso actual (y nunca de la naturaleza) */}
                 <g pointerEvents="none" style={{ fontSize: px(11.5), fontFamily: "Inter, system-ui, sans-serif" }} textAnchor="middle">
                   {ordered.map((o) =>
-                    ["tree", "palm", "bush", "shrubs", "fence", "walkway"].includes(o.kind) ? null : (
+                    !inStep(o) || ["tree", "palm", "bush", "shrubs", "fence", "walkway"].includes(o.kind) ? null : (
                       <text key={o.id} x={o.x} y={o.y + (o.kind === "entrance" ? o.h / 2 + px(16) : 0)} dominantBaseline="middle" fill={o.kind === "stage" ? "#fff" : "#221A1C"} stroke={o.kind === "stage" ? "none" : "rgba(255,255,255,.85)"} strokeWidth={px(3)} paintOrder="stroke" fontWeight={600}>
                         <tspan x={o.x}>{o.label}</tspan>
                         {seatable(o) && (
@@ -959,9 +1134,7 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
                 {rectDraft && (
                   <rect x={Math.min(rectDraft.a.x, rectDraft.b.x)} y={Math.min(rectDraft.a.y, rectDraft.b.y)} width={Math.abs(rectDraft.b.x - rectDraft.a.x)} height={Math.abs(rectDraft.b.y - rectDraft.a.y)} fill="rgba(244,227,161,.25)" stroke="#C8A43A" strokeWidth={px(2)} strokeDasharray={`${px(8)} ${px(5)}`} pointerEvents="none" />
                 )}
-                {mode === "walk" && cursor && (
-                  <circle cx={cursor.x} cy={cursor.y} r={walk.width / 2} fill="rgba(238,233,224,.5)" stroke="#9E948A" strokeWidth={px(1.5)} pointerEvents="none" />
-                )}
+                {mode === "walk" && cursor && <circle cx={cursor.x} cy={cursor.y} r={walk.width / 2} fill="rgba(238,233,224,.5)" stroke="#9E948A" strokeWidth={px(1.5)} pointerEvents="none" />}
                 {mode === "paint" && cursor && (
                   <circle cx={cursor.x} cy={cursor.y} r={brush.size / 2} fill={brush.erase ? "rgba(122,35,55,.12)" : "rgba(243,154,43,.15)"} stroke={brush.erase ? "#7A2337" : "#C77A1C"} strokeWidth={px(1.5)} strokeDasharray={brush.erase ? `${px(4)} ${px(3)}` : undefined} pointerEvents="none" />
                 )}
@@ -974,9 +1147,20 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
               </g>
             </svg>
 
-            <p className="pointer-events-none absolute left-3 top-3 max-w-[min(720px,calc(100%-24px))] rounded-lg bg-white/90 px-3 py-1.5 text-xs text-[#4A4043] shadow-sm print:hidden" data-hint>{HINTS[mode]}</p>
+            <p className="pointer-events-none absolute left-3 top-3 max-w-[min(720px,calc(100%-24px))] rounded-lg bg-white/90 px-3 py-1.5 text-xs text-[#4A4043] shadow-sm" data-hint>{hint}</p>
+            {tipObj && seatable(tipObj) && (
+              <div
+                className="pointer-events-none absolute z-10 w-56 rounded-[10px] bg-[#221A1C] px-3 py-2.5 text-xs text-white shadow-lg"
+                style={{ left: Math.min(size.w - 236, tipObj.x * s + view.tx + (tipObj.w / 2) * s + 14), top: Math.max(8, tipObj.y * s + view.ty - (tipObj.h / 2) * s) }}
+                data-table-tip
+              >
+                <b className="text-[13px]">{tipObj.label} · {used(tipObj.id)} de {tipObj.seats}</b>
+                {(seatedAt.get(tipObj.id) ?? []).map(({ guest, members }) => <div key={guest.id}>{guest.name} ({members.length})</div>)}
+                {!used(tipObj.id) && <div className="text-white/70">Todavía libre</div>}
+              </div>
+            )}
             {mode === "walk" && (
-              <div className="absolute bottom-3 left-3 flex flex-wrap items-center gap-1 rounded-full bg-white p-1 shadow print:hidden" role="group" aria-label="Camino" data-walk-brush>
+              <div className="absolute bottom-3 left-3 flex flex-wrap items-center gap-1 rounded-full bg-white p-1 shadow" role="group" aria-label="Camino" data-walk-brush>
                 {([["Angosto", 2], ["Normal", 3], ["Ancho", 4.5]] as const).map(([label, width]) => (
                   <button key={label} type="button" aria-pressed={walk.width === width} onClick={() => setWalk((w) => ({ ...w, width }))} className={`h-8 rounded-full px-3 text-xs ${walk.width === width ? "bg-[#F3E6E9] font-semibold text-[#7A2337]" : "hover:bg-[#F6F3EF]"}`} data-walk-width={label}>
                     {label}
@@ -989,9 +1173,9 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
               </div>
             )}
             {mode === "paint" && (
-              <div className="absolute bottom-3 left-3 flex flex-wrap items-center gap-1 rounded-full bg-white p-1 shadow print:hidden" role="group" aria-label="Brocha de arbustos" data-brush>
-                {([["Chico", 1], ["Mediano", 1.6], ["Grande", 2.4]] as const).map(([label, size]) => (
-                  <button key={label} type="button" aria-pressed={!brush.erase && brush.size === size} onClick={() => setBrush({ size, erase: false })} className={`h-8 rounded-full px-3 text-xs ${!brush.erase && brush.size === size ? "bg-[#F3E6E9] font-semibold text-[#7A2337]" : "hover:bg-[#F6F3EF]"}`} data-brush-size={label}>
+              <div className="absolute bottom-3 left-3 flex flex-wrap items-center gap-1 rounded-full bg-white p-1 shadow" role="group" aria-label="Brocha de arbustos" data-brush>
+                {([["Chico", 1], ["Mediano", 1.6], ["Grande", 2.4]] as const).map(([label, sz]) => (
+                  <button key={label} type="button" aria-pressed={!brush.erase && brush.size === sz} onClick={() => setBrush({ size: sz, erase: false })} className={`h-8 rounded-full px-3 text-xs ${!brush.erase && brush.size === sz ? "bg-[#F3E6E9] font-semibold text-[#7A2337]" : "hover:bg-[#F6F3EF]"}`} data-brush-size={label}>
                     {label}
                   </button>
                 ))}
@@ -1001,12 +1185,14 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
                 </button>
               </div>
             )}
-            {!objects.length && !bg && mode === "select" && (
+            {!visible.length && !bg && mode === "select" && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
-                <p className="max-w-sm rounded-xl bg-white/95 p-4 text-center text-sm text-[#4A4043] shadow">El plano está vacío. Empieza por <b>Terreno y foto</b>: sube la foto aérea y calca la casa, la terraza y los árboles. O agrega mesas con <b>+ Agregar</b>.</p>
+                <p className="max-w-sm rounded-xl bg-white/95 p-4 text-center text-sm text-[#4A4043] shadow">
+                  {step === "place" ? <>El plano está vacío. Sube la foto aérea en el panel de la derecha y calca la casa, la terraza, los caminos y los árboles.</> : <>Todavía no hay mesas. Agrégalas con <b>+ Agregar</b>, o arma primero el lugar en <b>1 · El lugar</b>.</>}
+                </p>
               </div>
             )}
-            <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-full bg-white p-1 shadow print:hidden" role="group" aria-label="Zoom">
+            <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-full bg-white p-1 shadow" role="group" aria-label="Zoom">
               <button type="button" aria-label="Alejar" onClick={() => zoomBy(1 / 1.25)} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#F6F3EF]" data-zoom-out><Minus size={15} /></button>
               <span className="w-12 text-center text-xs tabular-nums" data-zoom-level>{Math.round((s / fitS) * 100)}%</span>
               <button type="button" aria-label="Acercar" onClick={() => zoomBy(1.25)} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#F6F3EF]" data-zoom-in><Plus size={15} /></button>
@@ -1014,15 +1200,17 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
             </div>
           </main>
 
-          {/* Objeto elegido, terreno o resumen */}
-          <aside aria-label={sel ? sel.label : panel === "terrain" ? "Terreno y foto" : "Resumen"} className="flex w-[300px] shrink-0 flex-col gap-3.5 overflow-y-auto border-l border-[#E7E1DB] bg-white p-4 text-[13px] print:hidden" data-inspector>
+          {/* Panel derecho */}
+          <aside aria-label={sel ? sel.label : step === "place" ? "Foto y lienzo" : "Ayuda"} className="flex w-[300px] shrink-0 flex-col gap-3.5 overflow-y-auto border-l border-[#E7E1DB] bg-white p-4 text-[13px]" data-inspector>
             {sel ? (
               <Inspector
                 o={sel}
                 used={used(sel.id)}
                 seated={seatedAt.get(sel.id) ?? []}
+                candidates={candidates}
                 patch={(p) => patch(sel.id, p)}
                 unseat={unseat}
+                onSeat={(gid) => drop(gid, sel)}
                 onDuplicate={() => duplicate([sel])}
                 onRemove={() => remove([sel.id])}
                 onLock={() => setLocked([sel.id], !sel.locked)}
@@ -1031,6 +1219,13 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
               <>
                 <h2 className="font-serif text-lg">{selObjs.length} objetos elegidos</h2>
                 <p className="text-xs text-[#6B6063]">Arrástralos para moverlos juntos o usa las flechas del teclado. Los bloqueados no se mueven.</p>
+                {step === "tables" && (
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button type="button" disabled={movable.length < 2} onClick={() => align("row")} className="min-h-9 rounded-lg border border-[#D9D1CA] text-xs disabled:opacity-40">Alinear en fila</button>
+                    <button type="button" disabled={movable.length < 2} onClick={() => align("col")} className="min-h-9 rounded-lg border border-[#D9D1CA] text-xs disabled:opacity-40">Alinear en columna</button>
+                    <button type="button" disabled={movable.length < 3} onClick={distribute} className="col-span-2 min-h-9 rounded-lg border border-[#D9D1CA] text-xs disabled:opacity-40">Distribuir parejo</button>
+                  </div>
+                )}
                 <button type="button" onClick={() => setLocked(selected, !selObjs.every((o) => o.locked))} className="flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-[#D9D1CA]" data-lock-many>
                   {selObjs.every((o) => o.locked) ? <><LockOpen size={14} /> Desbloquear todos</> : <><Lock size={14} /> Bloquear todos</>}
                 </button>
@@ -1039,20 +1234,10 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
                   <button type="button" disabled={selObjs.every((o) => o.locked)} onClick={() => remove(selObjs.filter((o) => !o.locked).map((o) => o.id))} className="min-h-10 flex-1 rounded-lg border border-[#D9D1CA] text-[#7A2337] disabled:opacity-40">Eliminar</button>
                 </div>
               </>
-            ) : panel === "terrain" ? (
+            ) : step === "place" ? (
               <div className="flex flex-col gap-4" data-terrain>
-                <h2 className="font-serif text-lg">Terreno y foto</h2>
-                <p className="-mt-2 text-xs text-[#6B6063]">El plano es una referencia visual: no hace falta medir nada.</p>
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[#4A4043]">Lienzo</span>
-                  <button type="button" onClick={() => setMode("room")} className="min-h-9 rounded-lg border border-[#D9D1CA] text-xs" data-room-edit>Arrastrar sus bordes</button>
-                  <div className="flex gap-1.5">
-                    {bg && <button type="button" onClick={() => fitRoomTo("photo")} className="min-h-9 flex-1 rounded-lg border border-[#D9D1CA] text-xs" data-room-photo>Igual a la foto</button>}
-                    <button type="button" disabled={!objects.some((o) => o.kind === "area" || o.kind === "fence" || o.kind === "tree")} onClick={() => fitRoomTo("traced")} className="min-h-9 flex-1 rounded-lg border border-[#D9D1CA] text-xs disabled:opacity-40" data-room-traced>Igual a lo calcado</button>
-                  </div>
-                </div>
                 <div className="flex flex-col gap-2">
-                  <span className="text-[#4A4043]">Foto o plano de fondo</span>
+                  <h2 className="font-serif text-lg">Foto aérea</h2>
                   <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void uploadPhoto(f); }} data-photo-input />
                   {bg ? (
                     <>
@@ -1060,19 +1245,19 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={bg.src} alt="" className="h-16 w-14 rounded-md object-cover" />
                         <div className="flex flex-wrap gap-1.5">
-                          <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading} className="min-h-8 rounded-lg border border-[#D9D1CA] px-2.5 text-xs">{uploading ? "Subiendo…" : "Cambiar foto"}</button>
+                          <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading} className="min-h-8 rounded-lg border border-[#D9D1CA] px-2.5 text-xs">{uploading ? "Subiendo…" : "Cambiar"}</button>
+                          <button type="button" onClick={() => setMode("photo")} className="min-h-8 rounded-lg border border-[#D9D1CA] px-2.5 text-xs" data-mode-photo>Mover y girar</button>
                           <button type="button" onClick={() => change(() => setPlan((p) => ({ ...p, background: null })))} className="min-h-8 rounded-lg border border-[#D9D1CA] px-2.5 text-xs text-[#7A2337]">Quitar</button>
                         </div>
                       </div>
                       <label className="flex flex-col gap-1 text-[#4A4043]">
-                        Transparencia · {Math.round(bg.opacity * 100)}%
-                        <input type="range" min={10} max={100} value={Math.round(bg.opacity * 100)} onChange={(e) => { setBg((b) => ({ ...b, opacity: Number(e.target.value) / 100 })); touch(); }} className="accent-[#7A2337]" data-photo-opacity />
+                        Transparencia · {Math.round((1 - bg.opacity) * 100)}%
+                        <input type="range" min={0} max={90} value={Math.round((1 - bg.opacity) * 100)} onChange={(e) => { setBg((b) => ({ ...b, opacity: Math.round((1 - Number(e.target.value) / 100) * 100) / 100 })); touch(); }} className="accent-[#7A2337]" data-photo-opacity />
                       </label>
                       <label className="flex items-center gap-2 text-[#4A4043]">
                         <input type="checkbox" checked={bg.traceOnly} onChange={(e) => change(() => setBg((b) => ({ ...b, traceOnly: e.target.checked })))} className="accent-[#7A2337]" data-photo-trace-only />
-                        Mostrarla solo mientras calco
+                        Verla solo en este paso
                       </label>
-                      <button type="button" onClick={() => setMode("photo")} className="min-h-9 rounded-lg border border-[#D9D1CA] text-xs">Ajustar foto</button>
                     </>
                   ) : (
                     <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading} className="min-h-10 rounded-lg border border-dashed border-[#B9AEA6] text-[13px]" data-upload-photo>
@@ -1080,8 +1265,17 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
                     </button>
                   )}
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[#4A4043]">Ambientación</span>
+                <div className="flex flex-col gap-1.5 border-t border-[#EFE9E3] pt-3">
+                  <h2 className="font-serif text-lg">Lienzo</h2>
+                  <button type="button" onClick={() => setMode("room")} className="min-h-9 rounded-lg border border-[#D9D1CA] text-xs" data-room-edit>Arrastrar sus bordes</button>
+                  <div className="flex gap-1.5">
+                    {bg && <button type="button" onClick={() => fitRoomTo("photo")} className="min-h-9 flex-1 rounded-lg border border-[#D9D1CA] text-xs" data-room-photo>Igual a la foto</button>}
+                    <button type="button" disabled={!objects.some((o) => isTerrain(o) && o.kind !== "shrubs" && !o.hidden)} onClick={() => fitRoomTo("traced")} className="min-h-9 flex-1 rounded-lg border border-[#D9D1CA] text-xs disabled:opacity-40" data-room-traced>Igual a lo calcado</button>
+                  </div>
+                  <p className="text-xs text-[#6B6063]">El plano es una referencia visual: no hace falta medir nada.</p>
+                </div>
+                <div className="flex flex-col gap-1.5 border-t border-[#EFE9E3] pt-3">
+                  <h2 className="font-serif text-lg">Ambientación</h2>
                   <div className="grid grid-cols-3 gap-1.5">
                     {([["garden", "Jardín", "#C3D3A3"], ["stone", "Piedra", "#E6DDCF"], ["neutral", "Neutro", "#FBF9F7"]] as const).map(([id, label, color]) => (
                       <button key={id} type="button" aria-pressed={plan.style.ambience === id} onClick={() => change(() => setPlan((p) => ({ ...p, style: { ...p.style, ambience: id } })))} className={`min-h-12 rounded-lg text-xs ${plan.style.ambience === id ? "border-2 border-[#7A2337] font-semibold" : "border border-[#D9D1CA]"}`} style={{ background: color }} data-ambience={id}>
@@ -1094,36 +1288,24 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
                     Mostrar cuadrícula
                   </label>
                 </div>
-                <div className="flex flex-col gap-1 border-t border-[#EFE9E3] pt-3">
-                  <span className="font-semibold">Zonas calcadas</span>
-                  {objects.filter((o) => o.kind === "area" || o.kind === "fence" || o.kind === "tree" || o.kind === "palm" || o.kind === "entrance").map((o) => (
-                    <button key={o.id} type="button" onClick={() => setSelected([o.id])} className="flex justify-between rounded px-1 py-1 text-left hover:bg-[#F6F3EF]">
-                      <span>{o.label}</span>
-                      <span className="text-[#6B6063]">{o.kind === "area" ? FLOORS.find((f) => f.id === o.floor)?.label : kindLabel(o.kind)}</span>
-                    </button>
-                  ))}
-                  {!objects.some((o) => o.kind === "area" || o.kind === "tree") && <p className="text-xs text-[#6B6063]">Usa «Calcar con rectángulo», «Calcar por puntos» o «Marcar árbol» sobre la foto.</p>}
-                </div>
               </div>
             ) : (
-              <>
-                <h2 className="font-serif text-lg">Avisos del plano</h2>
-                <ul className="flex flex-col gap-2" data-warnings>
-                  {seatsTotal < attending && <Warn>Faltan {attending - seatsTotal} sillas: hay {seatsTotal} y asisten {attending}.</Warn>}
-                  {over.map((o) => <Warn key={o.id}>«{o.label}» tiene más personas que sillas.</Warn>)}
-                  {splitGuests.map((g) => <Warn key={g.id}>{g.name} quedó dividida en varias mesas o con parte sin mesa.</Warn>)}
-                  {seatsTotal >= attending && !over.length && !splitGuests.length && <li className="text-[#2F6B45]">Todo en orden.</li>}
-                </ul>
-                <p className="text-xs text-[#6B6063]">Toca un objeto para editarlo. Supr borra lo elegido y Ctrl+Z deshace.</p>
+              <div className="flex flex-col gap-3" data-summary>
+                <h2 className="font-serif text-lg">Mesas e invitados</h2>
+                <p className="text-[#4A4043]">Toca una mesa para editarla y ver quiénes se sientan ahí, o para sentar a alguien desde «+ Sentar invitación».</p>
+                <p className="text-xs text-[#6B6063]">Con varias mesas elegidas (Shift+clic) puedes alinearlas o distribuirlas parejo desde «Ordenar».</p>
                 <p className="text-xs text-[#6B6063]">Al guardar, la mesa de cada invitación se actualiza sola en su pase.</p>
-              </>
+              </div>
             )}
           </aside>
         </div>
       </div>
 
+      {printOpts && <PrintSheet plan={plan} opts={printOpts} guests={guests} assign={assign} />}
+      {exportOpen && <ExportDialog onClose={() => setExportOpen(false)} onExport={(o) => { setExportOpen(false); setPrintOpts(o); setPrintReq((n) => n + 1); }} />}
+
       {split && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label={`${split.table.label} no tiene lugar para todos`}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 print:hidden" role="dialog" aria-modal="true" aria-label={`${split.table.label} no tiene lugar para todos`}>
           <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl" data-split>
             <h2 className="font-serif text-xl">{split.table.label} tiene {split.free} {split.free === 1 ? "silla libre" : "sillas libres"}</h2>
             <p className="mt-1 text-sm text-[#6B6063]">{split.guest.name} son {split.guest.members.filter(counts).length}. ¿Quiénes se sientan aquí? Los demás quedan por ubicar.</p>
@@ -1161,23 +1343,8 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
           </div>
         </div>
       )}
-
     </div>
   );
-}
-
-// Lugar libre para un objeto nuevo, lo más cerca posible del centro de la vista.
-function freeSpot(o: PlanObject, others: PlanObject[], room: SeatingPlan["room"], center: Pt): Pt {
-  const pad = 0.8;
-  const blocks = others.filter((p) => (layerOf(p) > 0 && p.kind !== "fence" && p.kind !== "walkway") || FLOORS.find((f) => f.id === p.floor)?.blocked);
-  const half = (x: PlanObject) => ({ w: x.w / 2 + pad, h: x.h / 2 + pad });
-  const me = half(o);
-  const cands: Pt[] = [];
-  for (let y = room.y + me.h; y <= room.y + room.h - me.h; y += 0.5) for (let x = room.x + me.w; x <= room.x + room.w - me.w; x += 0.5) cands.push({ x, y });
-  cands.sort((a, b) => Math.hypot(a.x - center.x, a.y - center.y) - Math.hypot(b.x - center.x, b.y - center.y));
-  const hit = cands.find((c) => blocks.every((p) => { const b = half(p); return Math.abs(p.x - c.x) >= b.w + me.w || Math.abs(p.y - c.y) >= b.h + me.h; }));
-  const at = hit ?? { x: Math.min(room.x + room.w, Math.max(room.x, center.x)), y: Math.min(room.y + room.h, Math.max(room.y, center.y)) };
-  return { x: r2(at.x), y: r2(at.y) };
 }
 
 // Marco con manijas para agrandar (esquinas y bordes) y girar (punto superior).
@@ -1195,281 +1362,13 @@ function Handles({ o, px, uniform, onResize, onRotate }: { o: PlanObject; px: (n
   return (
     <g transform={`translate(${o.x} ${o.y}) rotate(${o.rotation})`}>
       <rect x={-w / 2} y={-h / 2} width={w} height={h} fill="none" stroke="#2563EB" strokeWidth={px(1.5)} strokeDasharray={`${px(5)} ${px(3)}`} pointerEvents="none" />
-      {o.points ? null : <line x1={0} y1={-h / 2} x2={0} y2={rotY} stroke="#2563EB" strokeWidth={px(1.5)} pointerEvents="none" />}
-      {o.points ? null : (
-        <circle cx={0} cy={rotY} r={px(7)} fill="#fff" stroke="#2563EB" strokeWidth={px(1.5)} style={{ cursor: "grab" }} onPointerDown={(e) => onRotate(e, o)} data-rotate-handle>
-          <title>Girar (Shift: de 15° en 15°)</title>
-        </circle>
-      )}
-      {o.points && (
-        <circle cx={0} cy={rotY} r={px(7)} fill="#fff" stroke="#2563EB" strokeWidth={px(1.5)} style={{ cursor: "grab" }} onPointerDown={(e) => onRotate(e, o)} data-rotate-handle>
-          <title>Girar (Shift: de 15° en 15°)</title>
-        </circle>
-      )}
+      {!o.points && <line x1={0} y1={-h / 2} x2={0} y2={rotY} stroke="#2563EB" strokeWidth={px(1.5)} pointerEvents="none" />}
+      <circle cx={0} cy={rotY} r={px(7)} fill="#fff" stroke="#2563EB" strokeWidth={px(1.5)} style={{ cursor: "grab" }} onPointerDown={(e) => onRotate(e, o)} data-rotate-handle>
+        <title>Girar (Shift: de 15° en 15°)</title>
+      </circle>
       {spots.map(([hx, hy]) => (
         <rect key={`${hx},${hy}`} x={(hx * w) / 2 - hs / 2} y={(hy * h) / 2 - hs / 2} width={hs} height={hs} fill="#fff" stroke="#2563EB" strokeWidth={px(1.5)} style={{ cursor: cursorOf(hx, hy) }} onPointerDown={(e) => onResize(e, o, hx, hy)} data-handle={`${hx},${hy}`} />
       ))}
     </g>
-  );
-}
-
-function Warn({ children }: { children: ReactNode }) {
-  return <li className="rounded-lg bg-[#FBF5E8] px-3 py-2 text-[#6E520F]">{children}</li>;
-}
-
-const STATION_SHAPES: { id: StationShape; label: string; size: (o: PlanObject) => { w: number; h: number } }[] = [
-  { id: "straight", label: "Recta", size: (o) => ({ w: Math.max(o.w, o.h, 2), h: 0.9 }) },
-  { id: "round", label: "Redonda", size: () => ({ w: 1.8, h: 1.8 }) },
-  { id: "L", label: "En L", size: () => ({ w: 3, h: 3 }) },
-  { id: "C", label: "En C", size: () => ({ w: 3.2, h: 2.4 }) },
-];
-const TABLE_SHORT: Record<string, string> = { round: "Redonda", long: "Larga", serpentine: "En S", box: "Box", high: "Alta" };
-
-// Panel del objeto elegido.
-function Inspector({
-  o,
-  used,
-  seated,
-  patch,
-  unseat,
-  onDuplicate,
-  onRemove,
-  onLock,
-}: {
-  o: PlanObject;
-  used: number;
-  seated: { guest: SeatingGuest; members: SeatingGuest["members"] }[];
-  patch: (p: Partial<PlanObject>) => void;
-  unseat: (ids: string[]) => void;
-  onDuplicate: () => void;
-  onLock: () => void;
-  onRemove: () => void;
-}) {
-  const item = itemOf(o.kind);
-  const table = isTable(o.kind);
-  const hasSeats = item.max !== undefined;
-  const setSeats = (n: number) => patch(table ? { seats: n, ...tableSize(o.kind as Parameters<typeof tableSize>[0], n) } : { seats: n });
-  const opt = (on: boolean) => `min-h-9 rounded-lg border text-xs ${on ? "border-2 border-[#7A2337] bg-[#F3E6E9] font-semibold text-[#7A2337]" : "border-[#D9D1CA]"}`;
-  return (
-    <>
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-[#6B6063]">{o.kind === "station" ? `Estación · ${stationTypeLabel(o.stationType)}` : kindLabel(o.kind)}</span>
-      <label className="-mt-2 flex flex-col gap-1 text-[#4A4043]">
-        Nombre
-        <input value={o.label} maxLength={40} onChange={(e) => patch({ label: e.target.value })} className="min-h-10 rounded-lg border border-[#D9D1CA] px-2.5 text-sm text-[#221A1C]" data-object-label />
-      </label>
-
-      {table && o.kind !== "sweetheart" && (
-        <div className="flex flex-col gap-1.5">
-          <span className="text-[#4A4043]">Forma</span>
-          <div className="grid grid-cols-3 gap-1.5">
-            {TABLE_SHAPES.map((k) => {
-              const it = itemOf(k);
-              return (
-                <button key={k} type="button" aria-pressed={o.kind === k} onClick={() => { const n = Math.min(it.max!, Math.max(it.min!, o.seats)); patch({ kind: k, seats: n, ...tableSize(k, n) }); }} className={opt(o.kind === k)}>
-                  {TABLE_SHORT[k]}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {o.kind === "station" && (
-        <>
-          <label className="flex flex-col gap-1 text-[#4A4043]">
-            Tipo
-            <select
-              value={o.stationType}
-              onChange={(e) => {
-                const t = STATION_TYPES.find((x) => x.id === e.target.value)!;
-                const keep = o.label !== stationTypeLabel(o.stationType) && o.label !== "Estación";
-                patch({ stationType: t.id, color: t.color, label: keep ? o.label : t.label });
-              }}
-              className="min-h-10 rounded-lg border border-[#D9D1CA] bg-white px-2 text-sm"
-              data-station-type
-            >
-              {STATION_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-            </select>
-          </label>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[#4A4043]">Forma</span>
-            <div className="grid grid-cols-4 gap-1.5">
-              {STATION_SHAPES.map((sh) => (
-                <button key={sh.id} type="button" aria-pressed={o.shape === sh.id} onClick={() => patch({ shape: sh.id, ...sh.size(o) })} className={opt(o.shape === sh.id)} data-station-shape={sh.id}>
-                  {sh.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <Colors value={o.color ?? "#E9DFD3"} onChange={(c) => patch({ color: c })} />
-        </>
-      )}
-
-      {o.kind === "tree" && (
-        <div className="flex flex-col gap-1.5">
-          <span className="text-[#4A4043]">Diseño</span>
-          <div className="grid grid-cols-2 gap-1.5">
-            {TREE_VARIANTS.map((v) => (
-              <button key={v.id} type="button" aria-pressed={(o.variant ?? "round") === v.id} onClick={() => patch({ variant: v.id })} className={opt((o.variant ?? "round") === v.id)} data-tree-variant={v.id}>
-                {v.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      {o.kind === "walkway" && (
-        <>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[#4A4043]">Diseño</span>
-            <div className="grid grid-cols-3 gap-1.5">
-              {WALK_STYLES.map((w) => (
-                <button key={w.id} type="button" aria-pressed={(o.walkStyle ?? "stoneGrass") === w.id} onClick={() => patch({ walkStyle: w.id })} className={opt((o.walkStyle ?? "stoneGrass") === w.id)} data-walk-style={w.id}>
-                  {w.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <label className="flex flex-col gap-1 text-[#4A4043]">
-            Ancho
-            <input type="range" min={10} max={80} value={Math.round((o.stamp ?? 3) * 10)} onChange={(ev) => { const st = Number(ev.target.value) / 10; patch({ stamp: st, ...walkwayBox(o.points ?? [], st) }); }} className="accent-[#7A2337]" data-walk-size />
-          </label>
-          <label className="flex items-center gap-2 text-[#4A4043]">
-            <input type="checkbox" checked={o.lamps !== false} onChange={(ev) => patch({ lamps: ev.target.checked })} className="accent-[#7A2337]" data-walk-lamps-toggle />
-            Faroles a los lados
-          </label>
-        </>
-      )}
-      {o.kind === "shrubs" && (
-        <>
-          <p className="text-[#4A4043]" data-shrub-count>{o.points?.length ?? 0} arbustos en este trazo.</p>
-          <label className="flex flex-col gap-1 text-[#4A4043]">
-            Tamaño de cada arbusto
-            <input type="range" min={5} max={40} value={Math.round((o.stamp ?? 1.6) * 10)} onChange={(ev) => { const st = Number(ev.target.value) / 10; patch({ stamp: st, ...shrubsBox(o.points ?? [], st) }); }} className="accent-[#7A2337]" data-shrub-size />
-          </label>
-        </>
-      )}
-      {(o.kind === "tree" || o.kind === "palm" || o.kind === "bush" || o.kind === "shrubs") && (
-        <label className="flex flex-col gap-1 text-[#4A4043]">
-          Transparencia · {Math.round((1 - (o.opacity ?? (o.kind === "shrubs" ? 1 : NATURE_OPACITY))) * 100)}%
-          <input type="range" min={0} max={85} value={Math.round((1 - (o.opacity ?? (o.kind === "shrubs" ? 1 : NATURE_OPACITY))) * 100)} onChange={(e) => patch({ opacity: Math.round((1 - Number(e.target.value) / 100) * 100) / 100 })} className="accent-[#7A2337]" data-nature-opacity />
-          <span className="text-xs text-[#6B6063]">Más transparente deja ver las mesas o la barra que pongas debajo.</span>
-        </label>
-      )}
-      {o.kind === "fence" && (
-        <>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[#4A4043]">Tipo de cerco</span>
-            <div className="grid grid-cols-3 gap-1.5">
-              {FENCE_STYLES.map((f) => (
-                <button key={f.id} type="button" aria-pressed={o.fenceStyle === f.id} onClick={() => patch({ fenceStyle: f.id })} className={opt(o.fenceStyle === f.id)} data-fence-style={f.id}>
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          {(o.points?.length ?? 0) >= 3 && (
-            <label className="flex items-center gap-2 text-[#4A4043]">
-              <input type="checkbox" checked={!!o.closed} onChange={(e) => patch({ closed: e.target.checked })} className="accent-[#7A2337]" data-fence-closed />
-              Cerrado (rodea el área)
-            </label>
-          )}
-          <p className="text-xs text-[#6B6063]">Arrastra los puntos para ajustarlo, doble clic en un tramo agrega un punto y Supr borra el punto elegido.</p>
-        </>
-      )}
-
-      {o.kind === "area" && (
-        <>
-          <label className="flex flex-col gap-1 text-[#4A4043]">
-            Piso
-            <select value={o.floor} onChange={(e) => patch({ floor: e.target.value as PlanObject["floor"], color: undefined })} className="min-h-10 rounded-lg border border-[#D9D1CA] bg-white px-2 text-sm" data-area-floor>
-              {FLOORS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
-            </select>
-          </label>
-          <Colors value={o.color ?? ""} onChange={(c) => patch({ color: c })} allowNone onNone={() => patch({ color: undefined })} />
-          {o.points ? (
-            <p className="text-xs text-[#6B6063]">Zona por puntos ({o.points.length}). Arrastra los puntos para ajustarla, doble clic en un borde agrega uno y Supr borra el punto elegido.</p>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                const pts = ([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([sx, sy]) => {
-                  const p = rotPt((sx * o.w) / 2, (sy * o.h) / 2, o.rotation);
-                  return [r2(o.x + p.x), r2(o.y + p.y)] as [number, number];
-                });
-                patch(withPoints(o, pts));
-              }}
-              className="min-h-9 rounded-lg border border-[#D9D1CA] text-xs"
-              data-to-points
-            >
-              Editar por puntos
-            </button>
-          )}
-        </>
-      )}
-
-      {hasSeats && (
-        <div className="flex flex-col gap-1 text-[#4A4043]">
-          {table ? "Sillas" : "Banquetas"}
-          <span className="flex min-h-10 items-center rounded-lg border border-[#D9D1CA]">
-            <button type="button" aria-label={table ? "Menos sillas" : "Menos banquetas"} onClick={() => setSeats(Math.max(item.min ?? 0, o.seats - 1))} className="flex h-9 w-9 items-center justify-center"><Minus size={14} /></button>
-            <span className="flex-1 text-center text-sm font-semibold" data-object-seats>{o.seats}</span>
-            <button type="button" aria-label={table ? "Más sillas" : "Más banquetas"} onClick={() => setSeats(Math.min(item.max!, o.seats + 1))} className="flex h-9 w-9 items-center justify-center"><Plus size={14} /></button>
-          </span>
-        </div>
-      )}
-      <p className="text-xs text-[#6B6063]">{o.points ? "Agranda con las esquinas y gira con el punto de arriba." : `Agranda con las esquinas (Alt: desde el centro) y gira con el punto de arriba (Shift: de 15° en 15°)${o.rotation ? ` · ahora ${o.rotation}°` : ""}.`}</p>
-
-      {seatable(o) && (
-        <div className="flex flex-col gap-2 border-t border-[#EFE9E3] pt-3" data-seated>
-          <div className="flex justify-between">
-            <b className="text-sm">Sentados aquí</b>
-            <span className={`rounded-full px-2 text-xs font-semibold leading-5 ${used > o.seats ? "bg-[#F3E6E9] text-[#7A2337]" : "bg-[#E6F2EA] text-[#2F6B45]"}`}>{used} de {o.seats}</span>
-          </div>
-          {seated.map(({ guest, members }) => (
-            <div key={guest.id} className="flex items-start justify-between gap-2 rounded-[10px] border border-[#E7E1DB] px-2.5 py-2">
-              <span className="min-w-0">
-                <b className="block truncate">{guest.name}</b>
-                <span className="text-xs text-[#6B6063]">{members.map((m) => m.name).join(", ")}</span>
-              </span>
-              <button type="button" aria-label={`Quitar a ${guest.name} de la mesa`} onClick={() => unseat(members.map((m) => m.id))} className="rounded-md p-1 text-[#6B6063] hover:bg-[#F6F3EF]">
-                <X size={14} />
-              </button>
-            </div>
-          ))}
-          <p className={used > o.seats ? "text-[#7A2337]" : "text-[#2F6B45]"}>
-            {used > o.seats ? `Sobran ${used - o.seats} personas: agrega sillas o muévelas.` : o.seats - used === 0 ? "Mesa completa." : `Quedan ${o.seats - used} sillas libres.`}
-          </p>
-        </div>
-      )}
-      <span className="flex-1" />
-      <button type="button" aria-pressed={!!o.locked} onClick={onLock} className={`flex min-h-10 items-center justify-center gap-1.5 rounded-lg border ${o.locked ? "border-[#4A4043] bg-[#F6F3EF] font-semibold" : "border-[#D9D1CA]"}`} title="Ctrl+L" data-lock>
-        {o.locked ? <><LockOpen size={14} /> Desbloquear</> : <><Lock size={14} /> Bloquear en su lugar</>}
-      </button>
-      {o.locked && <p className="-mt-2 text-xs text-[#6B6063]">Bloqueado: no se mueve ni cambia de tamaño. Arrastrar sobre él desplaza el plano.</p>}
-      <div className="flex gap-2">
-        <button type="button" onClick={onDuplicate} className="min-h-10 flex-1 rounded-lg border border-[#D9D1CA]">Duplicar</button>
-        <button type="button" disabled={!!o.locked} onClick={onRemove} className="min-h-10 flex-1 rounded-lg border border-[#D9D1CA] text-[#7A2337] disabled:opacity-40" data-delete-object>Eliminar</button>
-      </div>
-    </>
-  );
-}
-
-function Colors({ value, onChange, allowNone, onNone }: { value: string; onChange: (c: string) => void; allowNone?: boolean; onNone?: () => void }) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-[#4A4043]">Color</span>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {allowNone && (
-          <button type="button" aria-pressed={!value} onClick={onNone} className={`h-8 rounded-full border px-2.5 text-[11px] ${!value ? "border-2 border-[#7A2337]" : "border-[#D9D1CA]"}`}>Según piso</button>
-        )}
-        {STATION_COLORS.map((c) => (
-          <button key={c} type="button" aria-label={`Color ${c}`} aria-pressed={value.toLowerCase() === c.toLowerCase()} onClick={() => onChange(c)} className={`h-8 w-8 rounded-full ${value.toLowerCase() === c.toLowerCase() ? "ring-2 ring-[#7A2337] ring-offset-2" : "border border-[#D9D1CA]"}`} style={{ background: c }} />
-        ))}
-        <label className="relative h-8 w-8 cursor-pointer overflow-hidden rounded-full border border-dashed border-[#B9AEA6]" title="Otro color">
-          <span className="sr-only">Otro color</span>
-          <input type="color" value={value || "#E9DFD3"} onChange={(e) => onChange(e.target.value)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
-        </label>
-      </div>
-    </div>
   );
 }

@@ -44,6 +44,8 @@ export type PlanObject = {
   lamps?: boolean;
   // Bloqueado: no se mueve, no cambia de tamaño ni se borra por accidente
   locked?: boolean;
+  // Oculto (desde la lista de capas): no se dibuja ni se exporta
+  hidden?: boolean;
 };
 
 export type PlanBackground = { src: string; x: number; y: number; w: number; aspect: number; rotation: number; opacity: number; traceOnly: boolean };
@@ -132,6 +134,9 @@ export const WALK_STYLES: { id: WalkStyle; label: string }[] = [
 ];
 // Caja de un camino pintado (ancho + grava + faroles).
 export const walkwayBox = (points: [number, number][], width: number) => shrubsBox(points, width + 1.6);
+// Lo que forma «El lugar» (paso 1); el resto se acomoda en «Mesas e invitados» (paso 2).
+export const TERRAIN_KINDS: Kind[] = ["area", "path", "fence", "walkway", "tree", "palm", "shrubs", "entrance"];
+export const isTerrain = (o: PlanObject) => TERRAIN_KINDS.includes(o.kind);
 export const isFence = (o: PlanObject) => o.kind === "fence" && !!o.points && o.points.length >= 2;
 export const TREE_VARIANTS: { id: TreeVariant; label: string }[] = [
   { id: "round", label: "Copa redonda" },
@@ -374,6 +379,7 @@ export function sanitizePlan(raw: unknown): SeatingPlan {
       obj.closed = x.closed === true && p.length >= 3;
     }
     if (x.locked === true) obj.locked = true;
+    if (x.hidden === true) obj.hidden = true;
     if (kind === "walkway") {
       const p = pts(2);
       if (!p) continue;
