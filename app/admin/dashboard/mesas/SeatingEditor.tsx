@@ -8,6 +8,9 @@ import {
   FLOORS,
   FENCE_STYLES,
   isFence,
+  isShrubs,
+  SHRUB_MAX,
+  shrubsBox,
   isPoly,
   NATURE_OPACITY,
   TREE_VARIANTS,
@@ -27,7 +30,7 @@ import {
   type SeatingPlan,
   type StationShape,
 } from "@/lib/seating";
-import { FenceShape, layerOf, ObjectBody, PlanPatterns, ROOM_FILL, stationTypeLabel, FLOOR_FILL } from "./PlanShapes";
+import { FenceShape, ShrubsShape, layerOf, ObjectBody, PlanPatterns, ROOM_FILL, stationTypeLabel, FLOOR_FILL } from "./PlanShapes";
 import { requestSeatingPhotoUploadAction, saveSeatingAction } from "./actions";
 
 export type SeatingGuest = {
@@ -39,7 +42,7 @@ export type SeatingGuest = {
 };
 
 type Pt = { x: number; y: number };
-type Mode = "select" | "traceRect" | "tracePoly" | "fence" | "tree" | "photo" | "room";
+type Mode = "select" | "traceRect" | "tracePoly" | "fence" | "tree" | "paint" | "photo" | "room";
 type Drag =
   | { t: "pan"; sx: number; sy: number; tx: number; ty: number }
   | { t: "move"; sx: number; sy: number; orig: PlanObject[]; bg: PlanBackground | null; saved: boolean }
@@ -47,6 +50,8 @@ type Drag =
   | { t: "rotate"; id: string; start: number; orig: PlanObject; saved: boolean }
   | { t: "vertex"; id: string; i: number; saved: boolean }
   | { t: "rect"; a: Pt; b: Pt }
+  | { t: "paint"; id: string; last: Pt; count: number }
+  | { t: "erase"; saved: boolean }
   | { t: "room"; hx: number; hy: number; orig: SeatingPlan["room"]; saved: boolean };
 
 const BG = "__bg";
@@ -57,13 +62,14 @@ const rotPt = (x: number, y: number, deg: number): Pt => {
   return { x: x * c - y * s, y: x * s + y * c };
 };
 const bgObj = (b: PlanBackground): PlanObject => ({ id: BG, kind: "scenery", label: "Foto", x: b.x, y: b.y, w: b.w, h: b.w / b.aspect, rotation: b.rotation, seats: 0 });
-const withPoints = (o: PlanObject, points: [number, number][]): PlanObject => ({ ...o, points, ...polyBox(points), rotation: 0 });
+const withPoints = (o: PlanObject, points: [number, number][]): PlanObject => ({ ...o, points, ...(o.kind === "shrubs" ? shrubsBox(points, o.stamp ?? 1.6) : polyBox(points)), rotation: 0 });
 
 const HINTS: Record<Mode, string> = {
   select: "Arrastra para mover · esquinas para agrandar (Alt: desde el centro) · punto superior para girar (Shift: de 15° en 15°) · Shift+clic elige varios · rueda: zoom · arrastra el fondo para desplazarte",
   traceRect: "Arrastra sobre la foto para calcar una zona rectangular. Esc para salir.",
   tracePoly: "Haz clic en cada esquina de la zona. Doble clic, Enter o clic en el primer punto para cerrarla. Esc cancela.",
   fence: "Haz clic en cada punto del cerco. Doble clic o Enter lo termina; clic en el primer punto lo cierra alrededor del área. Esc cancela.",
+  paint: "Pinta arrastrando: por donde pases se van poniendo arbustos de mandarina. Elige el tamaño o el borrador abajo. Esc para terminar.",
   room: "Arrastra los bordes o las esquinas del lienzo para ajustarlo al terreno de la foto. Esc para terminar.",
   tree: "Haz clic sobre cada árbol para marcarlo. Esc para terminar.",
   photo: "Mueve, agranda o gira la foto para alinearla con el terreno. Esc para terminar.",
@@ -90,6 +96,7 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
   const [rectDraft, setRectDraft] = useState<{ a: Pt; b: Pt } | null>(null);
   const [cursor, setCursor] = useState<Pt | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [brush, setBrush] = useState({ size: 1.6, erase: false });
   const [pending, start] = useTransition();
   const [view, setView] = useState({ s: 12, tx: 40, ty: 40 });
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -244,6 +251,10 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
 
   /* ---------- Agregar, duplicar, borrar ---------- */
   function add(kind: Kind, preset?: Partial<PlanObject>) {
+    if (kind === "shrubs") {
+      setAddOpen(false);
+      return setMode("paint");
+    }
     const center = { x: r2((size.w / 2 - view.tx) / s), y: r2((size.h / 2 - view.ty) / s) };
     const o = { ...newObject(kind, objects, center), ...preset };
     const spot = kind === "fence" ? {} : freeSpot(o, objects, plan.room, center);
@@ -283,6 +294,25 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
     change(() => setObjects((l) => [...l, o]));
     setMode("select");
     setSelected([o.id]);
+  }
+  // Brocha de arbustos.
+  function newShrubs(p: Pt): PlanObject {
+    const base = newObject("shrubs", objects);
+    return { ...withPoints({ ...base, stamp: brush.size }, [[r2(p.x), r2(p.y)]]), label: "Arbustos de mandarina" };
+  }
+  function eraseAt(p: Pt, saved: boolean) {
+    const hit = (o: PlanObject) => (o.points ?? []).some(([x, y]) => Math.hypot(x - p.x, y - p.y) < (o.stamp ?? 1.6) / 2 + brush.size / 2);
+    if (!objects.some((o) => o.kind === "shrubs" && hit(o))) return saved;
+    if (!saved) remember();
+    setObjects((l) =>
+      l.flatMap((o) => {
+        if (o.kind !== "shrubs") return [o];
+        const keep = (o.points ?? []).filter(([x, y]) => Math.hypot(x - p.x, y - p.y) >= (o.stamp ?? 1.6) / 2 + brush.size / 2);
+        return keep.length ? [keep.length === o.points!.length ? o : withPoints(o, keep)] : [];
+      }),
+    );
+    touch();
+    return true;
   }
   function finishFence(points: Pt[], closed: boolean) {
     if (points.length < 2) return;
@@ -330,6 +360,15 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
       return;
     }
     if (e.button !== 0) return;
+    if (mode === "paint") {
+      if (brush.erase) {
+        begin(e, { t: "erase", saved: false });
+        return eraseAt(p, false);
+      }
+      const o = newShrubs(p);
+      change(() => setObjects((l) => [...l, o]));
+      return begin(e, { t: "paint", id: o.id, last: p, count: 1 });
+    }
     if (mode === "traceRect") {
       begin(e, { t: "rect", a: p, b: p });
       setRectDraft({ a: p, b: p });
@@ -344,7 +383,7 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
     }
   }
   function onCanvasMove(e: React.PointerEvent) {
-    if (mode === "tracePoly" || mode === "fence") setCursor(toWorld(e));
+    if (mode === "tracePoly" || mode === "fence" || mode === "paint") setCursor(toWorld(e));
     const d = drag.current;
     if (!d) return;
     const p = toWorld(e);
@@ -352,6 +391,36 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
     if (d.t === "rect") {
       d.b = p;
       return setRectDraft({ a: d.a, b: p });
+    }
+    if (d.t === "erase") {
+      d.saved = eraseAt(p, d.saved);
+      return;
+    }
+    if (d.t === "paint") {
+      // Un arbusto cada ~70% de su tamaño, con un pequeño desorden natural.
+      const step = brush.size * 0.7;
+      const dist = Math.hypot(p.x - d.last.x, p.y - d.last.y);
+      if (dist < step) return;
+      const add: [number, number][] = [];
+      const ux = (p.x - d.last.x) / dist, uy = (p.y - d.last.y) / dist;
+      let last = d.last;
+      for (let k = 1; k * step <= dist; k++) {
+        const j = Math.sin((d.count + k) * 12.9898) * 0.18 * brush.size;
+        last = { x: d.last.x + ux * step * k, y: d.last.y + uy * step * k };
+        add.push([r2(last.x - uy * j), r2(last.y + ux * j)]);
+      }
+      d.last = last;
+      if (d.count + add.length > SHRUB_MAX) {
+        const o = newShrubs(last);
+        d.id = o.id;
+        d.count = 1;
+        setObjects((l) => [...l, o]);
+      } else {
+        d.count += add.length;
+        const id = d.id;
+        setObjects((l) => l.map((o) => (o.id === id ? withPoints(o, [...(o.points ?? []), ...add]) : o)));
+      }
+      return touch();
     }
     if (d.t === "room") {
       if (!d.saved) {
@@ -597,6 +666,7 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
           {modeBtn("tracePoly", "Calcar por puntos")}
           {modeBtn("fence", "Dibujar cerco")}
           {modeBtn("tree", "Marcar árbol")}
+          {modeBtn("paint", "Pintar arbustos")}
           {modeBtn("room", "Ajustar lienzo")}
           {bg && (
             <>
@@ -727,6 +797,13 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
                       "aria-label": `${o.label}${seatable(o) ? `, ${u} de ${o.seats} sillas` : ""}`,
                       style: { cursor: "move" },
                     };
+                    if (isShrubs(o)) {
+                      return (
+                        <g key={o.id} {...common} opacity={o.opacity ?? 1}>
+                          <ShrubsShape o={o} />
+                        </g>
+                      );
+                    }
                     if (isFence(o)) {
                       return (
                         <g key={o.id} {...common}>
@@ -751,7 +828,7 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
                 {/* Nombres (siempre derechos y del mismo tamaño en pantalla) */}
                 <g pointerEvents="none" style={{ fontSize: px(11.5), fontFamily: "Inter, system-ui, sans-serif" }} textAnchor="middle">
                   {ordered.map((o) =>
-                    o.kind === "bush" || o.kind === "fence" ? null : (
+                    ["tree", "palm", "bush", "shrubs", "fence"].includes(o.kind) ? null : (
                       <text key={o.id} x={o.x} y={o.y + (o.kind === "entrance" ? o.h / 2 + px(16) : 0)} dominantBaseline="middle" fill={o.kind === "stage" ? "#fff" : "#221A1C"} stroke={o.kind === "stage" ? "none" : "rgba(255,255,255,.85)"} strokeWidth={px(3)} paintOrder="stroke" fontWeight={600}>
                         <tspan x={o.x}>{o.label}</tspan>
                         {seatable(o) && (
@@ -771,7 +848,7 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
                       <rect x={-o.w / 2 - px(4)} y={-o.h / 2 - px(4)} width={o.w + px(8)} height={o.h + px(8)} fill="none" stroke="#2563EB" strokeWidth={px(1.5)} strokeDasharray={`${px(5)} ${px(3)}`} />
                     </g>
                   ))}
-                {mode === "select" && sel?.points && (
+                {mode === "select" && sel?.points && sel.kind !== "shrubs" && (
                   <g>
                     {sel.points.map((p, i) => {
                       if (sel.kind === "fence" && !sel.closed && i === sel.points!.length - 1) return null;
@@ -829,6 +906,9 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
                 {rectDraft && (
                   <rect x={Math.min(rectDraft.a.x, rectDraft.b.x)} y={Math.min(rectDraft.a.y, rectDraft.b.y)} width={Math.abs(rectDraft.b.x - rectDraft.a.x)} height={Math.abs(rectDraft.b.y - rectDraft.a.y)} fill="rgba(244,227,161,.25)" stroke="#C8A43A" strokeWidth={px(2)} strokeDasharray={`${px(8)} ${px(5)}`} pointerEvents="none" />
                 )}
+                {mode === "paint" && cursor && (
+                  <circle cx={cursor.x} cy={cursor.y} r={brush.size / 2} fill={brush.erase ? "rgba(122,35,55,.12)" : "rgba(243,154,43,.15)"} stroke={brush.erase ? "#7A2337" : "#C77A1C"} strokeWidth={px(1.5)} strokeDasharray={brush.erase ? `${px(4)} ${px(3)}` : undefined} pointerEvents="none" />
+                )}
                 {(mode === "tracePoly" || mode === "fence") && draft.length > 0 && (
                   <g pointerEvents="none">
                     <polyline points={[...draft, ...(cursor ? [cursor] : [])].map((p) => `${p.x},${p.y}`).join(" ")} fill={mode === "fence" ? "none" : "rgba(244,227,161,.2)"} stroke="#C8A43A" strokeWidth={px(2)} strokeDasharray={`${px(8)} ${px(5)}`} />
@@ -839,6 +919,19 @@ export function SeatingEditor({ initialPlan, guests, initials }: { initialPlan: 
             </svg>
 
             <p className="pointer-events-none absolute left-3 top-3 max-w-[min(720px,calc(100%-24px))] rounded-lg bg-white/90 px-3 py-1.5 text-xs text-[#4A4043] shadow-sm print:hidden" data-hint>{HINTS[mode]}</p>
+            {mode === "paint" && (
+              <div className="absolute bottom-3 left-3 flex flex-wrap items-center gap-1 rounded-full bg-white p-1 shadow print:hidden" role="group" aria-label="Brocha de arbustos" data-brush>
+                {([["Chico", 1], ["Mediano", 1.6], ["Grande", 2.4]] as const).map(([label, size]) => (
+                  <button key={label} type="button" aria-pressed={!brush.erase && brush.size === size} onClick={() => setBrush({ size, erase: false })} className={`h-8 rounded-full px-3 text-xs ${!brush.erase && brush.size === size ? "bg-[#F3E6E9] font-semibold text-[#7A2337]" : "hover:bg-[#F6F3EF]"}`} data-brush-size={label}>
+                    {label}
+                  </button>
+                ))}
+                <span className="mx-0.5 h-5 w-px bg-[#E7E1DB]" />
+                <button type="button" aria-pressed={brush.erase} onClick={() => setBrush((b) => ({ ...b, erase: !b.erase }))} className={`h-8 rounded-full px-3 text-xs ${brush.erase ? "bg-[#F3E6E9] font-semibold text-[#7A2337]" : "hover:bg-[#F6F3EF]"}`} data-brush-erase>
+                  Borrador
+                </button>
+              </div>
+            )}
             {!objects.length && !bg && mode === "select" && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
                 <p className="max-w-sm rounded-xl bg-white/95 p-4 text-center text-sm text-[#4A4043] shadow">El plano está vacío. Empieza por <b>Terreno y foto</b>: sube la foto aérea y calca la casa, la terraza y los árboles. O agrega mesas con <b>+ Agregar</b>.</p>
@@ -1149,10 +1242,19 @@ function Inspector({
           </div>
         </div>
       )}
-      {(o.kind === "tree" || o.kind === "palm" || o.kind === "bush") && (
+      {o.kind === "shrubs" && (
+        <>
+          <p className="text-[#4A4043]" data-shrub-count>{o.points?.length ?? 0} arbustos en este trazo.</p>
+          <label className="flex flex-col gap-1 text-[#4A4043]">
+            Tamaño de cada arbusto
+            <input type="range" min={5} max={40} value={Math.round((o.stamp ?? 1.6) * 10)} onChange={(ev) => { const st = Number(ev.target.value) / 10; patch({ stamp: st, ...shrubsBox(o.points ?? [], st) }); }} className="accent-[#7A2337]" data-shrub-size />
+          </label>
+        </>
+      )}
+      {(o.kind === "tree" || o.kind === "palm" || o.kind === "bush" || o.kind === "shrubs") && (
         <label className="flex flex-col gap-1 text-[#4A4043]">
-          Transparencia · {Math.round((1 - (o.opacity ?? NATURE_OPACITY)) * 100)}%
-          <input type="range" min={0} max={85} value={Math.round((1 - (o.opacity ?? NATURE_OPACITY)) * 100)} onChange={(e) => patch({ opacity: Math.round((1 - Number(e.target.value) / 100) * 100) / 100 })} className="accent-[#7A2337]" data-nature-opacity />
+          Transparencia · {Math.round((1 - (o.opacity ?? (o.kind === "shrubs" ? 1 : NATURE_OPACITY))) * 100)}%
+          <input type="range" min={0} max={85} value={Math.round((1 - (o.opacity ?? (o.kind === "shrubs" ? 1 : NATURE_OPACITY))) * 100)} onChange={(e) => patch({ opacity: Math.round((1 - Number(e.target.value) / 100) * 100) / 100 })} className="accent-[#7A2337]" data-nature-opacity />
           <span className="text-xs text-[#6B6063]">Más transparente deja ver las mesas o la barra que pongas debajo.</span>
         </label>
       )}

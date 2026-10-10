@@ -5,11 +5,11 @@
 export type TableKind = "round" | "long" | "serpentine" | "box" | "high" | "sweetheart";
 export type BarKind = "bar" | "barRound";
 export type PlaceKind = "area" | "dance" | "stage" | "entrance" | "path" | "fence";
-export type NatureKind = "tree" | "palm" | "bush";
+export type NatureKind = "tree" | "palm" | "bush" | "shrubs";
 export type Kind = TableKind | BarKind | "station" | PlaceKind | NatureKind | "scenery";
 
 export type StationShape = "straight" | "round" | "L" | "C";
-export type Floor = "lawn" | "stone" | "wood" | "building" | "dirt" | "brush";
+export type Floor = "lawn" | "stone" | "wood" | "building" | "dirt";
 export type TreeVariant = "round" | "leafy" | "pine" | "flower" | "willow";
 export type FenceStyle = "wood" | "mesh" | "hedge";
 
@@ -36,6 +36,8 @@ export type PlanObject = {
   // Árboles y arbustos: diseño y transparencia (0–1)
   variant?: TreeVariant;
   opacity?: number;
+  // Arbustos pintados: cada punto es un arbusto; stamp = su tamaño
+  stamp?: number;
 };
 
 export type PlanBackground = { src: string; x: number; y: number; w: number; aspect: number; rotation: number; opacity: number; traceOnly: boolean };
@@ -94,7 +96,7 @@ export const CATALOG: { group: string; items: Item[] }[] = [
       { kind: "tree", id: "tree:willow", label: "Sauce o molle", preset: { variant: "willow", w: 6, h: 6 } },
       { kind: "palm", label: "Palmera" },
       { kind: "bush", label: "Arbusto o maceta" },
-      { kind: "area", id: "area:brush", label: "Zona de arbustos (fundo)", preset: { floor: "brush", label: "Arbustos", w: 14, h: 8 } },
+      { kind: "shrubs", label: "Arbustos de mandarina (pintar)" },
     ],
   },
   { group: "Decoración", items: [{ kind: "scenery", label: "Escenografía (arco, fondo para fotos)" }] },
@@ -108,6 +110,13 @@ export const kindLabel = (k: string) => ITEMS.find((i) => i.kind === k)?.label ?
 // Objetos que se agrandan sin deformarse (círculos).
 export const isUniform = (o: PlanObject) => ["round", "high", "barRound", "tree", "palm", "bush"].includes(o.kind) || (o.kind === "station" && o.shape === "round");
 export const isPoly = (o: PlanObject) => o.kind === "area" && !!o.points && o.points.length >= 3;
+export const isShrubs = (o: PlanObject) => o.kind === "shrubs" && !!o.points && o.points.length >= 1;
+export const SHRUB_MAX = 300; // arbustos por trazo
+// Caja de un grupo de arbustos pintados (incluye el tamaño de cada uno).
+export function shrubsBox(points: [number, number][], stamp: number) {
+  const b = polyBox(points);
+  return { x: b.x, y: b.y, w: b.w + stamp, h: b.h + stamp };
+}
 export const isFence = (o: PlanObject) => o.kind === "fence" && !!o.points && o.points.length >= 2;
 export const TREE_VARIANTS: { id: TreeVariant; label: string }[] = [
   { id: "round", label: "Copa redonda" },
@@ -138,7 +147,6 @@ export const FLOORS: { id: Floor; label: string; blocked?: boolean }[] = [
   { id: "stone", label: "Piedra (terraza)" },
   { id: "wood", label: "Madera (deck)" },
   { id: "dirt", label: "Tierra" },
-  { id: "brush", label: "Arbustos (fundo)", blocked: true },
   { id: "building", label: "Construcción (no se usa)", blocked: true },
 ];
 
@@ -253,6 +261,11 @@ export function newObject(kind: Kind, existing: PlanObject[], at?: { x: number; 
       return { ...base, label: "Palmera", w: 3, h: 3, opacity: NATURE_OPACITY };
     case "bush":
       return { ...base, label: "Arbusto", w: 1.2, h: 1.2, opacity: 0.8 };
+    case "shrubs": {
+      const c = at ?? { x: 0, y: 0 };
+      const points: [number, number][] = [[c.x, c.y]];
+      return { ...base, label: "Arbustos de mandarina", ...shrubsBox(points, 1.6), points, stamp: 1.6, opacity: 1 };
+    }
     default:
       return { ...base, label: "Escenografía", w: 3.5, h: 1 };
   }
@@ -326,8 +339,14 @@ export function sanitizePlan(raw: unknown): SeatingPlan {
       obj.fenceStyle = (FENCE_STYLES.some((f) => f.id === x.fenceStyle) ? x.fenceStyle : "wood") as FenceStyle;
       obj.closed = x.closed === true && p.length >= 3;
     }
+    if (kind === "shrubs") {
+      const p = pts(1);
+      if (!p) continue;
+      obj.stamp = n(x.stamp, 0.4, 5, 1.6);
+      Object.assign(obj, shrubsBox(p, obj.stamp), { points: p, rotation: 0 });
+    }
     if (kind === "tree") obj.variant = (TREE_VARIANTS.some((t) => t.id === x.variant) ? x.variant : "round") as TreeVariant;
-    if (kind === "tree" || kind === "palm" || kind === "bush") obj.opacity = n(x.opacity, 0.15, 1, kind === "bush" ? 0.8 : NATURE_OPACITY);
+    if (kind === "tree" || kind === "palm" || kind === "bush" || kind === "shrubs") obj.opacity = n(x.opacity, 0.15, 1, kind === "shrubs" ? 1 : kind === "bush" ? 0.8 : NATURE_OPACITY);
     if (kind === "area") {
       obj.floor = (FLOORS.some((f) => f.id === x.floor) ? x.floor : "building") as Floor;
       if (typeof x.color === "string" && HEX.test(x.color)) obj.color = x.color;

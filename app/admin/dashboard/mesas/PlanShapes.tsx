@@ -13,7 +13,6 @@ export const FLOOR_FILL: Record<string, string> = {
   wood: "url(#pat-wood)",
   dirt: "#D8C6A8",
   building: "url(#pat-building)",
-  brush: "url(#pat-brush)",
 };
 
 // Patrones del terreno (césped, piedra, madera, construcción, cuadrícula).
@@ -41,15 +40,18 @@ export function PlanPatterns() {
         <rect width="0.6" height="0.6" fill="#D3CCC4" />
         <path d="M0 0V0.6" stroke="#BDB4AA" strokeWidth="0.08" />
       </pattern>
-      <pattern id="pat-brush" width="2.4" height="2.1" patternUnits="userSpaceOnUse">
-        <rect width="2.4" height="2.1" fill="#7E9B5C" />
-        <circle cx="0.5" cy="0.5" r="0.55" fill="#6A8A4A" />
-        <circle cx="0.75" cy="0.35" r="0.32" fill="#8DAB69" />
-        <circle cx="1.75" cy="1.45" r="0.6" fill="#5F8042" />
-        <circle cx="1.95" cy="1.25" r="0.35" fill="#86A563" />
-        <circle cx="1.6" cy="0.35" r="0.3" fill="#6F9050" />
-        <circle cx="0.55" cy="1.65" r="0.38" fill="#678746" />
-      </pattern>
+      {/* Arbusto de mandarina visto desde arriba (diámetro 1) */}
+      <g id="spr-mandarin">
+        <circle r="0.5" fill="#3D6A34" />
+        <circle cx="-0.15" cy="-0.12" r="0.3" fill="#4E8140" />
+        <circle cx="0.18" cy="0.1" r="0.26" fill="#46793A" />
+        <circle cx="-0.05" cy="0.24" r="0.2" fill="#558A45" />
+        <circle cx="0.22" cy="-0.2" r="0.07" fill="#F39A2B" />
+        <circle cx="-0.26" cy="0.14" r="0.065" fill="#F7A93B" />
+        <circle cx="0.04" cy="0.04" r="0.06" fill="#EE8E22" />
+        <circle cx="-0.06" cy="-0.32" r="0.055" fill="#F5A233" />
+        <circle cx="0.3" cy="0.26" r="0.05" fill="#EE8E22" />
+      </g>
       <pattern id="pat-dance" width="1" height="1" patternUnits="userSpaceOnUse">
         <rect width="1" height="1" fill="#F4EFE9" />
         <rect width="0.5" height="0.5" fill="#E2D9CF" />
@@ -72,7 +74,7 @@ export function layerOf(o: PlanObject) {
   if (o.kind === "area") return 0;
   if (o.kind === "fence") return 1;
   if (o.kind === "path" || o.kind === "dance" || o.kind === "stage") return 1;
-  if (o.kind === "tree" || o.kind === "palm" || o.kind === "bush") return 2;
+  if (o.kind === "tree" || o.kind === "palm" || o.kind === "bush" || o.kind === "shrubs") return 2;
   if (o.kind === "entrance") return 4;
   return 3;
 }
@@ -306,6 +308,18 @@ export function FenceShape({ o }: { o: PlanObject }) {
       {!mesh && <path d={d} fill="none" stroke="#A88664" strokeWidth={0.05} strokeLinejoin="round" transform="translate(0.06 0.06)" />}
       {posts.map((p, i) => (
         <rect key={i} x={p[0] - 0.1} y={p[1] - 0.1} width={0.2} height={0.2} fill={mesh ? "#5E666C" : "#5E4535"} />
+      ))}
+    </>
+  );
+}
+
+// Arbustos pintados: un sprite por punto, con giro y tamaño algo distintos.
+export function ShrubsShape({ o }: { o: PlanObject }) {
+  const st = o.stamp ?? 1.6;
+  return (
+    <>
+      {(o.points ?? []).map(([x, y], i) => (
+        <use key={i} href="#spr-mandarin" transform={`translate(${x} ${y}) rotate(${(i * 137.5) % 360}) scale(${st * (0.85 + ((i * 53) % 30) / 100)})`} />
       ))}
     </>
   );
