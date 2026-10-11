@@ -304,6 +304,14 @@ export function ArtboardEditor({
   // Los recuadros de los pasos no se listan: vuelven al elegir una versión que los usa.
   const removedEls = layout[orientation].filter((e) => e.removed && !/^step-.+-card$/.test(e.id));
   const selected = elements.find((e) => e.id === selectedId) ?? null;
+  const [selH, setSelH] = useState(0);
+  useEffect(() => {
+    const node = selectedId ? elRefs.current.get(selectedId) : null;
+    if (!node) return;
+    const ro = new ResizeObserver(() => setSelH(node.offsetHeight));
+    ro.observe(node);
+    return () => ro.disconnect();
+  }, [selectedId, orientation]);
   const selectedRaw = layout[orientation].find((e) => e.id === selectedId) ?? null;
 
   useEffect(() => {
@@ -1563,7 +1571,8 @@ export function ArtboardEditor({
         className={`relative flex min-h-0 flex-1 overflow-auto bg-[#EFE9E3] p-4 outline-none ${dropping ? "ring-4 ring-inset ring-blue-400" : ""} ${painter ? "cursor-copy" : ""}`}
         aria-label="Lienzo: toca un elemento para seleccionarlo, arrástralo para moverlo, flechas para ajustar"
       >
-        <div className="relative m-auto shrink-0 overflow-hidden shadow-lg" style={{ width: A.w * k, height: A.h * k, ...bgStyle }} data-canvas-bg>
+        <div className="relative m-auto shrink-0" style={{ width: A.w * k, height: A.h * k }}>
+        <div className="absolute inset-0 overflow-hidden shadow-lg" style={bgStyle} data-canvas-bg>
           {underlay && (
             <div className="pointer-events-none absolute left-0 top-0" style={{ width: A.w, height: A.h, transform: `scale(${k})`, transformOrigin: "0 0" }}>
               {underlay}
@@ -1634,54 +1643,6 @@ export function ArtboardEditor({
                       />
                     </div>
                   )}
-                  {isSel && sel.length === 1 && !isEditing && !el.locked &&
-                    ([
-                      [-1, -1, "nwse-resize", { left: -handle / 2, top: -handle / 2 }],
-                      [1, -1, "nesw-resize", { right: -handle / 2, top: -handle / 2 }],
-                      [-1, 1, "nesw-resize", { left: -handle / 2, bottom: -handle / 2 }],
-                      [1, 1, "nwse-resize", { right: -handle / 2, bottom: -handle / 2 }],
-                      [-1, 0, "ew-resize", { left: -handle / 2, top: `calc(50% - ${handle / 2}px)` }],
-                      [1, 0, "ew-resize", { right: -handle / 2, top: `calc(50% - ${handle / 2}px)` }],
-                      ...(isSized(el)
-                        ? ([
-                            [0, -1, "ns-resize", { top: -handle / 2, left: `calc(50% - ${handle / 2}px)` }],
-                            [0, 1, "ns-resize", { bottom: -handle / 2, left: `calc(50% - ${handle / 2}px)` }],
-                          ] as const)
-                        : []),
-                    ] as const).map(([sx, sy, cursor, pos], i) => (
-                      <span
-                        key={i}
-                        data-handle={`${sx},${sy}`}
-                        onPointerDown={(e) => startDrag(e, el, "resize", sx, sy)}
-                        style={{
-                          position: "absolute", width: handle, height: handle, background: "#fff",
-                          border: `${1.5 / (k || 1)}px solid #2563eb`,
-                          borderRadius: sx === 0 || sy === 0 ? handle : 2 / (k || 1),
-                          cursor, touchAction: "none", ...pos,
-                        }}
-                      />
-                    ))}
-                  {isSel && sel.length === 1 && !isEditing && !el.locked && (
-                    <>
-                      <span
-                        aria-hidden
-                        style={{ position: "absolute", left: "50%", top: -handle * 2.6, width: 1.5 / (k || 1), height: handle * 2.1, background: "#2563eb", transform: "translateX(-50%)", pointerEvents: "none" }}
-                      />
-                      <span
-                        data-rotate-handle
-                        title="Girar (Shift: de a 15°)"
-                        onPointerDown={(e) => startDrag(e, el, "rotate")}
-                        style={{
-                          position: "absolute", left: `calc(50% - ${handle * 0.8}px)`, top: -handle * 4.2,
-                          width: handle * 1.6, height: handle * 1.6, borderRadius: "50%", background: "#fff",
-                          border: `${1.5 / (k || 1)}px solid #2563eb`, cursor: "grab", touchAction: "none",
-                          display: "flex", alignItems: "center", justifyContent: "center", color: "#2563eb",
-                        }}
-                      >
-                        <RotateCw size={handle * 1.05} strokeWidth={2.5} style={{ pointerEvents: "none" }} />
-                      </span>
-                    </>
-                  )}
                 </div>
               );
             })}
@@ -1709,6 +1670,83 @@ export function ArtboardEditor({
               </div>
             )}
           </div>
+        </div>
+          {/* Marco y manijas del objeto elegido: fuera del recorte del lienzo, para
+              poder tomarlas aunque el objeto se salga de los bordes. */}
+          {selected && sel.length === 1 && sel[0] === selected.id && editing?.id !== selected.id && !selected.locked && (
+              <div
+                className="pointer-events-none absolute left-0 top-0"
+                style={{ width: A.w, height: A.h, transform: `scale(${k})`, transformOrigin: "0 0" }}
+                onPointerMove={onMove}
+                onPointerUp={endDrag}
+                onPointerCancel={endDrag}
+                data-selection-overlay
+              >
+                <div
+                  style={{
+                    position: "absolute",
+                    left: selected.x,
+                    top: selected.y,
+                    width: selected.w,
+                    height: isSized(selected) ? selected.h : selH,
+                    transform: elementStyle(selected).transform,
+                    transformOrigin: elementStyle(selected).transformOrigin,
+                    outline: `${(covers(selected) ? 4 : 2) / (k || 1)}px solid #2563eb`,
+                  }}
+                  data-selection-frame
+                >
+                  <div style={{ pointerEvents: "auto" }}>
+                  {                    ([
+                      [-1, -1, "nwse-resize", { left: -handle / 2, top: -handle / 2 }],
+                      [1, -1, "nesw-resize", { right: -handle / 2, top: -handle / 2 }],
+                      [-1, 1, "nesw-resize", { left: -handle / 2, bottom: -handle / 2 }],
+                      [1, 1, "nwse-resize", { right: -handle / 2, bottom: -handle / 2 }],
+                      [-1, 0, "ew-resize", { left: -handle / 2, top: `calc(50% - ${handle / 2}px)` }],
+                      [1, 0, "ew-resize", { right: -handle / 2, top: `calc(50% - ${handle / 2}px)` }],
+                      ...(isSized(selected)
+                        ? ([
+                            [0, -1, "ns-resize", { top: -handle / 2, left: `calc(50% - ${handle / 2}px)` }],
+                            [0, 1, "ns-resize", { bottom: -handle / 2, left: `calc(50% - ${handle / 2}px)` }],
+                          ] as const)
+                        : []),
+                    ] as const).map(([sx, sy, cursor, pos], i) => (
+                      <span
+                        key={i}
+                        data-handle={`${sx},${sy}`}
+                        onPointerDown={(e) => startDrag(e, selected, "resize", sx, sy)}
+                        style={{
+                          position: "absolute", width: handle, height: handle, background: "#fff",
+                          border: `${1.5 / (k || 1)}px solid #2563eb`,
+                          borderRadius: sx === 0 || sy === 0 ? handle : 2 / (k || 1),
+                          cursor, touchAction: "none", ...pos,
+                        }}
+                      />
+                    ))}
+                  {(
+                    <>
+                      <span
+                        aria-hidden
+                        style={{ position: "absolute", left: "50%", top: -handle * 2.6, width: 1.5 / (k || 1), height: handle * 2.1, background: "#2563eb", transform: "translateX(-50%)", pointerEvents: "none" }}
+                      />
+                      <span
+                        data-rotate-handle
+                        title="Girar (Shift: de a 15°)"
+                        onPointerDown={(e) => startDrag(e, selected, "rotate")}
+                        style={{
+                          position: "absolute", left: `calc(50% - ${handle * 0.8}px)`, top: -handle * 4.2,
+                          width: handle * 1.6, height: handle * 1.6, borderRadius: "50%", background: "#fff",
+                          border: `${1.5 / (k || 1)}px solid #2563eb`, cursor: "grab", touchAction: "none",
+                          display: "flex", alignItems: "center", justifyContent: "center", color: "#2563eb",
+                        }}
+                      >
+                        <RotateCw size={handle * 1.05} strokeWidth={2.5} style={{ pointerEvents: "none" }} />
+                      </span>
+                    </>
+                  )}
+                  </div>
+                </div>
+              </div>
+          )}
         </div>
       </div>
 
